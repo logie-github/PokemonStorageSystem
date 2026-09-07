@@ -19,7 +19,8 @@ class PackageFileService : Binder() {
             reply?.writeNoException()
             when (code) {
                 LIST -> {
-                    val children = file.listFiles()?.sortedBy { it.name.lowercase() }.orEmpty()
+                    val children = file.listFiles()?.sortedBy { it.name.lowercase() }
+                        ?: error(if (file.exists()) "Directory access denied: $requestedPath" else "Directory missing: $requestedPath")
                     reply?.writeInt(children.size)
                     children.forEach { child ->
                         reply?.writeString(child.name)

@@ -92,9 +92,12 @@ class SaveReader(private val fs: PackageFileSystem) {
                 val names = rootEntries.joinToString(", ") { if (it.directory) "${it.name}/" else it.name }.take(500)
                 val visited = mutableSetOf<String>()
                 val candidates = mutableListOf<Pair<PackageEntry, String>>()
+                val tree = mutableListOf<String>()
                 suspend fun walk(path: String, relative: String, depth: Int) {
                     if (depth > 8 || !visited.add(path) || candidates.size >= 500) return
-                    for (entry in fs.list(path)) {
+                    val children = fs.list(path)
+                    tree += "${if (relative.isEmpty()) "." else relative}/[${children.joinToString(",") { it.name + if (it.directory) "/" else "" }}]"
+                    for (entry in children) {
                         val childRelative = if (relative.isEmpty()) entry.name else "$relative/${entry.name}"
                         if (entry.directory) walk(entry.path, childRelative, depth + 1)
                         else if (entry.name.endsWith(".lua", true) && looksLikeSave(childRelative)) candidates += entry to childRelative
@@ -113,7 +116,7 @@ class SaveReader(private val fs: PackageFileSystem) {
                     } catch (e: Exception) { ReadSave(entry.path, label, null, e.message ?: "Cannot read save") }
                 }
                 candidates.forEach { (entry, relative) -> read(entry, relative) }
-                diagnostics += "$pkg: files=[${names.ifBlank { "empty" }}], save-like Lua files=${candidates.size}"
+                diagnostics += "$pkg: files=[${names.ifBlank { "empty" }}], tree=${tree.take(80).joinToString(" | ")}, save-like Lua files=${candidates.size}"
             } catch (e: Exception) { diagnostics += "$pkg: ${e.message}" }
         }
         return saves to diagnostics

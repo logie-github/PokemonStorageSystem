@@ -7,7 +7,7 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
-    <application android:theme="@style/Theme.PackageExporter" android:label="Package Exporter">
+    <application android:theme="@style/Theme.PackageExporter" android:label="Pokémon Save Reader">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

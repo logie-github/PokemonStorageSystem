@@ -9,6 +9,13 @@ import java.io.OutputStream
 data class PackageEntry(val name: String, val path: String, val directory: Boolean, val size: Long)
 
 class PackageFileSystem(private val binder: IBinder) {
+    suspend fun readText(entry: PackageEntry): String {
+        require(entry.size <= 32L * 1024 * 1024) { "Save exceeds 32 MB reader limit" }
+        return java.io.ByteArrayOutputStream().use { output ->
+            copy(entry, output)
+            output.toString("UTF-8")
+        }
+    }
     suspend fun list(path: String): List<PackageEntry> = call(path, PackageFileService.LIST) { reply ->
         List(reply.readInt()) { PackageEntry(reply.readString().orEmpty(), reply.readString().orEmpty(), reply.readBoolean(), reply.readLong()) }
     }

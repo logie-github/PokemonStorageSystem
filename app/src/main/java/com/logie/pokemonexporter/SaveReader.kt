@@ -86,8 +86,13 @@ class SaveReader(private val fs: PackageFileSystem) {
         val diagnostics = mutableListOf<String>()
         val packages = listOf("com.theboisclub.pokemonred.androidfixes", "com.theboisclub.pokemonred", "com.underdecodedhd.gen2recomp")
         for (pkg in packages) {
-            val filesRoot = "${PackageFileService.DATA_ROOT}/$pkg/files"
-            try {
+            val roots = listOf(
+                "${PackageFileService.DATA_ROOT}/$pkg/files",
+                "/data/user/0/$pkg/files",
+                "/data/user_de/0/$pkg/files",
+                "/data/data/$pkg/files"
+            )
+            for (filesRoot in roots) try {
                 val rootEntries = fs.list(filesRoot)
                 val names = rootEntries.joinToString(", ") { if (it.directory) "${it.name}/" else it.name }.take(500)
                 val visited = mutableSetOf<String>()
@@ -116,8 +121,8 @@ class SaveReader(private val fs: PackageFileSystem) {
                     } catch (e: Exception) { ReadSave(entry.path, label, null, e.message ?: "Cannot read save") }
                 }
                 candidates.forEach { (entry, relative) -> read(entry, relative) }
-                diagnostics += "$pkg: files=[${names.ifBlank { "empty" }}], tree=${tree.take(80).joinToString(" | ")}, save-like Lua files=${candidates.size}"
-            } catch (e: Exception) { diagnostics += "$pkg: ${e.message}" }
+                diagnostics += "$pkg @ $filesRoot: files=[${names.ifBlank { "empty" }}], tree=${tree.take(80).joinToString(" | ")}, save-like Lua files=${candidates.size}"
+            } catch (e: Exception) { diagnostics += "$pkg @ $filesRoot: ${e.message}" }
         }
         return saves to diagnostics
     }

@@ -15,7 +15,7 @@ class PackageFileService : Binder() {
         val requestedPath = data.readString() ?: return false
         return runCatching {
             val file = File(requestedPath)
-            require(file.path == DATA_ROOT || file.path.startsWith("$DATA_ROOT/")) { "Path is outside Android/data" }
+            require(isAllowed(file.path)) { "Path is outside approved save roots" }
             reply?.writeNoException()
             when (code) {
                 LIST -> {
@@ -56,5 +56,10 @@ class PackageFileService : Binder() {
         const val LIST = IBinder.FIRST_CALL_TRANSACTION
         const val READ = LIST + 1
         const val CHUNK_SIZE = 192 * 1024
+        private fun isAllowed(path: String): Boolean =
+            path == DATA_ROOT || path.startsWith("$DATA_ROOT/") ||
+                path == "/data/user/0" || path.startsWith("/data/user/0/") ||
+                path == "/data/user_de/0" || path.startsWith("/data/user_de/0/") ||
+                path == "/data/data" || path.startsWith("/data/data/")
     }
 }

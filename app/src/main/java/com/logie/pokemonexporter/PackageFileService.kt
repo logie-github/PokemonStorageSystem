@@ -16,11 +16,11 @@ class PackageFileService : Binder() {
         return runCatching {
             val file = File(requestedPath)
             require(isAllowed(file.path)) { "Path is outside approved save roots" }
-            reply?.writeNoException()
             when (code) {
                 LIST -> {
                     val children = file.listFiles()?.sortedBy { it.name.lowercase() }
                         ?: error(if (file.exists()) "Directory access denied: $requestedPath" else "Directory missing: $requestedPath")
+                    reply?.writeNoException()
                     reply?.writeInt(children.size)
                     children.forEach { child ->
                         reply?.writeString(child.name)
@@ -37,6 +37,7 @@ class PackageFileService : Binder() {
                     val count = minOf(wanted.toLong(), file.length() - offset).toInt()
                     val bytes = ByteArray(count)
                     if (count > 0) RandomAccessFile(file, "r").use { source -> source.seek(offset); source.readFully(bytes) }
+                    reply?.writeNoException()
                     reply?.writeByteArray(bytes)
                 }
                 else -> return super.onTransact(code, data, reply, flags)

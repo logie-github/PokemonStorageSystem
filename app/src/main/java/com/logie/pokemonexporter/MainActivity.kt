@@ -31,7 +31,8 @@ data class ReaderState(
     val access: AccessState = AccessState.Connecting,
     val saves: List<ReadSave> = emptyList(),
     val diagnostics: List<String> = emptyList(),
-    val scanning: Boolean = false
+    val scanning: Boolean = false,
+    val selectedFolder: String? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -47,6 +48,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun permission() = connection.requestPermission()
     fun retry() = connection.refresh()
+    fun scanTree(uri: Uri) = viewModelScope.launch {
+        if (mutable.value.scanning) return@launch
+        mutable.update { it.copy(scanning = true, saves = emptyList(), diagnostics = emptyList(), selectedFolder = uri.toString()) }
+        try {
+            val (saves, diagnostics) = withContext(Dispatchers.IO) { TreeSaveReader(getApplication()).scan(uri) }
+            mutable.update { it.copy(saves = saves, diagnostics = diagnostics, scanning = false) }
+        } catch (e: Exception) { mutable.update { it.copy(scanning = false, diagnostics = listOf("Selected folder failed: ${e.message}")) } }
+    }
     fun debugReport(): String {
         val current = mutable.value
         val app = getApplication<Application>()
@@ -94,6 +103,14 @@ class MainActivity : ComponentActivity() {
     var selected by remember { mutableStateOf<ReadSave?>(null) }
     BackHandler(selected != null) { selected = null }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val chooseFolder = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            model.scanTree(uri)
+        }
+    }
     MaterialTheme(colorScheme = darkColorScheme()) {
         Scaffold(topBar = { TopAppBar(title = { Text("Pokémon Save Reader") }, actions = {
             TextButton({
@@ -105,7 +122,12 @@ class MainActivity : ComponentActivity() {
             else TextButton({ model.scan() }, enabled = state.access == AccessState.Ready && !state.scanning) { Text("Refresh") }
         }) }) { padding ->
             LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { Text("Gen 1 Recomp • Gen2Recomped · Read-only") }
+                item {
+                    Text("Gen 1 Recomp • Gen2Recomped · Read-only")
+                    Spacer(Modifier.height(8.dp))
+                    Button({ chooseFolder.launch(null) }, enabled = !state.scanning) { Text("Choose actual save folder") }
+                    if (state.selectedFolder != null) Text("A folder is selected", style = MaterialTheme.typography.bodySmall)
+                }
                 if (state.access != AccessState.Ready) item {
                     Text(when (val access = state.access) {
                         AccessState.Connecting -> "Connecting to Shizuku…"

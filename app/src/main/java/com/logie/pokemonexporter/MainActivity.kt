@@ -1,6 +1,9 @@
 package com.logie.packageexporter
 
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,6 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URLEncoder
+import java.time.Instant
 
 data class ReaderState(
     val access: AccessState = AccessState.Connecting,
@@ -42,6 +47,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun permission() = connection.requestPermission()
     fun retry() = connection.refresh()
+    fun debugReport(): String {
+        val current = mutable.value
+        val app = getApplication<Application>()
+        val version = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "unknown"
+        return buildString {
+            appendLine("## Debug report")
+            appendLine("Generated: ${Instant.now()}")
+            appendLine("App version: $version")
+            appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
+            appendLine("Shizuku state: ${current.access}")
+            appendLine("Scan running: ${current.scanning}")
+            appendLine("Saves found: ${current.saves.size}")
+            appendLine()
+            appendLine("### Checked paths and results")
+            current.diagnostics.forEach { appendLine("- $it") }
+            current.saves.forEach { save -> appendLine("- ${save.label}: path=${save.path}, parsed=${save.data != null}, error=${save.error ?: "none"}") }
+            appendLine()
+            appendLine("This report intentionally excludes save contents and Pokémon data.")
+        }.take(12000)
+    }
     fun scan() = viewModelScope.launch {
         val fs = connection.files ?: return@launch
         if (mutable.value.scanning) return@launch
@@ -67,8 +93,14 @@ class MainActivity : ComponentActivity() {
     val state by model.state.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<ReadSave?>(null) }
     BackHandler(selected != null) { selected = null }
+    val context = androidx.compose.ui.platform.LocalContext.current
     MaterialTheme(colorScheme = darkColorScheme()) {
         Scaffold(topBar = { TopAppBar(title = { Text("Pokémon Save Reader") }, actions = {
+            TextButton({
+                val title = URLEncoder.encode("Save Reader debug report", "UTF-8")
+                val body = URLEncoder.encode(model.debugReport(), "UTF-8")
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/logie-github/PokemonStorageSystem/issues/new?title=$title&body=$body")))
+            }) { Text("Debug") }
             if (selected != null) TextButton({ selected = null }) { Text("Library") }
             else TextButton({ model.scan() }, enabled = state.access == AccessState.Ready && !state.scanning) { Text("Refresh") }
         }) }) { padding ->

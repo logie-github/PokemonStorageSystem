@@ -86,34 +86,43 @@ class SaveReader(private val fs: PackageFileSystem) {
         val diagnostics = mutableListOf<String>()
         val packages = listOf("com.theboisclub.pokemonred.androidfixes", "com.theboisclub.pokemonred", "com.underdecodedhd.gen2recomp")
         for (pkg in packages) {
-            val root = "${PackageFileService.DATA_ROOT}/$pkg/files/save/pokemon-love2d"
+            val filesRoot = "${PackageFileService.DATA_ROOT}/$pkg/files"
             try {
-                val entries = fs.list(root)
-                val options = entries.firstOrNull { it.name == "options.lua" }?.let {
-                    runCatching { SaveParser(fs.readText(it)).parse() }.getOrDefault(emptyMap())
-                }.orEmpty()
-                suspend fun read(entry: PackageEntry, version: String, slot: String) {
-                    val name = options.child("saveSlots").child(version).child("names")[slot]?.toString() ?: slot
-                    val label = "$version · $name · $pkg"
+                val rootEntries = fs.list(filesRoot)
+                val names = rootEntries.joinToString(", ") { if (it.directory) "${it.name}/" else it.name }.take(500)
+                val visited = mutableSetOf<String>()
+                val candidates = mutableListOf<Pair<PackageEntry, String>>()
+                suspend fun walk(path: String, relative: String, depth: Int) {
+                    if (depth > 8 || !visited.add(path) || candidates.size >= 500) return
+                    for (entry in fs.list(path)) {
+                        val childRelative = if (relative.isEmpty()) entry.name else "$relative/${entry.name}"
+                        if (entry.directory) walk(entry.path, childRelative, depth + 1)
+                        else if (entry.name.endsWith(".lua", true) && looksLikeSave(childRelative)) candidates += entry to childRelative
+                    }
+                }
+                walk(filesRoot, "", 0)
+                suspend fun read(entry: PackageEntry, relative: String) {
+                    val version = Regex("(?:^|/)(red|blue|yellow|gold|silver|crystal|prism)(?:/|_|$)", RegexOption.IGNORE_CASE)
+                        .find(relative)?.groupValues?.get(1)?.lowercase() ?: "unknown"
+                    val slot = Regex("slot[0-9]+", RegexOption.IGNORE_CASE).find(entry.name)?.value ?: entry.name
+                    val label = "$version · $slot · $pkg"
                     saves += try {
                         val data = SaveParser(fs.readText(entry)).parse()
                         require(data["party"] is Map<*, *> && data["player"] is Map<*, *>) { "Missing player or party table" }
                         ReadSave(entry.path, label, data, null)
                     } catch (e: Exception) { ReadSave(entry.path, label, null, e.message ?: "Cannot read save") }
                 }
-                for (entry in entries.filter { !it.directory && Regex("save(?:_[A-Za-z0-9_-]+)?\\.lua").matches(it.name) }) {
-                    read(entry, entry.name.removeSuffix(".lua").removePrefix("save_").let { if (it == "save") "red" else it }, "Legacy save")
-                }
-                entries.firstOrNull { it.name == "saves" && it.directory }?.let { dir ->
-                    for (version in fs.list(dir.path).filter { it.directory }) {
-                        for (entry in fs.list(version.path).filter { !it.directory && Regex("slot[0-9]+\\.lua").matches(it.name) }) {
-                            read(entry, version.name, entry.name.removeSuffix(".lua"))
-                        }
-                    }
-                }
-                diagnostics += "$pkg: scanned ${entries.size} root entries"
+                candidates.forEach { (entry, relative) -> read(entry, relative) }
+                diagnostics += "$pkg: files=[${names.ifBlank { "empty" }}], save-like Lua files=${candidates.size}"
             } catch (e: Exception) { diagnostics += "$pkg: ${e.message}" }
         }
         return saves to diagnostics
+    }
+
+    private fun looksLikeSave(relative: String): Boolean {
+        val lower = relative.lowercase()
+        val name = lower.substringAfterLast('/')
+        return name == "save.lua" || name.matches(Regex("save_[a-z0-9_-]+\\.lua")) ||
+            name.matches(Regex("slot[0-9]+\\.lua")) || lower.contains("/saves/")
     }
 }

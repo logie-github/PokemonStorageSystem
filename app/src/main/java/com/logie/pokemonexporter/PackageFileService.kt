@@ -14,17 +14,16 @@ class PackageFileService : Binder() {
         data.enforceInterface(DESCRIPTOR)
         val requestedPath = data.readString() ?: return false
         return runCatching {
-            val file = File(requestedPath).canonicalFile
+            val file = File(requestedPath)
             require(file.path == DATA_ROOT || file.path.startsWith("$DATA_ROOT/")) { "Path is outside Android/data" }
             reply?.writeNoException()
             when (code) {
                 LIST -> {
-                    val children = file.listFiles()?.sortedBy { it.name.lowercase() }
-                        ?: error("Directory missing or access denied: $requestedPath")
+                    val children = file.listFiles()?.sortedBy { it.name.lowercase() }.orEmpty()
                     reply?.writeInt(children.size)
                     children.forEach { child ->
                         reply?.writeString(child.name)
-                        reply?.writeString(child.canonicalPath)
+                        reply?.writeString(child.absolutePath)
                         reply?.writeBoolean(child.isDirectory)
                         reply?.writeLong(if (child.isFile) child.length() else 0L)
                     }
@@ -43,7 +42,6 @@ class PackageFileService : Binder() {
             }
             true
         }.getOrElse { error ->
-            reply?.setDataSize(0)
             reply?.writeException(Exception(error.message ?: "Filesystem error"))
             true
         }

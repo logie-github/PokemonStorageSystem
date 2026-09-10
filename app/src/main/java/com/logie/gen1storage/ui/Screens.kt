@@ -55,6 +55,10 @@ fun HomeScreen(state: UiState, model: StorageViewModel) {
             model.open(Screen.StorageSystem(null))
         },
         Triple("TRANSFER", "MOVE BETWEEN SAVES") { model.open(Screen.Transfer) },
+        Triple(
+            "DOWNLOAD SPRITES",
+            if (state.spritesInstalled > 0) "${state.spritesInstalled} SPRITES READY" else "NOT DOWNLOADED",
+        ) { model.open(Screen.Sprites) },
         Triple("SAVE FILES", "BACKUPS AND REPAIR") { model.open(Screen.SaveFiles) },
         Triple("OPTIONS", "SYNC, CONTROLS AND DIAGNOSTICS") { model.open(Screen.Options) },
     )
@@ -575,7 +579,19 @@ fun StatusScreen(state: UiState, model: StorageViewModel, key: String?, area: In
         ScreenColumn { item { Gen1Frame { GbText("THAT POKéMON IS NO LONGER THERE.") } } }
         return
     }
-    Gen1StatusScreen(pokemon) {
+    // A stored Pokémon is shown in the art of the game it was deposited from.
+    val gameVersionId = if (key == null) {
+        state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.provenance?.gameVersion
+    } else {
+        state.remote(key)?.version?.id
+    }
+    Gen1StatusScreen(
+        pokemon = pokemon,
+        gameVersionId = gameVersionId,
+        store = model.sprites,
+        spriteRevision = state.spriteRevision,
+        onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
+    ) {
         Gen1Button("BACK", { model.back() })
     }
 }
@@ -625,6 +641,99 @@ fun TransferScreen(state: UiState, model: StorageViewModel) {
         }
     }
 }
+
+/**
+ * The sprite download. One question, then a percentage and a bar; the player
+ * never has to think about where the art comes from or which file is which.
+ */
+@Composable
+fun SpritesScreen(state: UiState, model: StorageViewModel) {
+    val progress = state.spriteProgress
+    val running = progress != null && !progress.finished
+
+    ScreenColumn {
+        item {
+            Gen1Frame {
+                GbText("POKéMON SPRITES")
+                Spacer(Modifier.height(6.dp))
+                GbText(
+                    "SPRITES ARE SHOWN IN THE ART OF THE GAME A POKéMON CAME FROM. TAP AND HOLD ANY SPRITE TO PICK A DIFFERENT GAME.",
+                    style = Gen1TextSmall,
+                )
+            }
+        }
+
+        if (progress != null) {
+            item {
+                Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
+                    SpriteProgressBar(progress.percent, Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(10.dp))
+                    if (progress.finished) {
+                        GbText(
+                            if (progress.error != null) "STOPPED: ${progress.error.uppercase()}"
+                            else if (progress.failed > 0) "DONE. ${progress.failed} COULD NOT BE FETCHED."
+                            else "DONE.",
+                            style = Gen1TextSmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Gen1Button("OK", model::dismissSpriteProgress)
+                    } else {
+                        GbText("${progress.done} OF ${progress.total}", style = Gen1TextSmall)
+                        Spacer(Modifier.height(8.dp))
+                        Gen1Button("STOP", model::cancelSpriteDownload)
+                    }
+                }
+            }
+        }
+
+        if (!running) {
+            item {
+                Gen1Frame {
+                    Gen1Field("ON THIS DEVICE", "${state.spritesInstalled} SPRITES")
+                    if (state.spritesInstalled > 0) {
+                        Gen1Field("SPACE USED", "${model.spriteBytesOnDisk() / 1024} KB")
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Gen1Button(
+                            if (state.spritesInstalled > 0) "DOWNLOAD MISSING" else "DOWNLOAD",
+                            {
+                                model.prompt(
+                                    Prompt.Confirm(
+                                        lines = listOf("Download Pokémon sprites from repo?"),
+                                        confirmLabel = "YES",
+                                        onConfirm = { model.downloadSprites() },
+                                    )
+                                )
+                            },
+                        )
+                        if (state.spritesInstalled > 0) {
+                            Gen1Button("DELETE", {
+                                model.prompt(
+                                    Prompt.Confirm(
+                                        lines = listOf("DELETE EVERY DOWNLOADED SPRITE?"),
+                                        confirmLabel = "DELETE",
+                                        onConfirm = { model.deleteSprites() },
+                                    )
+                                )
+                            })
+                        }
+                    }
+                }
+            }
+            item {
+                Gen1Frame {
+                    GbText("SPRITE ART", style = Gen1TextSmall)
+                    GbText(
+                        "THE RBY SPRITES PROJECT BY SHIRATHEMOGUL, WHICH ASKS ONLY THAT IT BE CREDITED.",
+                        style = Gen1TextSmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
@@ -828,6 +937,13 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 Spacer(Modifier.height(8.dp))
                 Gen1Button("CANCEL", model::dismissPrompt)
             }
+
+            is Prompt.ChooseSpriteSet -> SpriteSetPicker(
+                speciesId = prompt.speciesId,
+                store = model.sprites,
+                onChoose = { model.chooseSpriteSet(prompt.speciesId, it) },
+                onCancel = model::dismissPrompt,
+            )
 
             is Prompt.ChooseWithdrawTarget -> {
                 val save = state.save(prompt.key)?.save

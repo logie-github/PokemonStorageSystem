@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.pokemon.Gen1Growth
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
+import com.logie.gen1storage.sprites.SpriteStore
 
 /**
  * The Generation I status screen, both pages.
@@ -41,7 +43,11 @@ import com.logie.gen1storage.pokemon.Gen1Stat
 @Composable
 fun Gen1StatusScreen(
     pokemon: Gen1Pokemon,
+    gameVersionId: String?,
+    store: SpriteStore,
+    spriteRevision: Int,
     modifier: Modifier = Modifier,
+    onSpriteLongPress: ((String) -> Unit)? = null,
     footer: @Composable () -> Unit = {},
 ) {
     var page by remember(pokemon.fingerprint) { mutableStateOf(0) }
@@ -53,7 +59,13 @@ fun Gen1StatusScreen(
             .clickable { page = 1 - page }
             .padding(14.dp),
     ) {
-        if (page == 0) StatusPageOne(pokemon) else StatusPageTwo(pokemon)
+        val sprite: @Composable () -> Unit = {
+            // Keyed on the revision so a download or a set change redraws it.
+            key(spriteRevision) {
+                Gen1Sprite(pokemon.speciesId, gameVersionId, store, onLongPress = onSpriteLongPress)
+            }
+        }
+        if (page == 0) StatusPageOne(pokemon, sprite) else StatusPageTwo(pokemon, sprite)
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             GbText(if (page == 0) "▼ MORE" else "▲ BACK", style = Gen1TextSmall)
@@ -64,10 +76,10 @@ fun Gen1StatusScreen(
 }
 
 @Composable
-private fun StatusPageOne(pokemon: Gen1Pokemon) {
+private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth()) {
         Column(Modifier.width(120.dp)) {
-            SpritePlaceholder()
+            sprite()
             Spacer(Modifier.height(6.dp))
             GbText(pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")
         }
@@ -142,10 +154,10 @@ private fun StatusPageOne(pokemon: Gen1Pokemon) {
 }
 
 @Composable
-private fun StatusPageTwo(pokemon: Gen1Pokemon) {
+private fun StatusPageTwo(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth()) {
         Column(Modifier.width(120.dp)) {
-            SpritePlaceholder()
+            sprite()
             Spacer(Modifier.height(6.dp))
             GbText(pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")
         }
@@ -187,37 +199,5 @@ private fun StatusPageTwo(pokemon: Gen1Pokemon) {
                 style = Gen1Text.copy(textAlign = TextAlign.End),
             )
         }
-    }
-}
-
-/**
- * The sprite slot. A "?" stands in until real artwork is available; the app
- * ships no Pokémon graphics of its own, and the game's are built from the
- * player's ROM rather than distributed.
- */
-@Composable
-fun SpritePlaceholder(modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .size(96.dp)
-            .drawBehind {
-                val t = 3.dp.toPx()
-                val corner = size.width * 0.28f
-                // Corner ticks only, like a framing bracket, so the space
-                // reads as "a picture goes here" rather than as a window.
-                listOf(
-                    Offset(0f, 0f) to Size(corner, t),
-                    Offset(0f, 0f) to Size(t, corner),
-                    Offset(size.width - corner, 0f) to Size(corner, t),
-                    Offset(size.width - t, 0f) to Size(t, corner),
-                    Offset(0f, size.height - t) to Size(corner, t),
-                    Offset(0f, size.height - corner) to Size(t, corner),
-                    Offset(size.width - corner, size.height - t) to Size(corner, t),
-                    Offset(size.width - t, size.height - corner) to Size(t, corner),
-                ).forEach { (offset, boxSize) -> drawRect(Gen1Palette.Ink, offset, boxSize) }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        GbText("?", style = Gen1TextLarge.copy(fontSize = androidx.compose.ui.unit.TextUnit(40f, androidx.compose.ui.unit.TextUnitType.Sp)))
     }
 }

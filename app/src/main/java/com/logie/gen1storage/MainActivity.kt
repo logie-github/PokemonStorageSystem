@@ -38,6 +38,7 @@ import com.logie.gen1storage.ui.AllPokemonScreen
 import com.logie.gen1storage.ui.GbButton
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.PcScreen
+import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
 import com.logie.gen1storage.ui.gen1Gestures
 import com.logie.gen1storage.ui.SaveListScreen
@@ -112,6 +113,7 @@ private fun StorageApp(model: StorageViewModel) {
                     Screen.AllPokemon -> AllPokemonScreen(state, model)
                     is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
                     Screen.Transfer -> TransferScreen(state, model)
+                    Screen.Sprites -> SpritesScreen(state, model)
                     Screen.SaveFiles -> SaveFilesScreen(state, model)
                     Screen.Options -> OptionsScreen(
                         state = state,
@@ -164,6 +166,7 @@ private fun titleFor(screen: Screen): String = when (screen) {
     Screen.AllPokemon -> "ALL POKéMON"
     is Screen.Status -> "STATUS"
     Screen.Transfer -> "TRANSFER"
+    Screen.Sprites -> "SPRITES"
     Screen.SaveFiles -> "SAVE FILES"
     Screen.Options -> "OPTIONS"
 }

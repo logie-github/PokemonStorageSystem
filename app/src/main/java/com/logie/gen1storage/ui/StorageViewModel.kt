@@ -13,6 +13,10 @@ import com.logie.gen1storage.sync.SaveBackups
 import com.logie.gen1storage.sync.SaveRepository
 import com.logie.gen1storage.sync.SyncAccount
 import com.logie.gen1storage.sync.SyncApi
+import com.logie.gen1storage.sprites.SpriteDownloader
+import com.logie.gen1storage.sprites.SpriteProgress
+import com.logie.gen1storage.sprites.SpriteSet
+import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.sync.SyncResult
 import com.logie.gen1storage.transfer.RecoveryReport
 import com.logie.gen1storage.transfer.SaveLocation
@@ -24,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -51,6 +56,7 @@ sealed interface Screen {
      */
     data class Status(val key: String?, val area: Int, val slot: Int) : Screen
     data object Transfer : Screen
+    data object Sprites : Screen
     data object SaveFiles : Screen
     data object Options : Screen
 }
@@ -62,6 +68,8 @@ sealed interface Prompt {
     data class ChooseBox(val title: String, val onChoose: (Int) -> Unit) : Prompt
     data class ChooseWithdrawTarget(val uid: String, val key: String) : Prompt
     data class ChooseSave(val title: String, val onChoose: (String) -> Unit) : Prompt
+    /** The long-press sprite picker for one species. */
+    data class ChooseSpriteSet(val speciesId: String) : Prompt
 }
 
 data class UiState(
@@ -82,6 +90,10 @@ data class UiState(
     val swipeControls: Boolean = false,
     val showAllSaves: Boolean = false,
     val loadingAll: Boolean = false,
+    val spriteProgress: SpriteProgress? = null,
+    val spritesInstalled: Int = 0,
+    /** Bumped whenever sprites change, so drawn sprites re-read the store. */
+    val spriteRevision: Int = 0,
 ) {
     val screen: Screen get() = stack.last()
     val saves: List<RemoteSave> get() = account?.saves.orEmpty()
@@ -97,6 +109,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val backups = SaveBackups(File(storageDir, "backups"))
 
     private val settings = AppSettings(application)
+    val sprites = SpriteStore(application)
+    private val spriteDownloader = SpriteDownloader(sprites)
+    private var spriteJob: Job? = null
     private val credentials = SyncAccount(application)
     private val api = SyncApi(credentials = credentials::credentials)
     private val saves = SaveRepository(api, backups)
@@ -120,6 +135,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 linked = credentials.isLinked,
                 swipeControls = settings.swipeControls,
                 showAllSaves = settings.showAllSaves,
+                spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
             )
         }
         if (credentials.isLinked) sync()
@@ -318,6 +334,62 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             )
         }
     }
+
+    // ------- sprites
+
+    /**
+     * Downloads the Generation I front sprites. Progress is reported after
+     * every file so the bar moves steadily rather than in jumps.
+     */
+    fun downloadSprites() {
+        if (spriteJob?.isActive == true) return
+        spriteJob = viewModelScope.launch {
+            mutable.update { it.copy(prompt = null, spriteProgress = SpriteProgress(0, 1)) }
+            val result = runCatching {
+                spriteDownloader.download(SpriteSet.downloadable) { progress ->
+                    mutable.update { it.copy(spriteProgress = progress) }
+                }
+            }
+            val installed = sprites.installedSets().sumOf { set -> sprites.countIn(set) }
+            mutable.update { state ->
+                state.copy(
+                    spritesInstalled = installed,
+                    spriteRevision = state.spriteRevision + 1,
+                    spriteProgress = result.getOrNull()
+                        ?: SpriteProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
+                )
+            }
+        }
+    }
+
+    fun cancelSpriteDownload() {
+        spriteJob?.cancel()
+        spriteJob = null
+        mutable.update {
+            it.copy(
+                spriteProgress = null,
+                spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
+                spriteRevision = it.spriteRevision + 1,
+            )
+        }
+    }
+
+    fun dismissSpriteProgress() = mutable.update { it.copy(spriteProgress = null) }
+
+    fun deleteSprites() {
+        sprites.clear()
+        mutable.update {
+            it.copy(spritesInstalled = 0, spriteRevision = it.spriteRevision + 1, prompt = null)
+        }
+    }
+
+    /** Pins a species to one game's art, or back to whichever game it came from. */
+    fun chooseSpriteSet(speciesId: String, set: SpriteSet?) {
+        sprites.setOverride(speciesId, set)
+        mutable.update { it.copy(prompt = null, spriteRevision = it.spriteRevision + 1) }
+    }
+
+    fun spriteBytesOnDisk(): Long = sprites.bytesOnDisk()
 
     // ------- transfers
 

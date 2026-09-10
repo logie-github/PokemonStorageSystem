@@ -50,7 +50,7 @@ fun Gen1Sprite(
 
     Box(
         modifier
-            .size(96.dp)
+            .size(48.dp * Gen1Metrics.sprite)
             .then(
                 if (onLongPress != null && speciesId != null) {
                     Modifier.pointerInput(speciesId) {

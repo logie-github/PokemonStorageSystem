@@ -15,8 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -25,6 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,6 +34,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
+import com.logie.gen1storage.ui.Gen1Metrics
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
@@ -45,7 +48,7 @@ import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
 import com.logie.gen1storage.ui.gen1Gestures
-import com.logie.gen1storage.ui.gen1SurroundBrush
+import com.logie.gen1storage.ui.gen1Ground
 import com.logie.gen1storage.ui.Screen
 import com.logie.gen1storage.ui.StorageViewModel
 import java.net.URLEncoder
@@ -56,7 +59,31 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        goFullScreen()
         setContent { Gen1Theme { StorageApp(model) } }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // The bars come back on their own after a swipe or a dialog; this puts
+        // them away again once the app has the window to itself.
+        if (hasFocus) goFullScreen()
+    }
+
+    /**
+     * Full screen in every orientation and every posture.
+     *
+     * The console had no status bar, so neither does this. The bars stay
+     * reachable by a swipe from the edge rather than being locked away, which
+     * is what `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` means, and the layout
+     * runs edge to edge underneath them.
+     */
+    private fun goFullScreen() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
     }
 }
 
@@ -72,6 +99,10 @@ private fun StorageApp(model: StorageViewModel) {
     SideEffect {
         Gen1Palette.palette = GbPalette.fromId(state.paletteId)
         Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
+        Gen1Metrics.text = state.textScale
+        Gen1Metrics.border = state.borderScale
+        Gen1Metrics.status = state.statusScale
+        Gen1Metrics.sprite = state.spriteScale
     }
 
     // The game can save at any moment, and every revision this app is holding
@@ -96,9 +127,10 @@ private fun StorageApp(model: StorageViewModel) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(gen1SurroundBrush())
-            .statusBarsPadding()
-            .navigationBarsPadding()
+            .gen1Ground()
+            // The system bars are hidden, so only the camera cutout is still
+            // something the interface has to stay out of.
+            .displayCutoutPadding()
             // Off unless the player turns them on in OPTIONS; the app is
             // tappable either way, so this only adds a second way in.
             .gen1Gestures(state.swipeControls) { button ->

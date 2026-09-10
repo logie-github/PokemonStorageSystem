@@ -2,6 +2,7 @@ package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.platform.LocalDensity
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Brush
@@ -117,8 +119,12 @@ val Gen1FontFamily = FontFamily(Font(R.font.pokemon_font))
 /** Device pixels per design pixel step. The em is eight of these. */
 private const val FONT_GRID_PX = 8
 
-/** Roughly how tall the body em should be, before it is snapped to the grid. */
-private val BodyEm = 13.dp
+/**
+ * Roughly how tall the body em should be at one step of [Gen1Metrics.text],
+ * before it is snapped to the grid. The default scale of two is the size the
+ * app was drawn at before type became adjustable.
+ */
+private val BodyEmPerStep = 6.5.dp
 
 /** Extra line height, as a fraction of the em, before snapping. */
 private const val LEADING = 0.4f
@@ -136,7 +142,7 @@ private const val LEADING = 0.4f
 private fun pixelSize(steps: Int): Pair<TextUnit, TextUnit> {
     val density = LocalDensity.current
     return with(density) {
-        val (size, leading) = snapFontPixels(BodyEm.toPx(), steps)
+        val (size, leading) = snapFontPixels((BodyEmPerStep * Gen1Metrics.text).toPx(), steps)
         size.toFloat().toSp() to leading.toFloat().toSp()
     }
 }
@@ -204,40 +210,61 @@ private val Gen1BaseText = TextStyle(
 )
 
 /**
- * The screen behind the windows, dithered.
+ * The screen behind the windows: the palette's own ramp, top to bottom.
  *
- * A Game Boy could not blend two colours, so a designer wanting a shade
- * between them alternated pixels of each and let the eye do the mixing. This
- * is that idea kept as texture: a small cross on a regular grid, in a tone
- * pulled towards the darkest end of the palette.
+ * Lightest at the top through to darkest at the foot, blended rather than
+ * banded — four hard quarters read as a mistake, and the console's own
+ * backdrops were shaded, not striped.
  *
- * It is drawn as a repeating shader over one tile rather than as thousands of
- * little rectangles, so the whole background costs a single draw call however
- * large the screen is. The tile is built in device pixels and repeated at 1:1,
- * which is what keeps every cross square.
+ * A Game Boy could not blend two colours at all, so a designer wanting a tone
+ * between them alternated pixels of each and let the eye do the mixing. That
+ * is what the overlay is: a large cross on a regular grid, drawn over the
+ * whole ramp so the blend reads as a screen of pixels rather than as a
+ * gradient a Game Boy could never have produced.
  */
 @Composable
-fun gen1SurroundBrush(): Brush {
+fun Modifier.gen1Ground(): Modifier {
+    val palette = Gen1Palette.palette
+    return this
+        .background(
+            Brush.verticalGradient(
+                listOf(palette.lightest, palette.light, palette.dark, palette.darkest)
+            )
+        )
+        .background(gen1DitherBrush())
+}
+
+/**
+ * The dither pattern on its own, over a transparent ground so it can be laid
+ * on top of anything.
+ *
+ * Drawn as a repeating shader over one tile rather than as thousands of little
+ * rectangles, so the whole background costs a single draw call however large
+ * the screen is. The tile is built in device pixels and repeated at 1:1, which
+ * is what keeps every cross square.
+ */
+@Composable
+fun gen1DitherBrush(): Brush {
     val palette = Gen1Palette.palette
     val unit = with(LocalDensity.current) { density.roundToInt().coerceAtLeast(1) }
-    val ground = palette.surround.toArgb()
-    val mark = lerp(palette.surround, palette.darkest, DITHER_STRENGTH).toArgb()
-    val tile = remember(ground, mark, unit) { ditherTile(unit, ground, mark) }
+    val mark = palette.darkest.copy(alpha = DITHER_ALPHA).toArgb()
+    val tile = remember(mark, unit) { ditherTile(unit, mark) }
     return remember(tile) {
         ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
     }
 }
 
 /**
- * One cell of the pattern: eight design pixels square, with a three-by-three
- * cross at its centre, drawn a design pixel at a time.
+ * One cell of the pattern: sixteen design pixels square, with a five-by-five
+ * cross at its centre two pixels thick, drawn a design pixel at a time.
  */
-private fun ditherTile(unit: Int, ground: Int, mark: Int): ImageBitmap {
-    val cells = 8
+private fun ditherTile(unit: Int, mark: Int): ImageBitmap {
+    val cells = DITHER_CELLS
     val side = cells * unit
-    val pixels = IntArray(side * side) { ground }
+    val pixels = IntArray(side * side)
 
     fun block(cellX: Int, cellY: Int) {
+        if (cellX !in 0 until cells || cellY !in 0 until cells) return
         for (y in 0 until unit) {
             val row = (cellY * unit + y) * side
             for (x in 0 until unit) pixels[row + cellX * unit + x] = mark
@@ -245,17 +272,23 @@ private fun ditherTile(unit: Int, ground: Int, mark: Int): ImageBitmap {
     }
 
     val centre = cells / 2
-    block(centre, centre)
-    block(centre - 1, centre)
-    block(centre + 1, centre)
-    block(centre, centre - 1)
-    block(centre, centre + 1)
+    // A thick plus: two design pixels across each arm, so it still reads as a
+    // cross at the scale a phone screen actually shows it.
+    for (arm in -2..3) {
+        for (thickness in 0..1) {
+            block(centre + arm, centre + thickness)
+            block(centre + thickness, centre + arm)
+        }
+    }
 
     return Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888).asImageBitmap()
 }
 
-/** How far the cross is pulled from the screen tone towards the darkest. */
-private const val DITHER_STRENGTH = 0.45f
+/** Design pixels across one dither cell. Large, as the console's own were. */
+private const val DITHER_CELLS = 16
+
+/** How strongly the crosses read against the ramp behind them. */
+private const val DITHER_ALPHA = 0.22f
 
 @Composable
 fun Gen1Theme(content: @Composable () -> Unit) {
@@ -320,6 +353,22 @@ fun Gen1Window(
     }
 }
 
+/**
+ * A tap with nothing drawn under the finger.
+ *
+ * Material's default `clickable` paints a ripple, which on a flat four-shade
+ * interface reads as a smear across the window. The cursor already says what
+ * is selected, so nothing else needs to.
+ */
+fun Modifier.gen1Clickable(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+    clickable(
+        enabled = enabled,
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = onClick,
+    )
+}
+
 /** The rectangular selection cursor: a filled arrow before the chosen row. */
 @Composable
 private fun Gen1Cursor(selected: Boolean) {
@@ -349,8 +398,9 @@ fun Gen1MenuItem(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .background(if (selected) Gen1Palette.Muted else Gen1Palette.Panel)
-            .clickable(enabled = enabled) { if (selected) onConfirm() else onSelect() }
+            // No fill and no ripple: the cursor is the only thing that says
+            // what is selected, which is how the games show it.
+            .gen1Clickable(enabled) { if (selected) onConfirm() else onSelect() }
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -380,7 +430,7 @@ fun Gen1Button(
             .background(Gen1Palette.Ink)
             .padding(2.dp)
             .background(if (enabled) Gen1Palette.Panel else Gen1Palette.Muted)
-            .clickable(enabled = enabled, onClick = onClick)
+            .gen1Clickable(enabled, onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         // A flat two-tone plate: outer rule, inner fill, no rounding.
         contentAlignment = Alignment.Center,

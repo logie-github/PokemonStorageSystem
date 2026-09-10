@@ -86,6 +86,11 @@ data class UiState(
     /** The [GbPalette] id everything is drawn through. */
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
+    /** The four interface scales, each a whole multiple in 1..4. */
+    val textScale: Int = Gen1Metrics.DEFAULT,
+    val borderScale: Int = Gen1Metrics.DEFAULT,
+    val statusScale: Int = Gen1Metrics.DEFAULT,
+    val spriteScale: Int = Gen1Metrics.DEFAULT,
     /**
      * The save the top-level PC menu deposits from and withdraws to. Set by
      * opening one, so the menu is never asking which save it means.
@@ -141,6 +146,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 showAllSaves = settings.showAllSaves,
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
+                textScale = settings.textScale,
+                borderScale = settings.borderScale,
+                statusScale = settings.statusScale,
+                spriteScale = settings.spriteScale,
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
             )
         }
@@ -372,6 +381,27 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.paletteId = palette.id
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
+    }
+
+    /** The interface scales. Each is stored and applied on its own. */
+    fun setTextScale(scale: Int) {
+        settings.textScale = scale
+        mutable.update { it.copy(textScale = settings.textScale) }
+    }
+
+    fun setBorderScale(scale: Int) {
+        settings.borderScale = scale
+        mutable.update { it.copy(borderScale = settings.borderScale) }
+    }
+
+    fun setStatusScale(scale: Int) {
+        settings.statusScale = scale
+        mutable.update { it.copy(statusScale = settings.statusScale) }
+    }
+
+    fun setSpriteScale(scale: Int) {
+        settings.spriteScale = scale
+        mutable.update { it.copy(spriteScale = settings.spriteScale) }
     }
 
     fun setWindowsFollowPalette(enabled: Boolean) {

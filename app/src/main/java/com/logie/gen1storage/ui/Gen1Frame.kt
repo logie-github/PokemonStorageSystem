@@ -59,7 +59,10 @@ fun Gen1FrameBox(
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGen1Border(ink: Color) {
-    val unit = 2.dp.toPx()
+    // One design pixel per step of the border scale, read here rather than
+    // passed in: a draw lambda is not a composable and cannot observe state
+    // any other way.
+    val unit = (1.dp * Gen1Metrics.border).toPx()
     val gap = unit * 2
     val bead = unit * 2
 
@@ -94,7 +97,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGen1Border(ink:
 fun Gen1CornerRule(
     modifier: Modifier = Modifier,
     ink: Color = Gen1Palette.Ink,
-    thickness: Dp = 4.dp,
+    thickness: Dp = 2.dp * Gen1Metrics.border,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(

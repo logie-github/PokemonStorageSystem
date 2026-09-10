@@ -43,10 +43,31 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_WINDOW_PALETTE, false)
         set(value) = prefs.edit().putBoolean(KEY_WINDOW_PALETTE, value).apply()
 
+    /** The four interface scales, each a whole multiple in 1..4. */
+    var textScale: Int
+        get() = Gen1Metrics.clamp(prefs.getInt(KEY_TEXT_SCALE, Gen1Metrics.DEFAULT))
+        set(value) = prefs.edit().putInt(KEY_TEXT_SCALE, Gen1Metrics.clamp(value)).apply()
+
+    var borderScale: Int
+        get() = Gen1Metrics.clamp(prefs.getInt(KEY_BORDER_SCALE, Gen1Metrics.DEFAULT))
+        set(value) = prefs.edit().putInt(KEY_BORDER_SCALE, Gen1Metrics.clamp(value)).apply()
+
+    var statusScale: Int
+        get() = Gen1Metrics.clamp(prefs.getInt(KEY_STATUS_SCALE, Gen1Metrics.DEFAULT))
+        set(value) = prefs.edit().putInt(KEY_STATUS_SCALE, Gen1Metrics.clamp(value)).apply()
+
+    var spriteScale: Int
+        get() = Gen1Metrics.clamp(prefs.getInt(KEY_SPRITE_SCALE, Gen1Metrics.DEFAULT))
+        set(value) = prefs.edit().putInt(KEY_SPRITE_SCALE, Gen1Metrics.clamp(value)).apply()
+
     private companion object {
         const val KEY_SWIPE = "swipe-controls"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
+        const val KEY_TEXT_SCALE = "scale-text"
+        const val KEY_BORDER_SCALE = "scale-border"
+        const val KEY_STATUS_SCALE = "scale-status"
+        const val KEY_SPRITE_SCALE = "scale-sprite"
     }
 }

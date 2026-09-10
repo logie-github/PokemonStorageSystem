@@ -1,7 +1,6 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +39,14 @@ import com.logie.gen1storage.sync.SyncApi
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.WithdrawTarget
 import java.time.Instant
+
+/** One party slot the deposit list can offer, and the save it belongs to. */
+private data class PartyRow(
+    val key: String,
+    val slot: Int,
+    val mon: Gen1Pokemon,
+    val save: Gen1RecompSave,
+)
 
 /** The one-line form used in every Generation I list. */
 fun pokemonRowLabel(pokemon: Gen1Pokemon): String = pokemon.displayName.uppercase()
@@ -152,9 +159,6 @@ fun StorageSystemScreen(
     val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
     val stored = box?.contents.orEmpty()
 
-    /** Every party this app can currently see, in the order it will list them. */
-    data class PartyRow(val key: String, val slot: Int, val mon: Gen1Pokemon, val save: Gen1RecompSave)
-
     val depositRows = buildList {
         val keys = if (state.showAllSaves) {
             state.saves.map { it.key }
@@ -175,6 +179,13 @@ fun StorageSystemScreen(
         return "$version ${row.save.trainerName.uppercase()}'s PARTY".trim()
     }
 
+    // The list and the window that opens on a chosen Pokémon are separate
+    // layers on the screen, so they are built as separate slots here rather
+    // than nested — the message window belongs between them.
+    val pick: PartyRow? = chosen?.takeIf { mode == PcMode.DEPOSIT }?.let { depositRows.getOrNull(it) }
+    val storedPick = chosen?.takeIf { mode == PcMode.WITHDRAW || mode == PcMode.VIEW }
+        ?.let { stored.getOrNull(it) }
+
     StorageSystemScreen(
         boxNumber = state.currentStorageBox,
         boxName = box?.name ?: "BOX ${state.currentStorageBox}",
@@ -194,7 +205,7 @@ fun StorageSystemScreen(
         overlay = when (mode) {
             PcMode.MENU -> null
 
-            PcMode.WITHDRAW -> ({
+            PcMode.WITHDRAW, PcMode.VIEW -> ({
                 MonListOverlay(
                     entries = stored.map {
                         MonRow(pokemonRowLabel(it.pokemon), pokemonRowLevel(it.pokemon))
@@ -204,29 +215,6 @@ fun StorageSystemScreen(
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "What? There are no POKéMON here!",
-                    action = {
-                        val pick = chosen?.let { stored.getOrNull(it) }
-                        if (pick != null) {
-                            MonActionOverlay(
-                                actions = listOf(
-                                    MonAction(
-                                        "WITHDRAW",
-                                        { model.prompt(Prompt.ChooseWithdrawSave(pick.uid)) },
-                                        enabled = state.saves.isNotEmpty(),
-                                    ),
-                                    MonAction("STATS", {
-                                        model.open(
-                                            Screen.Status(null, state.currentStorageBox, stored.indexOf(pick))
-                                        )
-                                    }),
-                                ),
-                                selected = actionCursor,
-                                onSelect = { actionCursor = it },
-                                onCancel = { chosen = null },
-                                note = if (state.saves.isEmpty()) "NO SAVES ON THE ACCOUNT" else null,
-                            )
-                        }
-                    },
                 )
             })
 
@@ -244,101 +232,6 @@ fun StorageSystemScreen(
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "There are no POKéMON here.",
-                    action = {
-                        val pick = chosen?.let { depositRows.getOrNull(it) }
-                        if (pick != null) {
-                            // The games never let the last one go, and neither
-                            // does this — counted per save, not per list.
-                            val last = pick.save.partyCount <= 1
-                            MonActionOverlay(
-                                actions = listOf(
-                                    MonAction(
-                                        "DEPOSIT",
-                                        {
-                                            model.prompt(
-                                                Prompt.Confirm(
-                                                    lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
-                                                    confirmLabel = "DEPOSIT",
-                                                    onConfirm = {
-                                                        model.depositFromSave(
-                                                            pick.key,
-                                                            SaveLocation.Party(pick.slot + 1),
-                                                            state.currentStorageBox,
-                                                        )
-                                                    },
-                                                )
-                                            )
-                                        },
-                                        enabled = !last,
-                                    ),
-                                    MonAction("STATS", {
-                                        model.open(Screen.Status(pick.key, 0, pick.slot))
-                                    }),
-                                ),
-                                selected = actionCursor,
-                                onSelect = { actionCursor = it },
-                                onCancel = { chosen = null },
-                                note = if (last) "CAN'T DEPOSIT THE LAST ONE" else null,
-                            )
-                        }
-                    },
-                )
-            })
-
-            PcMode.VIEW -> ({
-                // Deliberately cannot transfer: this side only rearranges the
-                // PC, opens a status screen, or releases — so there is no way
-                // to reach a save from here by accident.
-                MonListOverlay(
-                    entries = stored.map {
-                        MonRow(pokemonRowLabel(it.pokemon), pokemonRowLevel(it.pokemon))
-                    },
-                    selected = listCursor,
-                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < stored.size } },
-                    onConfirm = { chosen = it },
-                    onCancel = { mode = PcMode.MENU },
-                    emptyMessage = "What? There are no POKéMON here!",
-                    action = {
-                        val pick = chosen?.let { stored.getOrNull(it) }
-                        if (pick != null) {
-                            val name = pick.pokemon.displayName.uppercase()
-                            MonActionOverlay(
-                                actions = listOf(
-                                    MonAction("MOVE", {
-                                        model.prompt(
-                                            Prompt.ChooseBox("MOVE TO WHICH BOX?") { target ->
-                                                model.moveStored(pick.uid, target)
-                                                chosen = null
-                                            }
-                                        )
-                                    }),
-                                    MonAction("STATS", {
-                                        model.open(
-                                            Screen.Status(null, state.currentStorageBox, stored.indexOf(pick))
-                                        )
-                                    }),
-                                    MonAction("RELEASE", {
-                                        model.prompt(
-                                            Prompt.Confirm(
-                                                lines = listOf(
-                                                    "RELEASE $name?",
-                                                    "IT LEAVES THE PC AND DOES NOT COME BACK.",
-                                                ),
-                                                confirmLabel = "RELEASE",
-                                                onConfirm = {
-                                                    model.releaseStored(pick.uid)
-                                                    chosen = null
-                                                },
-                                            )
-                                        )
-                                    }),
-                                ),
-                                selected = actionCursor,
-                                onSelect = { actionCursor = it },
-                                onCancel = { chosen = null },
-                            )
-                        }
-                    },
                 )
             })
 
@@ -353,6 +246,106 @@ fun StorageSystemScreen(
                     onCancel = { mode = PcMode.MENU },
                 )
             })
+        },
+        action = when {
+            mode == PcMode.WITHDRAW && storedPick != null -> ({
+                MonActionOverlay(
+                    actions = listOf(
+                        MonAction(
+                            "WITHDRAW",
+                            { model.prompt(Prompt.ChooseWithdrawSave(storedPick.uid)) },
+                            enabled = state.saves.isNotEmpty(),
+                        ),
+                        MonAction("STATS", {
+                            model.open(
+                                Screen.Status(null, state.currentStorageBox, stored.indexOf(storedPick))
+                            )
+                        }),
+                    ),
+                    selected = actionCursor,
+                    onSelect = { actionCursor = it },
+                    onCancel = { chosen = null },
+                    note = if (state.saves.isEmpty()) "NO SAVES ON THE ACCOUNT" else null,
+                )
+            })
+
+            mode == PcMode.VIEW && storedPick != null -> ({
+                // Deliberately cannot transfer: this side only rearranges the
+                // PC, opens a status screen, or releases — so there is no way
+                // to reach a save from here by accident.
+                val name = storedPick.pokemon.displayName.uppercase()
+                MonActionOverlay(
+                    actions = listOf(
+                        MonAction("MOVE", {
+                            model.prompt(
+                                Prompt.ChooseBox("MOVE TO WHICH BOX?") { target ->
+                                    model.moveStored(storedPick.uid, target)
+                                    chosen = null
+                                }
+                            )
+                        }),
+                        MonAction("STATS", {
+                            model.open(
+                                Screen.Status(null, state.currentStorageBox, stored.indexOf(storedPick))
+                            )
+                        }),
+                        MonAction("RELEASE", {
+                            model.prompt(
+                                Prompt.Confirm(
+                                    lines = listOf(
+                                        "RELEASE $name?",
+                                        "IT LEAVES THE PC AND DOES NOT COME BACK.",
+                                    ),
+                                    confirmLabel = "RELEASE",
+                                    onConfirm = {
+                                        model.releaseStored(storedPick.uid)
+                                        chosen = null
+                                    },
+                                )
+                            )
+                        }),
+                    ),
+                    selected = actionCursor,
+                    onSelect = { actionCursor = it },
+                    onCancel = { chosen = null },
+                )
+            })
+
+            mode == PcMode.DEPOSIT && pick != null -> ({
+                // The games never let the last one go, and neither does this —
+                // counted per save, not per list.
+                val last = pick.save.partyCount <= 1
+                MonActionOverlay(
+                    actions = listOf(
+                        MonAction(
+                            "DEPOSIT",
+                            {
+                                model.prompt(
+                                    Prompt.Confirm(
+                                        lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
+                                        confirmLabel = "DEPOSIT",
+                                        onConfirm = {
+                                            model.depositFromSave(
+                                                pick.key,
+                                                SaveLocation.Party(pick.slot + 1),
+                                                state.currentStorageBox,
+                                            )
+                                        },
+                                    )
+                                )
+                            },
+                            enabled = !last,
+                        ),
+                        MonAction("STATS", { model.open(Screen.Status(pick.key, 0, pick.slot)) }),
+                    ),
+                    selected = actionCursor,
+                    onSelect = { actionCursor = it },
+                    onCancel = { chosen = null },
+                    note = if (last) "CAN'T DEPOSIT THE LAST ONE" else null,
+                )
+            })
+
+            else -> null
         },
     )
 }
@@ -561,6 +554,16 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         }
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                GbText("SIZE")
+                Spacer(Modifier.height(4.dp))
+                ScaleRow("TEXT", state.textScale, model::setTextScale)
+                ScaleRow("BORDERS", state.borderScale, model::setBorderScale)
+                ScaleRow("STATUS PAGES", state.statusScale, model::setStatusScale)
+                ScaleRow("SPRITES", state.spriteScale, model::setSpriteScale)
+            }
+        }
+        item {
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                 GbText("COLOUR")
                 GbText("THE SCREEN AND THE SPRITES.", style = Gen1TextSmall)
                 Spacer(Modifier.height(4.dp))
@@ -570,7 +573,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clickable { model.setPalette(palette.id) },
+                            .gen1Clickable { model.setPalette(palette.id) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Gen1MenuRow(
@@ -740,6 +743,40 @@ fun CreditsScreen() {
 }
 
 /**
+ * One scale, as the four multiples side by side with the current one marked.
+ *
+ * Four buttons rather than a slider: these are whole steps, and a control that
+ * can land between them would be lying about what it does.
+ */
+@Composable
+private fun ScaleRow(label: String, current: Int, onChoose: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 44.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GbText(label, modifier = Modifier.weight(1f), maxLines = 1)
+        Gen1Metrics.CHOICES.forEach { scale ->
+            Box(
+                Modifier
+                    .padding(start = 6.dp)
+                    .background(if (scale == current) Gen1Palette.Ink else Gen1Palette.Panel)
+                    .padding(2.dp)
+                    .background(if (scale == current) Gen1Palette.Ink else Gen1Palette.Panel)
+                    .gen1Clickable { onChoose(scale) }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                GbText(
+                    "${scale}x",
+                    style = Gen1Text.copy(
+                        color = if (scale == current) Gen1Palette.Panel else Gen1Palette.Ink,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/**
  * The only place a save is named.
  *
  * A save is shown by its game and trainer — the playthrough id it is really
@@ -803,7 +840,7 @@ fun ScreenColumn(content: LazyListScope.() -> Unit) {
     LazyColumn(
         Modifier
             .fillMaxSize()
-            .background(gen1SurroundBrush()),
+            .gen1Ground(),
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content,

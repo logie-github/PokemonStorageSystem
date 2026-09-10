@@ -136,6 +136,25 @@ across every density Android ships, because it is the one thing the whole
 presentation rests on. Nothing is bold, either: the face has one weight, and
 asking for another has the renderer smear the glyphs sideways to fake it.
 
+## Size
+
+OPTIONS → SIZE carries four scales, each a whole multiple from 1x to 4x: TEXT,
+BORDERS, STATUS PAGES and SPRITES. They are separate because they do not want
+to move together — a bigger sprite on a small screen costs a stat row, and a
+heavier border costs nothing but looks wrong beside small type.
+
+The default is 2x, which is the size everything was drawn at before any of it
+was adjustable, so 1x is genuinely smaller rather than the scale only ever
+growing. Whole multiples only: a slider that could land between them would put
+the type back on fractional pixels.
+
+The app runs full screen in every orientation and every posture. The system
+bars are hidden and stay reachable by a swipe from the edge; only the camera
+cutout is padded around. Unfolding is a configuration the activity handles
+itself, so it does not recreate and lose what is on screen, and on a screen at
+least 600dp wide the status and moves pages keep to the left half instead of
+stretching a two-column layout across a tablet's width.
+
 ## Colour
 
 OPTIONS → COLOUR draws the whole app through one four-shade Game Boy palette:
@@ -155,6 +174,15 @@ ORIGINAL leaves the art alone.
 The windows are the exception: they stay black on white whatever the screen is
 tinted, which is how the cartridge draws its text boxes. BLACK ON WHITE BOXES
 turns that off, and the windows then take the palette too.
+
+The screen behind them is the palette's own ramp top to bottom — lightest at the
+top through to darkest at the foot — blended rather than banded, with a large
+cross on a regular grid laid over the whole of it. A Game Boy could not blend
+two colours at all: a designer wanting a tone between them alternated pixels of
+each and let the eye do the mixing, and the dither is what keeps a gradient the
+hardware could never have produced reading as a screen of pixels. It is drawn
+as a repeating shader over one tile, so the whole background is a single draw
+call.
 
 ## Getting access to your saves
 

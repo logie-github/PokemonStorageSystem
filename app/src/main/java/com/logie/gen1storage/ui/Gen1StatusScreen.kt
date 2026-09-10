@@ -1,13 +1,13 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -51,39 +52,62 @@ fun Gen1StatusScreen(
     footer: @Composable () -> Unit = {},
 ) {
     var page by remember(pokemon.fingerprint) { mutableStateOf(0) }
+    val scale = Gen1Metrics.status
 
-    Column(
-        modifier
-            .fillMaxSize()
-            .background(Gen1Palette.Panel)
-            .clickable { page = 1 - page }
-            .padding(14.dp),
-    ) {
-        val sprite: @Composable () -> Unit = {
-            // Keyed on the revision so a download or a set change redraws it.
-            key(spriteRevision) {
-                Gen1Sprite(pokemon.speciesId, gameVersionId, store, onLongPress = onSpriteLongPress)
+    Row(modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                // Unfolded, the page keeps to the left half rather than
+                // stretching a two-column layout across a tablet's width; the
+                // rest stays the screen behind it. Folded, it is the screen.
+                .fillMaxWidth(if (isUnfolded()) 0.5f else 1f)
+                .fillMaxHeight()
+                .background(Gen1Palette.Panel)
+                .gen1Clickable { page = 1 - page }
+                .padding(7.dp * scale),
+        ) {
+            val sprite: @Composable () -> Unit = {
+                // Keyed on the revision so a download or a set change redraws it.
+                key(spriteRevision) {
+                    Gen1Sprite(pokemon.speciesId, gameVersionId, store, onLongPress = onSpriteLongPress)
+                }
             }
+            if (page == 0) StatusPageOne(pokemon, sprite, scale) else StatusPageTwo(pokemon, sprite, scale)
+            Spacer(Modifier.height(7.dp * scale))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                GbText(if (page == 0) "▼ MORE" else "▲ BACK", style = Gen1TextSmall)
+            }
+            Spacer(Modifier.height(5.dp * scale))
+            footer()
         }
-        if (page == 0) StatusPageOne(pokemon, sprite) else StatusPageTwo(pokemon, sprite)
-        Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            GbText(if (page == 0) "▼ MORE" else "▲ BACK", style = Gen1TextSmall)
-        }
-        Spacer(Modifier.height(10.dp))
-        footer()
+        Spacer(Modifier.weight(1f))
     }
 }
 
+/**
+ * Whether the screen is wide enough to be a foldable that has been opened.
+ *
+ * Read off the width rather than from a hinge API, so it is honest about what
+ * it actually knows: this is "there is a lot of width here", which is the
+ * thing the layout cares about. A tablet and an unfolded phone are treated the
+ * same, and a folded one is not.
+ */
 @Composable
-private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) {
+private fun isUnfolded(): Boolean =
+    LocalConfiguration.current.screenWidthDp >= UNFOLDED_WIDTH_DP
+
+/** Roughly where a folded phone stops and an opened one begins. */
+private const val UNFOLDED_WIDTH_DP = 600
+
+@Composable
+private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit, scale: Int) {
     Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(120.dp)) {
+        Column(Modifier.width(60.dp * scale)) {
             sprite()
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(3.dp * scale))
             GbText(pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(5.dp * scale))
         Gen1CornerRule(Modifier.weight(1f)) {
             GbText(
                 pokemon.displayName.uppercase(),
@@ -118,12 +142,12 @@ private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) 
         }
     }
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(6.dp * scale))
 
     Row(Modifier.fillMaxWidth()) {
         Gen1Frame(
             Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            contentPadding = PaddingValues(horizontal = 6.dp * scale, vertical = 5.dp * scale),
         ) {
             listOf(Gen1Stat.ATTACK, Gen1Stat.DEFENSE, Gen1Stat.SPEED, Gen1Stat.SPECIAL)
                 .forEach { stat ->
@@ -135,7 +159,7 @@ private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) 
                     )
                 }
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(5.dp * scale))
         Column(Modifier.weight(1f)) {
             val types = pokemon.species?.types.orEmpty()
             GbText("TYPE1/")
@@ -154,14 +178,14 @@ private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) 
 }
 
 @Composable
-private fun StatusPageTwo(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) {
+private fun StatusPageTwo(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit, scale: Int) {
     Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(120.dp)) {
+        Column(Modifier.width(60.dp * scale)) {
             sprite()
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(3.dp * scale))
             GbText(pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(5.dp * scale))
         Gen1CornerRule(Modifier.weight(1f)) {
             GbText(
                 pokemon.displayName.uppercase(),
@@ -186,9 +210,9 @@ private fun StatusPageTwo(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) 
         }
     }
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(6.dp * scale))
 
-    Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+    Gen1Frame(contentPadding = PaddingValues(horizontal = 6.dp * scale, vertical = 5.dp * scale)) {
         // Always four slots: the games draw an empty move slot as "-".
         for (index in 0 until 4) {
             val slot = pokemon.moves.getOrNull(index)

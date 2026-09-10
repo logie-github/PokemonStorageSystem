@@ -1,7 +1,6 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -42,7 +42,7 @@ fun Gen1MenuRow(
         modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
-            .clickable(enabled = enabled) { if (selected) onConfirm() else onSelect() },
+            .gen1Clickable(enabled) { if (selected) onConfirm() else onSelect() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(20.dp)) {
@@ -104,6 +104,7 @@ fun StorageSystemScreen(
     onOptions: (() -> Unit)? = null,
     message: String = "What?",
     overlay: @Composable (() -> Unit)? = null,
+    action: @Composable (() -> Unit)? = null,
 ) {
     val rows: List<Pair<String, () -> Unit>> = buildList {
         add("WITHDRAW PKMN" to onWithdraw)
@@ -113,10 +114,15 @@ fun StorageSystemScreen(
         if (onOptions != null) add("OPTIONS" to onOptions)
     }
 
+    // Four layers, bottom to top: the menu and the box window, then whatever
+    // list is open over the bottom right, then the message window over its
+    // bottom left, and finally the small action window over all of it. The
+    // order is the whole point — the message has to stay readable behind a
+    // list, and the action window has to sit above both.
     Box(
         Modifier
             .fillMaxSize()
-            .background(gen1SurroundBrush())
+            .gen1Ground()
             .padding(12.dp),
     ) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.End) {
@@ -128,20 +134,22 @@ fun StorageSystemScreen(
                 }
             }
             Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                Gen1Frame(Modifier.weight(1f)) { GbText(message, style = Gen1Text) }
-                Gen1Frame(
-                    Modifier
-                        .width(160.dp)
-                        .clickable(onClick = onChangeBox)
-                ) {
-                    GbText("BOX No. $boxNumber")
-                    GbText(boxName.uppercase(), style = Gen1TextSmall)
-                    GbText("TAP TO CHANGE", style = Gen1TextSmall)
-                }
+            Gen1Frame(Modifier.gen1Clickable(onClick = onChangeBox)) {
+                GbText("BOX No. $boxNumber")
+                GbText(boxName.uppercase(), style = Gen1TextSmall)
+                GbText("TAP TO CHANGE", style = Gen1TextSmall)
             }
         }
+
         overlay?.invoke()
+
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomStart) {
+            // Sized to its text rather than to the row: a one-word message in a
+            // window most of the screen wide reads as a bug.
+            Gen1Frame(Modifier.wrapContentWidth()) { GbText(message, style = Gen1Text) }
+        }
+
+        action?.invoke()
     }
 }
 
@@ -152,7 +160,13 @@ fun StorageSystemScreen(
  */
 data class MonRow(val name: String, val trailing: String, val header: String? = null)
 
-/** The list a TRANSFER or VIEW opens, drawn over the menu it came from. */
+/**
+ * The list a WITHDRAW, DEPOSIT or VIEW opens, drawn over the menu it came from.
+ *
+ * Pinned to the bottom right, which is where the cartridge puts it. The window
+ * that opens on a chosen Pokémon is a separate layer above this one, so that
+ * it is not clipped by the list's own bounds.
+ */
 @Composable
 fun MonListOverlay(
     entries: List<MonRow>,
@@ -161,15 +175,13 @@ fun MonListOverlay(
     onConfirm: (Int) -> Unit,
     onCancel: () -> Unit,
     emptyMessage: String,
-    action: (@Composable () -> Unit)? = null,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Spacer(Modifier.height(56.dp))
-        Gen1Frame(Modifier.fillMaxWidth().padding(start = 40.dp)) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+        Gen1Frame(Modifier.wrapContentWidth()) {
             if (entries.isEmpty()) {
                 GbText(emptyMessage)
             }
-            LazyColumn(Modifier.heightIn(max = 300.dp)) {
+            LazyColumn(Modifier.heightIn(max = 320.dp)) {
                 itemsIndexed(entries) { index, row ->
                     if (row.header != null) {
                         if (index > 0) Spacer(Modifier.height(6.dp))
@@ -187,10 +199,6 @@ fun MonListOverlay(
                     Gen1MenuRow("CANCEL", selected == entries.size, { onSelect(entries.size) }, onCancel)
                 }
             }
-        }
-        Spacer(Modifier.weight(1f))
-        if (action != null) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { action() }
         }
     }
 }
@@ -217,18 +225,20 @@ fun MonActionOverlay(
     onCancel: () -> Unit,
     note: String? = null,
 ) {
-    Gen1Frame(Modifier.width(230.dp)) {
-        actions.forEachIndexed { index, entry ->
-            Gen1MenuRow(
-                entry.label,
-                selected == index,
-                { onSelect(index) },
-                entry.onAction,
-                enabled = entry.enabled,
-            )
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+        Gen1Frame(Modifier.wrapContentWidth()) {
+            actions.forEachIndexed { index, entry ->
+                Gen1MenuRow(
+                    entry.label,
+                    selected == index,
+                    { onSelect(index) },
+                    entry.onAction,
+                    enabled = entry.enabled,
+                )
+            }
+            Gen1MenuRow("CANCEL", selected == actions.size, { onSelect(actions.size) }, onCancel)
+            if (note != null) GbText(note, style = Gen1TextSmall)
         }
-        Gen1MenuRow("CANCEL", selected == actions.size, { onSelect(actions.size) }, onCancel)
-        if (note != null) GbText(note, style = Gen1TextSmall)
     }
 }
 
@@ -241,9 +251,8 @@ fun ChangeBoxOverlay(
     onConfirm: (Int) -> Unit,
     onCancel: () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Spacer(Modifier.height(40.dp))
-        Gen1Frame(Modifier.fillMaxWidth().padding(start = 24.dp)) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+        Gen1Frame(Modifier.wrapContentWidth()) {
             LazyColumn(Modifier.heightIn(max = 380.dp)) {
                 itemsIndexed(boxes) { index, (number, name, count) ->
                     Gen1MenuRow(
@@ -259,6 +268,5 @@ fun ChangeBoxOverlay(
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
     }
 }

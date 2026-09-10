@@ -22,6 +22,12 @@ class FakeVolume(
     /** Fails the next write to this exact path, as a full volume would. */
     var failWriteTo: String? = null
 
+    /** Fails reads of this exact path, standing in for a backend error. */
+    var failReadTo: String? = null
+
+    /** Fails lookups of this exact path, standing in for a failed stat. */
+    var failLookupTo: String? = null
+
     /** Records every path written, in order, for asserting the write sequence. */
     val writes = mutableListOf<String>()
 
@@ -66,13 +72,16 @@ class FakeVolume(
 
     override suspend fun child(node: SaveNode, name: String): SaveNode? {
         val path = "${node.key}/$name"
+        if (failLookupTo == path.removePrefix("$ROOT/")) error("Shizuku rejected the lookup of $path")
         files[path]?.let { return SaveNode(path, name, false, it.size.toLong(), clock) }
         if (path in directories) return SaveNode(path, name, true, 0, clock)
         return null
     }
 
-    override suspend fun readBytes(node: SaveNode): ByteArray =
-        files[node.key]?.copyOf() ?: error("No such file: ${node.key}")
+    override suspend fun readBytes(node: SaveNode): ByteArray {
+        if (failReadTo == node.key.removePrefix("$ROOT/")) error("read failed: permission denied")
+        return files[node.key]?.copyOf() ?: error("No such file: ${node.key}")
+    }
 
     override suspend fun writeBytes(parent: SaveNode, name: String, bytes: ByteArray): SaveNode {
         val path = "${parent.key}/$name"

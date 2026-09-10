@@ -46,8 +46,10 @@ class ShizukuFileService : Binder() {
                     require(file.isFile) { "Not a file: $requestedPath" }
                     val offset = data.readLong()
                     val wanted = data.readInt().coerceIn(1, CHUNK_SIZE)
-                    require(offset in 0..file.length()) { "Invalid offset" }
-                    val count = minOf(wanted.toLong(), file.length() - offset).toInt()
+                    require(offset >= 0) { "Invalid offset $offset" }
+                    // An offset at or past the end answers with no bytes; the
+                    // client uses that as the end-of-file signal.
+                    val count = minOf(wanted.toLong(), (file.length() - offset).coerceAtLeast(0)).toInt()
                     val bytes = ByteArray(count)
                     if (count > 0) {
                         RandomAccessFile(file, "r").use { source ->
@@ -88,8 +90,39 @@ class ShizukuFileService : Binder() {
             }
             true
         }.getOrElse { error ->
-            reply?.writeException(Exception(error.message ?: "Filesystem error"))
+            reply?.writeException(marshalable(code, error))
             true
+        }
+    }
+
+    /**
+     * `Parcel.writeException` marshals only a fixed set of exception classes.
+     * Anything else maps to code 0, where it rethrows instead of writing the
+     * message — that throw escapes onTransact, the framework's own handler
+     * fails to marshal the resulting RuntimeException too, and the whole
+     * transaction fails. The caller then sees a dead transaction rather than
+     * the filesystem error, so every failure here looked like a disconnect.
+     *
+     * The types below are the ones Parcel actually understands; everything
+     * else is carried as IllegalStateException so the message survives.
+     */
+    private fun marshalable(code: Int, error: Throwable): Exception {
+        val what = when (code) {
+            LIST -> "list"
+            READ -> "read"
+            WRITE -> "write"
+            DELETE -> "delete"
+            MKDIRS -> "mkdirs"
+            STAT -> "stat"
+            else -> "transaction $code"
+        }
+        val message = "$what failed: ${error.message ?: error.javaClass.simpleName}"
+        return when (error) {
+            is SecurityException -> SecurityException(message)
+            is IllegalArgumentException -> IllegalArgumentException(message)
+            is NullPointerException -> NullPointerException(message)
+            is UnsupportedOperationException -> UnsupportedOperationException(message)
+            else -> IllegalStateException(message)
         }
     }
 

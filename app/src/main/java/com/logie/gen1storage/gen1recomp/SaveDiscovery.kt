@@ -220,7 +220,16 @@ class SaveDiscovery(private val volume: SaveVolume) {
         var anyPresent: Pair<SaveNode, SaveOrigin>? = null
 
         for ((origin, name) in attempts) {
-            val node = volume.child(directory, name)?.takeIf { !it.isDirectory } ?: continue
+            // A failed lookup is this file's problem, not the scan's: without
+            // this, one unreadable slot would hide every other save.
+            val node = try {
+                volume.child(directory, name)?.takeIf { !it.isDirectory }
+            } catch (e: Exception) {
+                if (firstFailure == null) {
+                    firstFailure = origin to SaveClassification.Inaccessible(e.message ?: "Lookup failed")
+                }
+                null
+            } ?: continue
             if (anyPresent == null) anyPresent = node to origin
             val bytes = try {
                 volume.readBytes(node)

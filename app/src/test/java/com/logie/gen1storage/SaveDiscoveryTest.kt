@@ -183,6 +183,31 @@ class SaveDiscoveryTest {
     }
 
     @Test
+    fun `a backend read error is reported verbatim, not as a lost connection`() = runTest {
+        val volume = volumeWithSaves()
+        val base = "Android/data/com.theboisclub.pokemonred.androidfixes/files/save/pokemon-love2d"
+        volume.failReadTo = "$base/saves/red/slot1.lua"
+
+        val result = SaveDiscovery(volume).scan(listOf(volume.root()))
+        val failed = result.sources.first { it.relativePath == "saves/red/slot1.lua" }
+        assertTrue(failed.classification is SaveClassification.Inaccessible)
+        assertEquals("read failed: permission denied", failed.classification.summary)
+        // And it did not take the other three saves down with it.
+        assertEquals(3, result.sources.count { it.isUsable })
+    }
+
+    @Test
+    fun `a failed lookup classifies that file without aborting the scan`() = runTest {
+        val volume = volumeWithSaves()
+        val base = "Android/data/com.theboisclub.pokemonred.androidfixes/files/save/pokemon-love2d"
+        volume.failLookupTo = "$base/saves/blue/slot1.lua"
+
+        val result = SaveDiscovery(volume).scan(listOf(volume.root()))
+        assertEquals(3, result.sources.count { it.isUsable })
+        assertTrue(result.sources.none { it.relativePath == "saves/blue/slot1.lua" && it.isUsable })
+    }
+
+    @Test
     fun `the fingerprint changes when and only when the bytes do`() = runTest {
         val volume = volumeWithSaves()
         val first = SaveDiscovery(volume).scan(listOf(volume.root())).sources

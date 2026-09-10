@@ -26,18 +26,26 @@ class ShizukuVolume(private val binder: IBinder) : SaveVolume {
     override suspend fun child(node: SaveNode, name: String): SaveNode? =
         stat("${node.key.trimEnd('/')}/$name")
 
+    /**
+     * Reads until the service returns a short chunk, rather than trusting the
+     * size a previous stat reported. The game can rewrite a save between the
+     * two calls, and a stale size would either truncate the read or leave the
+     * loop waiting for bytes that are no longer there.
+     */
     override suspend fun readBytes(node: SaveNode): ByteArray {
         require(node.size <= MAX_SAVE_BYTES) { "${node.name} is larger than a Gen1Recomp save can be" }
-        val out = ByteArrayOutputStream(node.size.toInt().coerceAtLeast(16))
+        val out = ByteArrayOutputStream(node.size.toInt().coerceIn(16, 1 shl 20))
         var offset = 0L
-        while (offset < node.size) {
+        while (true) {
             val chunk = call(node.key, ShizukuFileService.READ, { parcel ->
                 parcel.writeLong(offset)
-                parcel.writeInt(minOf(ShizukuFileService.CHUNK_SIZE.toLong(), node.size - offset).toInt())
+                parcel.writeInt(ShizukuFileService.CHUNK_SIZE)
             }) { it.createByteArray() ?: ByteArray(0) }
-            check(chunk.isNotEmpty()) { "Unexpected end of ${node.name}" }
+            if (chunk.isEmpty()) break
             out.write(chunk)
             offset += chunk.size
+            if (offset > MAX_SAVE_BYTES) error("${node.name} is larger than a Gen1Recomp save can be")
+            if (chunk.size < ShizukuFileService.CHUNK_SIZE) break
         }
         return out.toByteArray()
     }
@@ -108,14 +116,30 @@ class ShizukuVolume(private val binder: IBinder) : SaveVolume {
             data.writeInterfaceToken(ShizukuFileService.DESCRIPTOR)
             data.writeString(path)
             args?.invoke(data)
-            check(binder.isBinderAlive && binder.transact(code, data, reply, 0)) {
-                "Shizuku service disconnected"
+            if (!binder.isBinderAlive) error("Shizuku service is no longer running")
+            // A false return means the service could not complete the
+            // transaction at all. It is NOT the same as a filesystem error,
+            // which comes back through readException with its own message.
+            if (!binder.transact(code, data, reply, 0)) {
+                error("Shizuku rejected the ${name(code)} of $path")
             }
             reply.readException()
             read(reply)
+        } catch (e: android.os.DeadObjectException) {
+            throw IllegalStateException("Shizuku service stopped during the ${name(code)} of $path", e)
         } finally {
             data.recycle()
             reply.recycle()
         }
+    }
+
+    private fun name(code: Int): String = when (code) {
+        ShizukuFileService.LIST -> "listing"
+        ShizukuFileService.READ -> "read"
+        ShizukuFileService.WRITE -> "write"
+        ShizukuFileService.DELETE -> "delete"
+        ShizukuFileService.MKDIRS -> "folder creation"
+        ShizukuFileService.STAT -> "lookup"
+        else -> "transaction $code"
     }
 }

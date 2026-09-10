@@ -34,12 +34,17 @@ import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.SaveBoxScreen
 import com.logie.gen1storage.ui.SaveFilesScreen
+import com.logie.gen1storage.ui.AllPokemonScreen
+import com.logie.gen1storage.ui.GbButton
 import com.logie.gen1storage.ui.LinkScreen
+import com.logie.gen1storage.ui.PcScreen
+import com.logie.gen1storage.ui.StatusScreen
+import com.logie.gen1storage.ui.gen1Gestures
 import com.logie.gen1storage.ui.SaveListScreen
 import com.logie.gen1storage.ui.SaveMenuScreen
 import com.logie.gen1storage.ui.SavePartyScreen
 import com.logie.gen1storage.ui.Screen
-import com.logie.gen1storage.ui.StorageBoxesScreen
+import com.logie.gen1storage.ui.StorageSystemScreen
 import com.logie.gen1storage.ui.StorageViewModel
 import com.logie.gen1storage.ui.TransferScreen
 import java.net.URLEncoder
@@ -75,6 +80,16 @@ private fun StorageApp(model: StorageViewModel) {
             .background(Gen1Palette.Surround)
             .statusBarsPadding()
             .navigationBarsPadding()
+            // Off unless the player turns them on in OPTIONS; the app is
+            // tappable either way, so this only adds a second way in.
+            .gen1Gestures(state.swipeControls) { button ->
+                when (button) {
+                    GbButton.B -> model.back()
+                    GbButton.START -> model.home()
+                    GbButton.LEFT -> model.back()
+                    else -> Unit
+                }
+            }
     ) {
         Column(Modifier.fillMaxSize()) {
             TopBar(
@@ -92,7 +107,10 @@ private fun StorageApp(model: StorageViewModel) {
                     is Screen.SaveMenu -> SaveMenuScreen(state, model, screen.key)
                     is Screen.SaveParty -> SavePartyScreen(state, model, screen.key)
                     is Screen.SaveBox -> SaveBoxScreen(state, model, screen.key, screen.box)
-                    is Screen.StorageBoxes -> StorageBoxesScreen(state, model, screen.box)
+                    is Screen.Pc -> PcScreen(state, model, screen.key)
+                    is Screen.StorageSystem -> StorageSystemScreen(state, model, screen.key)
+                    Screen.AllPokemon -> AllPokemonScreen(state, model)
+                    is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
                     Screen.Transfer -> TransferScreen(state, model)
                     Screen.SaveFiles -> SaveFilesScreen(state, model)
                     Screen.Options -> OptionsScreen(
@@ -141,7 +159,10 @@ private fun titleFor(screen: Screen): String = when (screen) {
     is Screen.SaveMenu -> "PC"
     is Screen.SaveParty -> "PARTY POKéMON"
     is Screen.SaveBox -> "BOX ${screen.box}"
-    is Screen.StorageBoxes -> "STORAGE BOXES"
+    is Screen.Pc -> "PC"
+    is Screen.StorageSystem -> "STORAGE SYSTEM"
+    Screen.AllPokemon -> "ALL POKéMON"
+    is Screen.Status -> "STATUS"
     Screen.Transfer -> "TRANSFER"
     Screen.SaveFiles -> "SAVE FILES"
     Screen.Options -> "OPTIONS"

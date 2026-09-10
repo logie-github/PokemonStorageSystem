@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -38,11 +39,10 @@ import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.WithdrawTarget
 import java.time.Instant
 
-/**
- * Every screen is one scrolling column of Generation I windows. Selection is
- * "tap to move the cursor, tap again to confirm", so a row is never actioned by
- * accident and the rhythm still matches the games.
- */
+/** The one-line form used in every Generation I list. */
+fun pokemonRowLabel(pokemon: Gen1Pokemon): String = pokemon.displayName.uppercase()
+
+fun pokemonRowLevel(pokemon: Gen1Pokemon): String = ":L${pokemon.level}"
 
 @Composable
 fun HomeScreen(state: UiState, model: StorageViewModel) {
@@ -52,16 +52,16 @@ fun HomeScreen(state: UiState, model: StorageViewModel) {
             if (state.linked) model.open(Screen.SaveList) else model.open(Screen.Link)
         },
         Triple("STORAGE BOXES", "${state.storage.total}/${StorageLayout.TOTAL_CAPACITY} STORED") {
-            model.open(Screen.StorageBoxes(1))
+            model.open(Screen.StorageSystem(null))
         },
         Triple("TRANSFER", "MOVE BETWEEN SAVES") { model.open(Screen.Transfer) },
         Triple("SAVE FILES", "BACKUPS AND REPAIR") { model.open(Screen.SaveFiles) },
-        Triple("OPTIONS", "SYNC AND DIAGNOSTICS") { model.open(Screen.Options) },
+        Triple("OPTIONS", "SYNC, CONTROLS AND DIAGNOSTICS") { model.open(Screen.Options) },
     )
 
     ScreenColumn {
         item {
-            Gen1Window {
+            Gen1Frame {
                 GbText("POKéMON", style = Gen1TextLarge)
                 GbText("STORAGE SYSTEM", style = Gen1TextLarge)
                 Spacer(Modifier.height(6.dp))
@@ -69,23 +69,33 @@ fun HomeScreen(state: UiState, model: StorageViewModel) {
             }
         }
         item {
-            Gen1Window(contentPadding = PaddingValues(vertical = 6.dp)) {
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
                 entries.forEachIndexed { index, (label, subtitle, action) ->
-                    Gen1MenuItem(
-                        label = label,
-                        subtitle = subtitle,
-                        selected = selected == index,
-                        onSelect = { selected = index },
-                        onConfirm = action,
+                    Gen1MenuRow(label, selected == index, { selected = index }, action)
+                    GbText(subtitle, style = Gen1TextSmall)
+                }
+            }
+        }
+        if (state.showAllSaves && state.linked) {
+            item {
+                Gen1Frame {
+                    Gen1MenuRow(
+                        "ALL POKéMON",
+                        selected == entries.size,
+                        { selected = entries.size },
+                        { model.open(Screen.AllPokemon) },
                     )
+                    GbText("EVERY SAVE IN ONE LIST", style = Gen1TextSmall)
                 }
             }
         }
         if (!state.linked) {
             item {
-                Gen1Window(title = "NOT LINKED YET") {
+                Gen1Frame {
+                    GbText("NOT LINKED YET")
+                    Spacer(Modifier.height(6.dp))
                     GbText(
-                        "OPEN SAVE SYNC IN GEN1RECOMP AND ENTER ITS TWO CODES HERE. YOUR SAVES THEN ARRIVE OVER THE NETWORK - NOTHING TO INSTALL, NO FOLDERS TO PICK.",
+                        "OPEN SAVE SYNC IN GEN1RECOMP AND ENTER ITS TWO CODES HERE.",
                         style = Gen1TextSmall,
                     )
                     Spacer(Modifier.height(8.dp))
@@ -95,7 +105,8 @@ fun HomeScreen(state: UiState, model: StorageViewModel) {
         }
         if (state.recoveryNotes.isNotEmpty()) {
             item {
-                Gen1Window(title = "RECOVERY") {
+                Gen1Frame {
+                    GbText("RECOVERY")
                     state.recoveryNotes.forEach { GbText(it.uppercase(), style = Gen1TextSmall) }
                 }
             }
@@ -103,11 +114,6 @@ fun HomeScreen(state: UiState, model: StorageViewModel) {
     }
 }
 
-/**
- * Linking. The same two codes the game shows under SAVE SYNC, sent to the same
- * endpoint the game uses, so this device joins the account exactly as another
- * copy of the game would.
- */
 @Composable
 fun LinkScreen(state: UiState, model: StorageViewModel) {
     var first by remember { mutableStateOf("") }
@@ -116,15 +122,17 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
 
     ScreenColumn {
         item {
-            Gen1Window(title = "SAVE SYNC") {
+            Gen1Frame {
+                GbText("SAVE SYNC")
+                Spacer(Modifier.height(6.dp))
                 GbText(
-                    "IN GEN1RECOMP, OPEN SAVE SYNC AND READ OFF THE TWO CODES. ENTER THEM HERE.",
+                    "IN GEN1RECOMP, OPEN SAVE SYNC AND READ OFF THE TWO CODES.",
                     style = Gen1TextSmall,
                 )
             }
         }
         item {
-            Gen1Window(title = "SYNC CODES") {
+            Gen1Frame {
                 CodeField("FIRST CODE", first) { first = it }
                 Spacer(Modifier.height(10.dp))
                 CodeField("SECOND CODE", second) { second = it }
@@ -141,9 +149,9 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
             }
         }
         item {
-            Gen1Window(title = "WHAT THIS MEANS") {
+            Gen1Frame {
                 GbText(
-                    "THIS DEVICE WILL APPEAR IN THE GAME'S DEVICE LIST AND CAN READ AND WRITE EVERY SAVE ON THE ACCOUNT. TREAT THE CODES LIKE A PASSWORD - ANYONE WITH BOTH CAN DO THE SAME.",
+                    "THIS DEVICE WILL APPEAR IN THE GAME'S DEVICE LIST AND CAN READ AND WRITE EVERY SAVE ON THE ACCOUNT. TREAT THE CODES LIKE A PASSWORD.",
                     style = Gen1TextSmall,
                 )
             }
@@ -180,30 +188,27 @@ fun SaveListScreen(state: UiState, model: StorageViewModel) {
     var selected by remember { mutableStateOf(-1) }
     ScreenColumn {
         item {
-            Gen1Window(title = "ACCESS SAVE") {
+            Gen1Frame {
+                GbText("ACCESS SAVE")
                 GbText("CHOOSE A PLAYTHROUGH.", style = Gen1TextSmall)
                 state.lastSyncedAtMillis?.let {
                     GbText("SYNCED ${Instant.ofEpochMilli(it)}", style = Gen1TextSmall)
                 }
             }
         }
-        if (state.syncing) item { Gen1Window { GbText("CHECKING THE ACCOUNT...") } }
+        if (state.syncing) item { Gen1Frame { GbText("CHECKING THE ACCOUNT...") } }
         itemsIndexed(state.saves) { index, remote ->
-            SaveCard(
-                remote = remote,
-                loaded = state.save(remote.key),
-                selected = selected == index,
-                onSelect = { selected = index },
-                onConfirm = { model.openSave(remote.key) },
-            )
+            SaveCard(remote, state.save(remote.key), selected == index, { selected = index }) {
+                model.openSave(remote.key)
+            }
         }
         if (!state.syncing && state.saves.isEmpty()) {
             item {
-                Gen1Window {
+                Gen1Frame {
                     GbText("NO SAVES ON THE ACCOUNT.")
                     Spacer(Modifier.height(6.dp))
                     GbText(
-                        "SAVE IN THE GAME, THEN TAP SYNC NOW IN ITS SAVE SYNC DIALOG. REFRESH HERE AFTERWARDS.",
+                        "SAVE IN THE GAME, THEN TAP SYNC NOW IN ITS SAVE SYNC DIALOG.",
                         style = Gen1TextSmall,
                     )
                 }
@@ -212,7 +217,9 @@ fun SaveListScreen(state: UiState, model: StorageViewModel) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Gen1Button("REFRESH", { model.sync() }, enabled = !state.syncing)
-                Gen1Button("OPTIONS", { model.open(Screen.Options) })
+                if (state.showAllSaves) {
+                    Gen1Button("ALL POKéMON", { model.open(Screen.AllPokemon) })
+                }
             }
         }
     }
@@ -226,16 +233,13 @@ private fun SaveCard(
     onSelect: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    Gen1Window {
-        Gen1MenuItem(
-            label = "${remote.version.label}   ${remote.summary.trainerName ?: remote.label}",
-            subtitle = remote.slot?.uppercase() ?: "REV ${remote.rev}",
-            selected = selected,
-            onSelect = onSelect,
-            onConfirm = onConfirm,
+    Gen1Frame {
+        Gen1MenuRow(
+            "${remote.version.label}   ${remote.summary.trainerName ?: remote.label}",
+            selected,
+            onSelect,
+            onConfirm,
         )
-        // The listing carries only a summary; the save itself is fetched when
-        // it is opened, so these are the server's figures until then.
         remote.summary.badges?.let { Gen1Field("BADGES", it.toString()) }
         remote.summary.timeText?.let { Gen1Field("PLAY TIME", it) }
         remote.summary.dexCount?.let { Gen1Field("POKéDEX", it.toString()) }
@@ -252,246 +256,327 @@ private fun SaveCard(
     }
 }
 
+/** "<TRAINER> turned on the PC." then the PC's own menu. */
 @Composable
-fun SaveMenuScreen(state: UiState, model: StorageViewModel, key: String) {
+fun PcScreen(state: UiState, model: StorageViewModel, key: String) {
     val loaded = state.save(key)
     val save = loaded?.save
-    if (loaded == null || save == null) {
-        ScreenColumn { item { Gen1Window { GbText("OPEN THIS SAVE FROM ACCESS SAVE FIRST.") } } }
+    if (save == null) {
+        ScreenColumn { item { Gen1Frame { GbText("OPEN THIS SAVE FROM ACCESS SAVE FIRST.") } } }
         return
     }
-    var selected by remember { mutableStateOf(0) }
+    var selected by remember(key) { mutableStateOf(0) }
+    PcMainScreen(
+        trainerName = save.trainerName.uppercase(),
+        selected = selected,
+        onSelect = { selected = it },
+        onStorageSystem = { model.open(Screen.StorageSystem(key)) },
+        onTrainerPc = { model.open(Screen.SaveMenu(key)) },
+        onLogOff = { model.back() },
+        message = listOf("${save.trainerName.uppercase()} turned on", "the PC."),
+    )
+}
+
+/** The trainer's own PC: their party and their in-game boxes, to look through. */
+@Composable
+fun SaveMenuScreen(state: UiState, model: StorageViewModel, key: String) {
+    val save = state.save(key)?.save
+    if (save == null) {
+        ScreenColumn { item { Gen1Frame { GbText("OPEN THIS SAVE FIRST.") } } }
+        return
+    }
+    var selected by remember(key) { mutableStateOf(0) }
     ScreenColumn {
         item {
-            Gen1Window(title = "${save.trainerName}'s PC") {
-                Gen1Field("GAME", loaded.remote.version.label)
+            Gen1Frame {
+                GbText("${save.trainerName.uppercase()}'s PC")
                 Gen1Field("BADGES", save.badgeCount.toString())
                 Gen1Field("PLAY TIME", save.playTimeText)
-                Gen1Field("REVISION", loaded.rev.toString())
             }
         }
         item {
-            Gen1Window(contentPadding = PaddingValues(vertical = 6.dp)) {
-                Gen1MenuItem(
-                    label = "PARTY POKéMON",
-                    subtitle = "${save.partyCount}/${Gen1RecompSave.PARTY_MAX}",
-                    selected = selected == 0,
-                    onSelect = { selected = 0 },
-                    onConfirm = { model.open(Screen.SaveParty(key)) },
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
+                Gen1MenuRow(
+                    "PARTY POKéMON",
+                    selected == 0,
+                    { selected = 0 },
+                    { model.open(Screen.SaveParty(key)) },
+                    trailing = "${save.partyCount}/${Gen1RecompSave.PARTY_MAX}",
                 )
                 save.boxes.forEachIndexed { index, box ->
                     val number = index + 1
-                    Gen1MenuItem(
-                        label = save.boxName(number),
-                        subtitle = "${box.size}/${Gen1RecompSave.BOX_CAPACITY}" +
-                            if (save.currentBox == number) "  (CURRENT)" else "",
-                        selected = selected == number,
-                        onSelect = { selected = number },
-                        onConfirm = { model.open(Screen.SaveBox(key, number)) },
+                    Gen1MenuRow(
+                        save.boxName(number),
+                        selected == number,
+                        { selected = number },
+                        { model.open(Screen.SaveBox(key, number)) },
+                        trailing = "${box.size}/${Gen1RecompSave.BOX_CAPACITY}",
                     )
                 }
-            }
-        }
-        item {
-            Gen1Window(title = "TRANSFER") {
-                GbText(
-                    "DEPOSIT PUTS A POKéMON INTO THIS APP. WITHDRAW TAKES ONE OUT INTO THIS SAVE. THE GAME PICKS UP EITHER ON ITS NEXT SYNC.",
-                    style = Gen1TextSmall,
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Gen1Button("STORAGE BOXES", { model.open(Screen.StorageBoxes(1)) })
-                    Gen1Button("CHANGE SAVE", { model.open(Screen.SaveList) })
-                }
-            }
-        }
-        item {
-            Gen1Window(title = "RELEASE INFO") {
-                GbText(
-                    "THIS APP NEVER RELEASES A POKéMON. A TRANSFER MOVES IT, AND A COPY ONLY EVER EXISTS IN ONE PLACE AT A TIME.",
-                    style = Gen1TextSmall,
-                )
             }
         }
     }
 }
 
+/**
+ * The storage system itself, in the shape the games give it. When a save is
+ * open, DEPOSIT takes from that save's party; otherwise the boxes are only
+ * browsable.
+ */
 @Composable
-fun SavePartyScreen(state: UiState, model: StorageViewModel, key: String) {
-    val save = state.save(key)?.save
-    if (save == null) {
-        ScreenColumn { item { Gen1Window { GbText("OPEN THIS SAVE FIRST.") } } }
-        return
-    }
-    MonListScreen(
-        title = "${save.trainerName}'s PARTY",
-        entries = save.party,
-        emptyMessage = "THERE ARE NO POKéMON HERE.",
-        actionLabel = "DEPOSIT",
-        actionEnabled = { save.partyCount > 1 },
-        disabledReason = "YOU CAN'T DEPOSIT THE LAST POKéMON!",
-        onAction = { index, pokemon ->
+fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
+    var selected by remember { mutableStateOf(0) }
+    var mode by remember { mutableStateOf(PcMode.MENU) }
+    var listCursor by remember(mode) { mutableStateOf(0) }
+    var actionCursor by remember(mode) { mutableStateOf(0) }
+    var chosen by remember(mode) { mutableStateOf<Int?>(null) }
+
+    val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
+    val stored = box?.contents.orEmpty()
+    val save = key?.let { state.save(it)?.save }
+
+    StorageSystemScreen(
+        boxNumber = state.currentStorageBox,
+        boxName = box?.name ?: "BOX ${state.currentStorageBox}",
+        selected = selected,
+        onSelect = { selected = it },
+        onWithdraw = { mode = PcMode.WITHDRAW },
+        onDeposit = {
+            if (save == null) model.prompt(Prompt.Message(listOf("OPEN A SAVE FROM ACCESS SAVE FIRST.")))
+            else mode = PcMode.DEPOSIT
+        },
+        onRelease = {
             model.prompt(
-                Prompt.Confirm(
-                    lines = listOf("DEPOSIT ${pokemon.displayName.uppercase()} INTO THE APP'S PC?"),
-                    confirmLabel = "DEPOSIT",
-                    onConfirm = { model.depositFromSave(key, SaveLocation.Party(index + 1), 1) },
+                Prompt.Message(
+                    listOf(
+                        "THIS APP NEVER RELEASES A POKéMON.",
+                        "A TRANSFER MOVES IT, AND ONE COPY EXISTS AT A TIME.",
+                    )
                 )
             )
         },
+        onChangeBox = { mode = PcMode.CHANGE_BOX },
+        onExit = { model.back() },
+        overlay = when (mode) {
+            PcMode.MENU -> null
+            PcMode.WITHDRAW -> ({
+                MonListOverlay(
+                    entries = stored.map { pokemonRowLabel(it.pokemon) to pokemonRowLevel(it.pokemon) },
+                    selected = listCursor,
+                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < stored.size } },
+                    onConfirm = { chosen = it },
+                    onCancel = { mode = PcMode.MENU },
+                    emptyMessage = "What? There are no POKéMON here!",
+                    action = {
+                        val pick = chosen?.let { stored.getOrNull(it) }
+                        if (pick != null) {
+                            MonActionOverlay(
+                                actionLabel = "WITHDRAW",
+                                selected = actionCursor,
+                                onSelect = { actionCursor = it },
+                                onAction = {
+                                    if (key == null) {
+                                        model.prompt(Prompt.Message(listOf("OPEN A SAVE FROM ACCESS SAVE FIRST.")))
+                                    } else {
+                                        model.prompt(Prompt.ChooseWithdrawTarget(pick.uid, key))
+                                    }
+                                },
+                                onStats = {
+                                    model.open(
+                                        Screen.Status(null, state.currentStorageBox, stored.indexOf(pick))
+                                    )
+                                },
+                                onCancel = { chosen = null },
+                                actionEnabled = key != null,
+                                note = if (key == null) "NO SAVE IS OPEN" else null,
+                            )
+                        }
+                    },
+                )
+            })
+            PcMode.DEPOSIT -> ({
+                val party = save?.party.orEmpty()
+                MonListOverlay(
+                    entries = party.map { pokemonRowLabel(it) to pokemonRowLevel(it) },
+                    selected = listCursor,
+                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < party.size } },
+                    onConfirm = { chosen = it },
+                    onCancel = { mode = PcMode.MENU },
+                    emptyMessage = "There are no POKéMON here.",
+                    action = {
+                        val index = chosen
+                        val pick = index?.let { party.getOrNull(it) }
+                        if (pick != null && key != null) {
+                            MonActionOverlay(
+                                actionLabel = "DEPOSIT",
+                                selected = actionCursor,
+                                onSelect = { actionCursor = it },
+                                onAction = {
+                                    model.prompt(
+                                        Prompt.Confirm(
+                                            lines = listOf("DEPOSIT ${pick.displayName.uppercase()}?"),
+                                            confirmLabel = "DEPOSIT",
+                                            onConfirm = {
+                                                model.depositFromSave(
+                                                    key,
+                                                    SaveLocation.Party(index + 1),
+                                                    state.currentStorageBox,
+                                                )
+                                            },
+                                        )
+                                    )
+                                },
+                                onStats = { model.open(Screen.Status(key, 0, index)) },
+                                onCancel = { chosen = null },
+                                actionEnabled = (save?.partyCount ?: 0) > 1,
+                                note = if ((save?.partyCount ?: 0) <= 1) "CAN'T DEPOSIT THE LAST ONE" else null,
+                            )
+                        }
+                    },
+                )
+            })
+            PcMode.CHANGE_BOX -> ({
+                ChangeBoxOverlay(
+                    boxes = state.storage.boxes.map {
+                        Triple(it.index, it.name, "${it.contents.size}/${StorageLayout.BOX_CAPACITY}")
+                    },
+                    selected = listCursor,
+                    onSelect = { listCursor = it },
+                    onConfirm = { model.setStorageBox(it); mode = PcMode.MENU },
+                    onCancel = { mode = PcMode.MENU },
+                )
+            })
+        },
+    )
+}
+
+private enum class PcMode { MENU, WITHDRAW, DEPOSIT, CHANGE_BOX }
+
+@Composable
+fun SavePartyScreen(state: UiState, model: StorageViewModel, key: String) {
+    val save = state.save(key)?.save ?: return
+    MonBrowseScreen(
+        title = "${save.trainerName.uppercase()}'s PARTY",
+        entries = save.party,
+        emptyMessage = "There are no POKéMON here.",
+        onStats = { index -> model.open(Screen.Status(key, 0, index)) },
     )
 }
 
 @Composable
 fun SaveBoxScreen(state: UiState, model: StorageViewModel, key: String, box: Int) {
-    val save = state.save(key)?.save
-    if (save == null) {
-        ScreenColumn { item { Gen1Window { GbText("OPEN THIS SAVE FIRST.") } } }
-        return
-    }
-    MonListScreen(
-        title = "${save.trainerName} - ${save.boxName(box)}",
+    val save = state.save(key)?.save ?: return
+    MonBrowseScreen(
+        title = save.boxName(box),
         entries = save.boxes.getOrNull(box - 1).orEmpty(),
-        emptyMessage = "WHAT? THERE ARE NO POKéMON HERE!",
-        actionLabel = "DEPOSIT",
-        actionEnabled = { true },
-        disabledReason = "",
-        onAction = { index, pokemon ->
-            model.prompt(
-                Prompt.Confirm(
-                    lines = listOf("DEPOSIT ${pokemon.displayName.uppercase()} INTO THE APP'S PC?"),
-                    confirmLabel = "DEPOSIT",
-                    onConfirm = { model.depositFromSave(key, SaveLocation.Box(box, index + 1), 1) },
-                )
-            )
-        },
+        emptyMessage = "What? There are no POKéMON here!",
+        onStats = { index -> model.open(Screen.Status(key, box, index)) },
     )
 }
 
 @Composable
-private fun MonListScreen(
+private fun MonBrowseScreen(
     title: String,
     entries: List<Gen1Pokemon>,
     emptyMessage: String,
-    actionLabel: String,
-    actionEnabled: () -> Boolean,
-    disabledReason: String,
-    onAction: (Int, Gen1Pokemon) -> Unit,
+    onStats: (Int) -> Unit,
 ) {
-    var selected by remember(title, entries.size) { mutableStateOf(-1) }
+    var cursor by remember(title, entries.size) { mutableStateOf(-1) }
     ScreenColumn {
-        item { Gen1Window(title = title) { GbText("${entries.size} POKéMON", style = Gen1TextSmall) } }
-        if (entries.isEmpty()) item { Gen1Window { GbText(emptyMessage) } }
-        itemsIndexed(entries) { index, pokemon ->
-            Gen1Window(contentPadding = PaddingValues(vertical = 4.dp)) {
-                Gen1MenuItem(
-                    label = pokemonRowLabel(pokemon),
-                    subtitle = pokemonRowDetail(pokemon),
-                    selected = selected == index,
-                    onSelect = { selected = index },
-                    onConfirm = { selected = if (selected == index) -1 else index },
-                )
-            }
-        }
-        val chosen = entries.getOrNull(selected)
-        if (chosen != null) {
-            item {
-                Gen1PokemonPanel(chosen) {
-                    val enabled = actionEnabled()
-                    Gen1Button(actionLabel, { onAction(selected, chosen) }, enabled = enabled)
-                    if (!enabled && disabledReason.isNotEmpty()) {
-                        GbText(disabledReason, style = Gen1TextSmall)
-                    }
+        item { Gen1Frame { GbText(title); GbText("${entries.size} POKéMON", style = Gen1TextSmall) } }
+        if (entries.isEmpty()) item { Gen1Frame { GbText(emptyMessage) } }
+        item {
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
+                entries.forEachIndexed { index, pokemon ->
+                    Gen1MenuRow(
+                        pokemonRowLabel(pokemon),
+                        cursor == index,
+                        { cursor = index },
+                        { onStats(index) },
+                        trailing = pokemonRowLevel(pokemon),
+                    )
                 }
             }
         }
     }
 }
 
+/** Every save's Pokémon in one list, when the option is on. */
 @Composable
-fun StorageBoxesScreen(state: UiState, model: StorageViewModel, box: Int) {
-    val boxes = state.storage.boxes
-    val current = boxes.getOrNull(box - 1)
-    var selected by remember(box) { mutableStateOf(-1) }
+fun AllPokemonScreen(state: UiState, model: StorageViewModel) {
+    var cursor by remember { mutableStateOf(-1) }
+    data class Row(val key: String, val area: Int, val slot: Int, val where: String, val mon: Gen1Pokemon)
+
+    val rows = buildList {
+        state.saves.forEach { remote ->
+            val save = state.save(remote.key)?.save ?: return@forEach
+            val trainer = save.trainerName.uppercase()
+            save.party.forEachIndexed { index, mon ->
+                add(Row(remote.key, 0, index, "${remote.version.label} $trainer PARTY", mon))
+            }
+            save.boxes.forEachIndexed { boxIndex, box ->
+                box.forEachIndexed { index, mon ->
+                    add(Row(remote.key, boxIndex + 1, index, "${remote.version.label} $trainer BOX ${boxIndex + 1}", mon))
+                }
+            }
+        }
+    }
 
     ScreenColumn {
         item {
-            Gen1Window(title = "THIS APP'S PC") {
-                Gen1Field("STORED", "${state.storage.total}/${StorageLayout.TOTAL_CAPACITY}")
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Gen1Button("◀", {
-                        model.replace(
-                            Screen.StorageBoxes(((box - 2 + StorageLayout.BOX_COUNT) % StorageLayout.BOX_COUNT) + 1)
-                        )
-                    })
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        GbText(current?.name?.uppercase() ?: "BOX $box")
-                    }
-                    Gen1Button("▶", {
-                        model.replace(Screen.StorageBoxes((box % StorageLayout.BOX_COUNT) + 1))
-                    })
-                }
-                GbText("${current?.contents?.size ?: 0}/${StorageLayout.BOX_CAPACITY}", style = Gen1TextSmall)
-            }
-        }
-        if (current == null || current.contents.isEmpty()) {
-            item { Gen1Window { GbText("THIS BOX IS EMPTY.") } }
-        }
-        itemsIndexed(current?.contents.orEmpty()) { index, stored ->
-            Gen1Window(contentPadding = PaddingValues(vertical = 4.dp)) {
-                Gen1MenuItem(
-                    label = pokemonRowLabel(stored.pokemon),
-                    subtitle = pokemonRowDetail(stored.pokemon),
-                    selected = selected == index,
-                    onSelect = { selected = index },
-                    onConfirm = { selected = if (selected == index) -1 else index },
+            Gen1Frame {
+                GbText("ALL POKéMON")
+                GbText(
+                    "${rows.size} ACROSS ${state.saves.count { state.save(it.key)?.isUsable == true }} SAVE(S)",
+                    style = Gen1TextSmall,
                 )
+                if (state.loadingAll) GbText("LOADING SAVES...", style = Gen1TextSmall)
+                Spacer(Modifier.height(8.dp))
+                Gen1Button("RELOAD", { model.loadAllSaves() }, enabled = !state.loadingAll)
             }
         }
-        val chosen = current?.contents?.getOrNull(selected)
-        if (chosen != null) item { StoredDetail(state, model, chosen, box) }
+        if (state.storage.total > 0) {
+            item {
+                Gen1Frame {
+                    GbText("IN THIS APP'S PC")
+                    GbText("${state.storage.total} STORED", style = Gen1TextSmall)
+                }
+            }
+        }
+        itemsIndexed(rows) { index, row ->
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                Gen1MenuRow(
+                    pokemonRowLabel(row.mon),
+                    cursor == index,
+                    { cursor = index },
+                    { model.open(Screen.Status(row.key, row.area, row.slot)) },
+                    trailing = pokemonRowLevel(row.mon),
+                )
+                GbText(row.where, style = Gen1TextSmall)
+            }
+        }
+        if (rows.isEmpty() && !state.loadingAll) {
+            item { Gen1Frame { GbText("NOTHING LOADED YET. TAP RELOAD.") } }
+        }
     }
 }
 
+/** The full status screen for one Pokémon, wherever it lives. */
 @Composable
-private fun StoredDetail(state: UiState, model: StorageViewModel, stored: StoredPokemon, box: Int) {
-    Column {
-        Gen1PokemonPanel(stored.pokemon) {
-            // A withdrawal needs the destination save's actual contents, so
-            // only saves already fetched can receive one.
-            val open = state.saves.filter { state.save(it.key)?.isUsable == true }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Gen1Button(
-                    "WITHDRAW",
-                    {
-                        model.prompt(
-                            Prompt.ChooseSave("WITHDRAW INTO WHICH SAVE?") { key ->
-                                model.prompt(Prompt.ChooseWithdrawTarget(stored.uid, key))
-                            }
-                        )
-                    },
-                    enabled = open.isNotEmpty(),
-                )
-                Gen1Button("MOVE", {
-                    model.prompt(Prompt.ChooseBox("MOVE TO WHICH BOX?") { target ->
-                        model.moveStored(stored.uid, target)
-                    })
-                })
-            }
-            if (open.isEmpty()) {
-                GbText("OPEN A SAVE FROM ACCESS SAVE FIRST.", style = Gen1TextSmall)
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Gen1Window(title = "CAME FROM") {
-            val from = stored.provenance
-            Gen1Field("GAME", from.gameVersion)
-            Gen1Field("TRAINER", from.trainerName)
-            Gen1Field("IDNo/", from.trainerId?.let { "%05d".format(it) } ?: "?")
-            Gen1Field("FROM", if (from.sourceKind == "party") "PARTY SLOT ${from.sourceIndex}" else "A PC BOX")
-            Gen1Field("IN BOX", box.toString())
-        }
+fun StatusScreen(state: UiState, model: StorageViewModel, key: String?, area: Int, slot: Int) {
+    val pokemon = if (key == null) {
+        state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.pokemon
+    } else {
+        val save = state.save(key)?.save
+        if (area == 0) save?.party?.getOrNull(slot)
+        else save?.boxes?.getOrNull(area - 1)?.getOrNull(slot)
+    }
+    if (pokemon == null) {
+        ScreenColumn { item { Gen1Frame { GbText("THAT POKéMON IS NO LONGER THERE.") } } }
+        return
+    }
+    Gen1StatusScreen(pokemon) {
+        Gen1Button("BACK", { model.back() })
     }
 }
 
@@ -499,30 +584,34 @@ private fun StoredDetail(state: UiState, model: StorageViewModel, stored: Stored
 fun TransferScreen(state: UiState, model: StorageViewModel) {
     ScreenColumn {
         item {
-            Gen1Window(title = "TRANSFER") {
+            Gen1Frame {
+                GbText("TRANSFER")
                 GbText("A TRANSFER MOVES A POKéMON. IT IS NEVER IN TWO PLACES AT ONCE.", style = Gen1TextSmall)
             }
         }
         item {
-            Gen1Window(title = "DEPOSIT") {
+            Gen1Frame {
+                GbText("DEPOSIT")
                 GbText("SAVE → THIS APP'S PC", style = Gen1TextSmall)
-                Spacer(Modifier.height(6.dp))
-                GbText("OPEN A SAVE, PICK A POKéMON FROM THE PARTY OR A BOX, THEN DEPOSIT.", style = Gen1TextSmall)
                 Spacer(Modifier.height(8.dp))
                 Gen1Button("CHOOSE A SAVE", { model.open(Screen.SaveList) }, enabled = state.linked)
             }
         }
         item {
-            Gen1Window(title = "WITHDRAW") {
+            Gen1Frame {
+                GbText("WITHDRAW")
                 GbText("THIS APP'S PC → SAVE", style = Gen1TextSmall)
-                Spacer(Modifier.height(6.dp))
-                GbText("OPEN THE STORAGE BOXES, PICK A POKéMON, THEN CHOOSE THE SAVE AND WHERE IT GOES.", style = Gen1TextSmall)
                 Spacer(Modifier.height(8.dp))
-                Gen1Button("STORAGE BOXES", { model.open(Screen.StorageBoxes(1)) }, enabled = state.storage.total > 0)
+                Gen1Button(
+                    "STORAGE BOXES",
+                    { model.open(Screen.StorageSystem(null)) },
+                    enabled = state.storage.total > 0,
+                )
             }
         }
         item {
-            Gen1Window(title = "ON THE ACCOUNT") {
+            Gen1Frame {
+                GbText("ON THE ACCOUNT")
                 if (state.saves.isEmpty()) GbText("NO SAVES YET.", style = Gen1TextSmall)
                 state.saves.forEach { remote ->
                     Gen1Field(
@@ -541,48 +630,38 @@ fun TransferScreen(state: UiState, model: StorageViewModel) {
 fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
     ScreenColumn {
         item {
-            Gen1Window(title = "SAVE FILES") {
+            Gen1Frame {
+                GbText("SAVE FILES")
                 GbText(
-                    "EVERY WRITE UPLOADS AGAINST THE REVISION IT READ, SO THE SERVER REFUSES IT IF THE GAME SAVED FIRST. THE COPY BEING REPLACED IS KEPT ON THIS DEVICE.",
+                    "EVERY WRITE UPLOADS AGAINST THE REVISION IT READ, SO THE SERVER REFUSES IT IF THE GAME SAVED FIRST.",
                     style = Gen1TextSmall,
                 )
             }
         }
         model.pendingTransferSummary()?.let { pending ->
             item {
-                Gen1Window(title = "UNFINISHED TRANSFER") {
+                Gen1Frame {
+                    GbText("UNFINISHED TRANSFER")
                     GbText(pending.uppercase(), style = Gen1TextSmall)
-                    Spacer(Modifier.height(8.dp))
-                    GbText(
-                        "BOTH COPIES WERE KEPT. CHECK THE PC AND THE SAVE, THEN CLEAR THIS RECORD.",
-                        style = Gen1TextSmall,
-                    )
                     Spacer(Modifier.height(8.dp))
                     Gen1Button("CLEAR RECORD", model::clearPendingTransferRecord)
                 }
             }
         }
         item {
-            Gen1Window(title = "LOCAL BACKUPS") {
+            Gen1Frame {
+                GbText("LOCAL BACKUPS")
                 val backups = model.localBackups()
                 if (backups.isEmpty()) {
                     GbText("NONE YET. ONE IS KEPT EACH TIME A SAVE IS WRITTEN.", style = Gen1TextSmall)
                 }
-                backups.take(20).forEach { entry ->
-                    Gen1Field(entry.key, "REV ${entry.rev}")
-                }
-                if (backups.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    GbText(
-                        "THESE ARE PLAIN SAVE FILES IN THIS APP'S PRIVATE STORAGE. THE TEN MOST RECENT PER SAVE ARE KEPT.",
-                        style = Gen1TextSmall,
-                    )
-                }
+                backups.take(20).forEach { Gen1Field(it.key, "REV ${it.rev}") }
             }
         }
         if (state.diagnostics.isNotEmpty()) {
             item {
-                Gen1Window(title = "WHAT THE ACCOUNT HOLDS") {
+                Gen1Frame {
+                    GbText("WHAT THE ACCOUNT HOLDS")
                     state.diagnostics.forEach { GbText(it, style = Gen1TextSmall) }
                 }
             }
@@ -594,12 +673,10 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
     ScreenColumn {
         item {
-            Gen1Window(title = "SAVE SYNC") {
+            Gen1Frame {
+                GbText("SAVE SYNC")
                 Gen1Field("STATUS", if (state.linked) "LINKED" else "NOT LINKED")
                 model.linkedDeviceLabel?.let { Gen1Field("THIS DEVICE", it) }
-                state.lastSyncedAtMillis?.let {
-                    GbText("LAST CHECKED ${Instant.ofEpochMilli(it)}", style = Gen1TextSmall)
-                }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.linked) {
@@ -623,36 +700,59 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
             }
         }
         item {
-            Gen1Window(title = "DEVICES ON THE ACCOUNT") {
-                val devices = state.account?.devices.orEmpty()
-                if (devices.isEmpty()) GbText("NOT KNOWN YET.", style = Gen1TextSmall)
-                devices.forEach { device ->
-                    Gen1Field(device.label, if (device.isThisDevice) "THIS DEVICE" else "")
-                }
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                GbText("CONTROLS")
+                Spacer(Modifier.height(4.dp))
+                Gen1Toggle(
+                    label = "SWIPE CONTROLS",
+                    on = state.swipeControls,
+                    onToggle = { model.setSwipeControls(!state.swipeControls) },
+                )
+                GbText(
+                    "SWIPE FOR THE D-PAD, TAP FOR A, TAP AND HOLD FOR B, DOUBLE TAP FOR START, TAP THEN HOLD FOR SELECT.",
+                    style = Gen1TextSmall,
+                )
+                Spacer(Modifier.height(10.dp))
+                Gen1Toggle(
+                    label = "SHOW ALL SAVES AT ONCE",
+                    on = state.showAllSaves,
+                    onToggle = { model.setShowAllSaves(!state.showAllSaves) },
+                )
+                GbText(
+                    "LOADS EVERY SAVE ON THE ACCOUNT AND LISTS THEIR POKéMON TOGETHER.",
+                    style = Gen1TextSmall,
+                )
             }
         }
         item {
-            Gen1Window(title = "DIAGNOSTICS") {
+            Gen1Frame {
+                GbText("DEVICES ON THE ACCOUNT")
+                val devices = state.account?.devices.orEmpty()
+                if (devices.isEmpty()) GbText("NOT KNOWN YET.", style = Gen1TextSmall)
+                devices.forEach { Gen1Field(it.label, if (it.isThisDevice) "THIS DEVICE" else "") }
+            }
+        }
+        item {
+            Gen1Frame {
+                GbText("DIAGNOSTICS")
                 Gen1Field("SAVES", state.saves.size.toString())
                 Gen1Field("STORED", state.storage.total.toString())
                 Spacer(Modifier.height(8.dp))
                 Gen1Button("SEND REPORT", onShareReport)
                 Spacer(Modifier.height(6.dp))
                 GbText(
-                    "THE REPORT CONTAINS NO SYNC CODES, NO ACCOUNT DETAILS AND NO POKéMON OR SAVE CONTENTS.",
-                    style = Gen1TextSmall,
-                )
-            }
-        }
-        item {
-            Gen1Window(title = "SCOPE") {
-                GbText(
-                    "THIS APP HANDLES GEN1RECOMP RED, BLUE AND YELLOW SAVES ONLY. GENERATION II AND LATER ARE NOT SUPPORTED.",
+                    "NO SYNC CODES, ACCOUNT DETAILS, POKéMON OR SAVE CONTENTS ARE INCLUDED.",
                     style = Gen1TextSmall,
                 )
             }
         }
     }
+}
+
+/** An on/off row drawn as a menu entry with its state in the right column. */
+@Composable
+private fun Gen1Toggle(label: String, on: Boolean, onToggle: () -> Unit) {
+    Gen1MenuRow(label, selected = on, onSelect = onToggle, onConfirm = onToggle, trailing = if (on) "ON" else "OFF")
 }
 
 @Composable
@@ -678,25 +778,30 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
         contentAlignment = Alignment.Center,
     ) {
         when (prompt) {
-            is Prompt.Message -> Gen1Dialogue(prompt.lines.map { it.uppercase() }) {
+            is Prompt.Message -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
+                Spacer(Modifier.height(10.dp))
                 Gen1Button("OK", model::dismissPrompt)
             }
 
-            is Prompt.Confirm -> Gen1Dialogue(prompt.lines.map { it.uppercase() }) {
-                Gen1Button(prompt.confirmLabel, prompt.onConfirm)
-                Gen1Button("CANCEL", model::dismissPrompt)
+            is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Gen1Button(prompt.confirmLabel, prompt.onConfirm)
+                    Gen1Button("CANCEL", model::dismissPrompt)
+                }
             }
 
-            is Prompt.ChooseBox -> Gen1Window(title = prompt.title) {
-                LazyColumn(Modifier.height(320.dp)) {
+            is Prompt.ChooseBox -> Gen1Frame {
+                GbText(prompt.title)
+                LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     itemsIndexed((1..StorageLayout.BOX_COUNT).toList()) { _, index ->
                         val box = state.storage.boxes.getOrNull(index - 1)
-                        Gen1MenuItem(
-                            label = box?.name ?: "BOX $index",
-                            subtitle = "${box?.contents?.size ?: 0}/${StorageLayout.BOX_CAPACITY}",
+                        Gen1MenuRow(
+                            box?.name ?: "BOX $index",
                             selected = false,
                             onSelect = { prompt.onChoose(index) },
                             onConfirm = { prompt.onChoose(index) },
+                            trailing = "${box?.contents?.size ?: 0}/${StorageLayout.BOX_CAPACITY}",
                             enabled = (box?.freeSlots ?: 0) > 0,
                         )
                     }
@@ -705,17 +810,18 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 Gen1Button("CANCEL", model::dismissPrompt)
             }
 
-            is Prompt.ChooseSave -> Gen1Window(title = prompt.title) {
+            is Prompt.ChooseSave -> Gen1Frame {
+                GbText(prompt.title)
                 val open = state.saves.filter { state.save(it.key)?.isUsable == true }
-                LazyColumn(Modifier.height(320.dp)) {
+                LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     itemsIndexed(open) { _, remote ->
                         val save = state.save(remote.key)?.save
-                        Gen1MenuItem(
-                            label = "${remote.version.label}  ${save?.trainerName ?: remote.label}",
-                            subtitle = "PARTY ${save?.partyCount ?: 0}/${Gen1RecompSave.PARTY_MAX}",
+                        Gen1MenuRow(
+                            "${remote.version.label}  ${save?.trainerName ?: remote.label}",
                             selected = false,
                             onSelect = { prompt.onChoose(remote.key) },
                             onConfirm = { prompt.onChoose(remote.key) },
+                            trailing = "${save?.partyCount ?: 0}/${Gen1RecompSave.PARTY_MAX}",
                         )
                     }
                 }
@@ -725,24 +831,24 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
 
             is Prompt.ChooseWithdrawTarget -> {
                 val save = state.save(prompt.key)?.save
-                Gen1Window(title = "PUT IT WHERE?") {
+                Gen1Frame {
+                    GbText("PUT IT WHERE?")
                     if (save == null) {
                         GbText("THAT SAVE IS NOT OPEN.")
                     } else {
-                        Gen1MenuItem(
-                            label = "PARTY",
-                            subtitle = "${save.partyCount}/${Gen1RecompSave.PARTY_MAX}",
+                        Gen1MenuRow(
+                            "PARTY",
                             selected = false,
                             onSelect = { model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Party) },
                             onConfirm = { model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Party) },
+                            trailing = "${save.partyCount}/${Gen1RecompSave.PARTY_MAX}",
                             enabled = save.partyCount < Gen1RecompSave.PARTY_MAX,
                         )
-                        LazyColumn(Modifier.height(280.dp)) {
+                        LazyColumn(Modifier.heightIn(max = 280.dp)) {
                             itemsIndexed(save.boxes) { index, box ->
                                 val number = index + 1
-                                Gen1MenuItem(
-                                    label = save.boxName(number),
-                                    subtitle = "${box.size}/${Gen1RecompSave.BOX_CAPACITY}",
+                                Gen1MenuRow(
+                                    save.boxName(number),
                                     selected = false,
                                     onSelect = {
                                         model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Box(number))
@@ -750,6 +856,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                                     onConfirm = {
                                         model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Box(number))
                                     },
+                                    trailing = "${box.size}/${Gen1RecompSave.BOX_CAPACITY}",
                                     enabled = box.size < Gen1RecompSave.BOX_CAPACITY,
                                 )
                             }

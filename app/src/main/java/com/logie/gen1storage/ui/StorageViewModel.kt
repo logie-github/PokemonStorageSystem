@@ -34,10 +34,22 @@ sealed interface Screen {
     data object Home : Screen
     data object Link : Screen
     data object SaveList : Screen
+    /** The "<TRAINER> turned on the PC" boot, then its main menu. */
+    data class Pc(val key: String) : Screen
+    /** The trainer's own PC: their party and their in-game boxes. */
     data class SaveMenu(val key: String) : Screen
     data class SaveParty(val key: String) : Screen
     data class SaveBox(val key: String, val box: Int) : Screen
-    data class StorageBoxes(val box: Int) : Screen
+    /** The storage system. [key] is the save it will deposit from, if any. */
+    data class StorageSystem(val key: String?) : Screen
+    /** Every save's Pokémon in one list, when the option is on. */
+    data object AllPokemon : Screen
+    /**
+     * The status screen. A null [key] means the Pokémon is in this app's PC and
+     * [area] is its box; otherwise [area] 0 is the save's party and 1..12 its
+     * boxes.
+     */
+    data class Status(val key: String?, val area: Int, val slot: Int) : Screen
     data object Transfer : Screen
     data object SaveFiles : Screen
     data object Options : Screen
@@ -66,6 +78,10 @@ data class UiState(
     val recoveryNotes: List<String> = emptyList(),
     val prompt: Prompt? = null,
     val lastSyncedAtMillis: Long? = null,
+    val currentStorageBox: Int = 1,
+    val swipeControls: Boolean = false,
+    val showAllSaves: Boolean = false,
+    val loadingAll: Boolean = false,
 ) {
     val screen: Screen get() = stack.last()
     val saves: List<RemoteSave> get() = account?.saves.orEmpty()
@@ -80,6 +96,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val journal = TransferJournal(storageDir)
     private val backups = SaveBackups(File(storageDir, "backups"))
 
+    private val settings = AppSettings(application)
     private val credentials = SyncAccount(application)
     private val api = SyncApi(credentials = credentials::credentials)
     private val saves = SaveRepository(api, backups)
@@ -98,7 +115,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         mutable.update {
-            it.copy(storage = storage.state(), linked = credentials.isLinked)
+            it.copy(
+                storage = storage.state(),
+                linked = credentials.isLinked,
+                swipeControls = settings.swipeControls,
+                showAllSaves = settings.showAllSaves,
+            )
         }
         if (credentials.isLinked) sync()
     }
@@ -120,6 +142,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(stack = it.stack.dropLast(1)) }
         return true
     }
+
+    fun setStorageBox(box: Int) = mutable.update { it.copy(currentStorageBox = box, prompt = null) }
 
     fun home() = mutable.update { it.copy(stack = listOf(Screen.Home), prompt = null) }
 
@@ -200,6 +224,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 reportRecovery(notes)
+                if (settings.showAllSaves) loadAllSaves()
             }
             SyncResult.Unauthorized -> {
                 credentials.clear()
@@ -249,12 +274,48 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         when (result) {
             is SyncResult.Ok -> {
                 mutable.update { it.copy(loaded = it.loaded + (key to result.value)) }
-                if (result.value.isUsable) open(Screen.SaveMenu(key))
+                if (result.value.isUsable) open(Screen.Pc(key))
                 else message(result.value.classification.summary.uppercase())
             }
             SyncResult.Unauthorized -> message("THIS DEVICE IS NO LONGER LINKED.")
             is SyncResult.Conflict -> message("THE SERVER REFUSED THE READ.")
             is SyncResult.Failed -> message(result.message.uppercase())
+        }
+    }
+
+    // ------- settings
+
+    fun setSwipeControls(enabled: Boolean) {
+        settings.swipeControls = enabled
+        mutable.update { it.copy(swipeControls = enabled) }
+    }
+
+    fun setShowAllSaves(enabled: Boolean) {
+        settings.showAllSaves = enabled
+        mutable.update { it.copy(showAllSaves = enabled) }
+        if (enabled) loadAllSaves()
+    }
+
+    /**
+     * Fetches every save on the account so they can be shown as one list. A
+     * save that fails to load is skipped rather than failing the whole view;
+     * the ones that did load are still worth showing.
+     */
+    fun loadAllSaves() = viewModelScope.launch {
+        if (mutable.value.loadingAll) return@launch
+        val remotes = mutable.value.saves
+        if (remotes.isEmpty()) return@launch
+        mutable.update { it.copy(loadingAll = true) }
+        val fetched = withContext(Dispatchers.IO) {
+            remotes.mapNotNull { remote ->
+                (saves.load(remote) as? SyncResult.Ok)?.value?.takeIf { it.isUsable }
+            }
+        }
+        mutable.update { state ->
+            state.copy(
+                loaded = state.loaded + fetched.associateBy { it.key },
+                loadingAll = false,
+            )
         }
     }
 

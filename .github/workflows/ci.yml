@@ -3,7 +3,9 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # Every branch, so a build of any work in progress is downloadable from
+    # the Actions tab without cutting a release.
+    branches: ['**']
   workflow_dispatch:
 
 concurrency:
@@ -59,7 +61,7 @@ jobs:
       - name: Upload the debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Gen1Storage-debug
+          name: Gen1Storage-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14

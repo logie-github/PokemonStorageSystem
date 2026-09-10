@@ -1,6 +1,5 @@
 package com.logie.gen1storage.sprites
 
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.logie.gen1storage.pokemon.Gen1Data
 import kotlinx.coroutines.Dispatchers
@@ -23,15 +22,17 @@ data class SpriteProgress(
 }
 
 /**
- * Fetches the Generation I front sprites and stores a small copy of each.
+ * Fetches the Generation I front sprites and stores them exactly as downloaded.
  *
- * The archive's images are around 2000 pixels square. Kept at that size they
- * would be roughly 24 MB on disk and 16 MB of heap every time one was decoded,
- * for a slot a hundred pixels across. Each is therefore subsampled as it is
- * decoded — `inSampleSize` is applied during decode, so the full-size bitmap is
- * never allocated at all — and re-encoded at a size the screen can actually
- * use. Subsampling by a power of two and drawing unfiltered keeps the pixel
- * edges hard.
+ * The enlarged art is kept at full size on purpose. It is a nearest-neighbour
+ * upscale of a small sprite, so re-encoding it smaller would have to resample
+ * it, and every general-purpose downscale averages neighbouring pixels — which
+ * is precisely what softens pixel art. Keeping the file intact leaves the
+ * decision to display time, where [com.logie.gen1storage.sprites.SpriteStore]
+ * reduces it by point sampling instead and nothing is ever averaged.
+ *
+ * The cost is disk: roughly 12 MB per set. That is the price of crisp edges,
+ * and the sprites screen reports it.
  */
 class SpriteDownloader(private val store: SpriteStore) {
 
@@ -58,7 +59,7 @@ class SpriteDownloader(private val store: SpriteStore) {
                 coroutineContext.ensureActive()
                 val target = store.fileFor(set, id)
                 if (!target.isFile) {
-                    val ok = runCatching { fetchAndShrink(set, id, target) }.getOrDefault(false)
+                    val ok = runCatching { fetch(set, id, target) }.getOrDefault(false)
                     if (!ok) failed++
                 }
                 done++
@@ -68,7 +69,7 @@ class SpriteDownloader(private val store: SpriteStore) {
         SpriteProgress(done, total, failed, finished = true).also(onProgress)
     }
 
-    private fun fetchAndShrink(set: SpriteSet, speciesId: String, target: File): Boolean {
+    private fun fetch(set: SpriteSet, speciesId: String, target: File): Boolean {
         val url = URL("$BASE_URL/${set.remotePath}/${spriteFileName(speciesId)}.png")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
@@ -83,34 +84,19 @@ class SpriteDownloader(private val store: SpriteStore) {
         }
         if (bytes.isEmpty()) return false
 
-        // Measure first, so the decode never allocates the full-size bitmap.
+        // Confirm it really is an image before it lands in the sprite folder,
+        // so a proxy's error page cannot masquerade as a Pokémon.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
 
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= TARGET_PIXELS &&
-            bounds.outHeight / (sample * 2) >= TARGET_PIXELS
-        ) {
-            sample *= 2
-        }
-
-        val bitmap = BitmapFactory.decodeByteArray(
-            bytes, 0, bytes.size,
-            BitmapFactory.Options().apply {
-                inSampleSize = sample
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            },
-        ) ?: return false
-
         target.parentFile?.mkdirs()
-        val written = try {
-            target.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        } finally {
-            bitmap.recycle()
-        }
-        if (!written) {
-            target.delete()
+        // Written beside the target and renamed, so an interrupted download
+        // cannot leave a half a sprite that later looks downloaded.
+        val staged = File(target.parentFile, "${target.name}.part")
+        staged.writeBytes(bytes)
+        if (!staged.renameTo(target)) {
+            staged.delete()
             return false
         }
         return true
@@ -120,11 +106,6 @@ class SpriteDownloader(private val store: SpriteStore) {
         const val BASE_URL =
             "https://raw.githubusercontent.com/ShiraTheMogul/rby-sprites-project/main"
 
-        /**
-         * The smallest stored edge. A sprite slot is around 96dp, which is 288
-         * pixels at 3x, so this leaves headroom without keeping anything near
-         * the source's two thousand.
-         */
-        const val TARGET_PIXELS = 320
+
     }
 }

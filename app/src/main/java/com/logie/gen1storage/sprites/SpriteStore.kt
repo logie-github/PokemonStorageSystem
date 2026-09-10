@@ -12,10 +12,16 @@ import java.util.Collections
 /**
  * Sprites on disk, and which set each species is shown in.
  *
- * The archive's images are large — around 2000 pixels square, which is roughly
- * 16 MB once decoded — so nothing here ever decodes one at full size. The
- * download step subsamples on the way in (see [SpriteDownloader]) and this only
- * ever reads the small copies it left behind.
+ * The files are the archive's enlarged art, untouched. Reducing them for the
+ * screen happens here, and it is deliberately **point sampling**: every
+ * ordinary downscale — `inSampleSize`, `createScaledBitmap` with filtering,
+ * Skia's default — averages neighbouring pixels, which is exactly what turns a
+ * hard pixel edge into a soft one. Taking one source pixel per destination
+ * pixel keeps every edge as sharp as the original upscale.
+ *
+ * A full-size decode is around 16 MB, so it happens once per sprite, is
+ * reduced immediately, and the large bitmap is recycled before returning. Only
+ * the reduced copies are cached.
  */
 class SpriteStore(
     private val directory: File,
@@ -28,13 +34,13 @@ class SpriteStore(
     )
 
     /**
-     * Decoded sprites, capped so a long list cannot grow without bound. The
-     * small stored copies are a few tens of kilobytes each, so this is a
-     * modest ceiling in practice.
+     * Reduced sprites, kept by least-recently-used. Each is a few hundred
+     * kilobytes of heap rather than the source's sixteen megabytes, so a
+     * generous cache still costs little.
      */
     private val memory: MutableMap<String, ImageBitmap> =
-        Collections.synchronizedMap(object : LinkedHashMap<String, ImageBitmap>(64, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > 180
+        Collections.synchronizedMap(object : LinkedHashMap<String, ImageBitmap>(48, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > 60
         })
 
     fun fileFor(set: SpriteSet, speciesId: String): File =
@@ -90,16 +96,37 @@ class SpriteStore(
         memory[key]?.let { return it }
         val file = fileFor(set, speciesId)
         if (!file.isFile) return null
-        val bitmap = runCatching {
+
+        val full = runCatching {
             BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
-                // The stored copies are already small; ARGB_8888 keeps the
-                // palette's hard edges rather than dithering them.
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
         }.getOrNull() ?: return null
-        val image = bitmap.asImageBitmap()
+
+        val reduced = runCatching { pointSample(full) }.getOrNull()
+        if (reduced !== full) full.recycle()
+        val image = (reduced ?: return null).asImageBitmap()
         memory[key] = image
         return image
+    }
+
+    /**
+     * Reduces by taking one source pixel per destination pixel, never a blend.
+     *
+     * The divisor is a whole number, so each destination pixel lands on a
+     * consistent position within the source's upscale blocks and the result is
+     * the same art at a smaller size rather than a smeared version of it.
+     * `createScaledBitmap` is called with filtering off, which is Android's
+     * nearest-neighbour path.
+     */
+    private fun pointSample(source: Bitmap): Bitmap {
+        val longest = maxOf(source.width, source.height)
+        if (longest <= DISPLAY_PIXELS) return source
+        val divisor = longest / DISPLAY_PIXELS
+        if (divisor <= 1) return source
+        val width = (source.width / divisor).coerceAtLeast(1)
+        val height = (source.height / divisor).coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(source, width, height, false)
     }
 
     fun clear() {
@@ -110,5 +137,12 @@ class SpriteStore(
 
     private companion object {
         const val KEY_PREFIX = "set-for-"
+
+        /**
+         * The longest edge kept in memory. A sprite slot is about 96dp — 288
+         * pixels on a 3x screen — so this holds well above what any display
+         * needs while staying far below the source's two thousand.
+         */
+        const val DISPLAY_PIXELS = 480
     }
 }

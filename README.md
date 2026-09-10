@@ -73,6 +73,26 @@ and what gets written back, so fields this app has never heard of — a mod's, a
 importer's `typeBytes`, a future upstream addition — survive a round trip
 untouched. Provenance is kept beside the Pokémon, never inside it.
 
+## Sprites
+
+DOWNLOAD SPRITES fetches the Generation I front sprites once, on request, and
+they are then stored on the device. A Pokémon is drawn in the art of the game
+it came from — a Red or Blue save gets the Red/Blue set, Yellow gets Yellow's —
+and a long press on any sprite pins that species to a different game instead.
+
+The art is kept at the size it is published, and reduced for the screen by
+**point sampling**: one source pixel per destination pixel, never a blend.
+Every ordinary downscale averages neighbouring pixels, which is exactly what
+softens a hard pixel edge, so nothing here uses one. The cost is disk — roughly
+25 MB for both sets — which is the price of the edges staying sharp.
+
+Sprite art comes from [the RBY Sprites Project by
+ShiraTheMogul](https://github.com/ShiraTheMogul/rby-sprites-project), which
+documents the Generation I sprite sets and asks only that the repository be
+credited. This app ships none of that art; it is downloaded on the player's
+request and stored only on their own device.
+
+
 ## Getting access to your saves
 
 1. In Gen1Recomp, open **SAVE SYNC** and make sure the device is linked. Tap
@@ -149,6 +169,7 @@ Debug builds sign themselves with the local debug key and need none of this.
 | `lua` | The Gen1Recomp save grammar: value model, parser, writer, byte-safe text |
 | `sync` | The save-sync client, the linked account's credentials, and the save catalogue with its local backups |
 | `gen1recomp` | Save parsing, classification and validation |
+| `sprites` | Sprite download, storage, per-species art choice |
 | `pokemon` | Generation I Pokémon representation, species and move tables, stat maths |
 | `storage` | The app's own PC and its provenance records |
 | `transfer` | Deposit and withdraw transactions, journalling and crash recovery |

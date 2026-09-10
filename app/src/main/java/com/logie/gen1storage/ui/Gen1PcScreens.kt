@@ -122,6 +122,7 @@ fun StorageSystemScreen(
     onSelect: (Int) -> Unit,
     onWithdraw: () -> Unit,
     onDeposit: () -> Unit,
+    onMove: () -> Unit,
     onRelease: () -> Unit,
     onChangeBox: () -> Unit,
     onExit: () -> Unit,
@@ -137,9 +138,10 @@ fun StorageSystemScreen(
             Gen1Frame(Modifier.fillMaxWidth(0.72f)) {
                 Gen1MenuRow("WITHDRAW PKMN", selected == 0, { onSelect(0) }, onWithdraw)
                 Gen1MenuRow("DEPOSIT PKMN", selected == 1, { onSelect(1) }, onDeposit)
-                Gen1MenuRow("RELEASE PKMN", selected == 2, { onSelect(2) }, onRelease)
-                Gen1MenuRow("CHANGE BOX", selected == 3, { onSelect(3) }, onChangeBox)
-                Gen1MenuRow("SEE YA!", selected == 4, { onSelect(4) }, onExit)
+                Gen1MenuRow("MOVE PKMN", selected == 2, { onSelect(2) }, onMove)
+                Gen1MenuRow("RELEASE PKMN", selected == 3, { onSelect(3) }, onRelease)
+                Gen1MenuRow("CHANGE BOX", selected == 4, { onSelect(4) }, onChangeBox)
+                Gen1MenuRow("SEE YA!", selected == 5, { onSelect(5) }, onExit)
             }
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {

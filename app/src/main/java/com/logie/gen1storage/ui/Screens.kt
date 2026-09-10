@@ -349,6 +349,7 @@ fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
             if (save == null) model.prompt(Prompt.Message(listOf("OPEN A SAVE FROM ACCESS SAVE FIRST.")))
             else mode = PcMode.DEPOSIT
         },
+        onMove = { mode = PcMode.MOVE },
         onRelease = {
             model.prompt(
                 Prompt.Message(
@@ -439,6 +440,43 @@ fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
                     },
                 )
             })
+            PcMode.MOVE -> ({
+                // Deliberately cannot transfer: MOVE only rearranges the PC and
+                // opens a status screen, so there is no way to reach a save
+                // from here by accident.
+                MonListOverlay(
+                    entries = stored.map { pokemonRowLabel(it.pokemon) to pokemonRowLevel(it.pokemon) },
+                    selected = listCursor,
+                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < stored.size } },
+                    onConfirm = { chosen = it },
+                    onCancel = { mode = PcMode.MENU },
+                    emptyMessage = "What? There are no POKéMON here!",
+                    action = {
+                        val pick = chosen?.let { stored.getOrNull(it) }
+                        if (pick != null) {
+                            MonActionOverlay(
+                                actionLabel = "MOVE",
+                                selected = actionCursor,
+                                onSelect = { actionCursor = it },
+                                onAction = {
+                                    model.prompt(
+                                        Prompt.ChooseBox("MOVE TO WHICH BOX?") { target ->
+                                            model.moveStored(pick.uid, target)
+                                            chosen = null
+                                        }
+                                    )
+                                },
+                                onStats = {
+                                    model.open(
+                                        Screen.Status(null, state.currentStorageBox, stored.indexOf(pick))
+                                    )
+                                },
+                                onCancel = { chosen = null },
+                            )
+                        }
+                    },
+                )
+            })
             PcMode.CHANGE_BOX -> ({
                 ChangeBoxOverlay(
                     boxes = state.storage.boxes.map {
@@ -454,7 +492,7 @@ fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
     )
 }
 
-private enum class PcMode { MENU, WITHDRAW, DEPOSIT, CHANGE_BOX }
+private enum class PcMode { MENU, WITHDRAW, DEPOSIT, MOVE, CHANGE_BOX }
 
 @Composable
 fun SavePartyScreen(state: UiState, model: StorageViewModel, key: String) {
@@ -691,7 +729,10 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
                 Gen1Frame {
                     Gen1Field("ON THIS DEVICE", "${state.spritesInstalled} SPRITES")
                     if (state.spritesInstalled > 0) {
-                        Gen1Field("SPACE USED", "${model.spriteBytesOnDisk() / 1024} KB")
+                        Gen1Field("SPACE USED", "${model.spriteBytesOnDisk() / (1024 * 1024)} MB")
+                    } else {
+                        // Full-size art, so the download is worth naming up front.
+                        GbText("ABOUT 25 MB FOR BOTH GAMES.", style = Gen1TextSmall)
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -719,15 +760,6 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
                             })
                         }
                     }
-                }
-            }
-            item {
-                Gen1Frame {
-                    GbText("SPRITE ART", style = Gen1TextSmall)
-                    GbText(
-                        "THE RBY SPRITES PROJECT BY SHIRATHEMOGUL, WHICH ASKS ONLY THAT IT BE CREDITED.",
-                        style = Gen1TextSmall,
-                    )
                 }
             }
         }

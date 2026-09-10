@@ -25,9 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.platform.LocalDensity
 import android.graphics.Bitmap
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.ImageShader
@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.logie.gen1storage.R
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 import androidx.compose.material3.Text as MaterialText
 
@@ -210,85 +211,98 @@ private val Gen1BaseText = TextStyle(
 )
 
 /**
- * The screen behind the windows: the palette's own ramp, top to bottom.
+ * The screen behind the windows: the palette's ramp, top to bottom, dithered.
  *
- * Lightest at the top through to darkest at the foot, blended rather than
- * banded — four hard quarters read as a mistake, and the console's own
- * backdrops were shaded, not striped.
+ * There is no gradient here and no blending of any kind. A Game Boy could not
+ * mix two colours, so a designer wanting a tone between them alternated pixels
+ * of each and let the eye do the mixing — and the density of that alternation
+ * is what carried the shading. This does the same thing: every pixel on screen
+ * is one of the palette's own colours, and only how many of each changes as
+ * the eye travels down.
  *
- * A Game Boy could not blend two colours at all, so a designer wanting a tone
- * between them alternated pixels of each and let the eye do the mixing. That
- * is what the overlay is: a large cross on a regular grid, drawn over the
- * whole ramp so the blend reads as a screen of pixels rather than as a
- * gradient a Game Boy could never have produced.
+ * The pattern is an ordered dither against an 8x8 Bayer matrix, which is the
+ * arrangement that spreads the minority colour as evenly as possible instead of
+ * clumping it. That is what produces the sparse dots at each end and the clean
+ * checkerboard where two colours meet.
+ *
+ * The darkest shade is deliberately not in the ramp. It is the ink the windows
+ * are drawn in, and a background that reaches it leaves their rules with
+ * nothing to sit against.
  */
 @Composable
 fun Modifier.gen1Ground(): Modifier {
     val palette = Gen1Palette.palette
-    return this
-        .background(
-            Brush.verticalGradient(
-                listOf(palette.lightest, palette.light, palette.dark, palette.darkest)
-            )
-        )
-        .background(gen1DitherBrush())
+    val unit = with(LocalDensity.current) {
+        (density.roundToInt() * DITHER_SCALE).coerceAtLeast(2)
+    }
+    // Remembered so the draw cache is not handed a fresh array — and a fresh
+    // reason to rebuild the whole ramp — on every recomposition.
+    val ramp = remember(palette) {
+        intArrayOf(palette.lightest.toArgb(), palette.light.toArgb(), palette.dark.toArgb())
+    }
+    return this.drawWithCache {
+        val heightPx = size.height.roundToInt().coerceAtLeast(1)
+        val image = ditherRamp(unit, heightPx, ramp)
+        // Repeated across, clamped down: the strip is already the full height,
+        // so only the horizontal axis has anything to tile.
+        val brush = ShaderBrush(ImageShader(image, TileMode.Repeated, TileMode.Clamp))
+        onDrawBehind { drawRect(brush) }
+    }
 }
 
 /**
- * The dither pattern on its own, over a transparent ground so it can be laid
- * on top of anything.
+ * One Bayer tile wide and the full height tall, so the whole ramp is a single
+ * strip the shader repeats sideways.
  *
- * Drawn as a repeating shader over one tile rather than as thousands of little
- * rectangles, so the whole background costs a single draw call however large
- * the screen is. The tile is built in device pixels and repeated at 1:1, which
- * is what keeps every cross square.
+ * Each row sits somewhere between two of the ramp's colours. A pixel takes the
+ * later colour when that fraction clears the matrix's threshold for its
+ * position, so at the start of a band almost none do, halfway through exactly
+ * half do in a checkerboard, and by the end almost all do.
  */
-@Composable
-fun gen1DitherBrush(): Brush {
-    val palette = Gen1Palette.palette
-    val unit = with(LocalDensity.current) { density.roundToInt().coerceAtLeast(1) }
-    val mark = palette.darkest.copy(alpha = DITHER_ALPHA).toArgb()
-    val tile = remember(mark, unit) { ditherTile(unit, mark) }
-    return remember(tile) {
-        ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
-    }
-}
+private fun ditherRamp(unit: Int, heightPx: Int, ramp: IntArray): ImageBitmap {
+    val width = BAYER_SIDE * unit
+    val pixels = IntArray(width * heightPx)
+    val bands = ramp.size - 1
+    val thresholds = FloatArray(BAYER_SIDE)
 
-/**
- * One cell of the pattern: sixteen design pixels square, with a five-by-five
- * cross at its centre two pixels thick, drawn a design pixel at a time.
- */
-private fun ditherTile(unit: Int, mark: Int): ImageBitmap {
-    val cells = DITHER_CELLS
-    val side = cells * unit
-    val pixels = IntArray(side * side)
+    for (y in 0 until heightPx) {
+        val position = if (heightPx <= 1) 0f else y.toFloat() / (heightPx - 1)
+        val travelled = position * bands
+        val band = floor(travelled).toInt().coerceIn(0, bands - 1)
+        val into = travelled - band
+        val low = ramp[band]
+        val high = ramp[band + 1]
 
-    fun block(cellX: Int, cellY: Int) {
-        if (cellX !in 0 until cells || cellY !in 0 until cells) return
-        for (y in 0 until unit) {
-            val row = (cellY * unit + y) * side
-            for (x in 0 until unit) pixels[row + cellX * unit + x] = mark
+        val cellY = (y / unit) % BAYER_SIDE
+        for (cellX in 0 until BAYER_SIDE) {
+            thresholds[cellX] = (BAYER_8X8[cellY * BAYER_SIDE + cellX] + 0.5f) / BAYER_LEVELS
+        }
+
+        val row = y * width
+        for (x in 0 until width) {
+            pixels[row + x] = if (into > thresholds[(x / unit) % BAYER_SIDE]) high else low
         }
     }
-
-    val centre = cells / 2
-    // A thick plus: two design pixels across each arm, so it still reads as a
-    // cross at the scale a phone screen actually shows it.
-    for (arm in -2..3) {
-        for (thickness in 0..1) {
-            block(centre + arm, centre + thickness)
-            block(centre + thickness, centre + arm)
-        }
-    }
-
-    return Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888).asImageBitmap()
+    return Bitmap.createBitmap(pixels, width, heightPx, Bitmap.Config.ARGB_8888).asImageBitmap()
 }
 
-/** Design pixels across one dither cell. Large, as the console's own were. */
-private const val DITHER_CELLS = 16
+/** Device pixels per dither pixel, as a multiple of the screen's density. */
+private const val DITHER_SCALE = 2
 
-/** How strongly the crosses read against the ramp behind them. */
-private const val DITHER_ALPHA = 0.22f
+private const val BAYER_SIDE = 8
+private const val BAYER_LEVELS = (BAYER_SIDE * BAYER_SIDE).toFloat()
+
+/** The standard 8x8 ordered-dither matrix, 0..63. */
+private val BAYER_8X8 = intArrayOf(
+    0, 32, 8, 40, 2, 34, 10, 42,
+    48, 16, 56, 24, 50, 18, 58, 26,
+    12, 44, 4, 36, 14, 46, 6, 38,
+    60, 28, 52, 20, 62, 30, 54, 22,
+    3, 35, 11, 43, 1, 33, 9, 41,
+    51, 19, 59, 27, 49, 17, 57, 25,
+    15, 47, 7, 39, 13, 45, 5, 37,
+    63, 31, 55, 23, 61, 29, 53, 21,
+)
 
 @Composable
 fun Gen1Theme(content: @Composable () -> Unit) {

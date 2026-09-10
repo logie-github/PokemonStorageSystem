@@ -175,14 +175,23 @@ The windows are the exception: they stay black on white whatever the screen is
 tinted, which is how the cartridge draws its text boxes. BLACK ON WHITE BOXES
 turns that off, and the windows then take the palette too.
 
-The screen behind them is the palette's own ramp top to bottom — lightest at the
-top through to darkest at the foot — blended rather than banded, with a large
-cross on a regular grid laid over the whole of it. A Game Boy could not blend
+The screen behind them is the palette's ramp top to bottom — lightest, light,
+dark — with no gradient and no blending anywhere in it. A Game Boy could not mix
 two colours at all: a designer wanting a tone between them alternated pixels of
-each and let the eye do the mixing, and the dither is what keeps a gradient the
-hardware could never have produced reading as a screen of pixels. It is drawn
-as a repeating shader over one tile, so the whole background is a single draw
-call.
+each and let the eye do the mixing, and the density of that alternation is what
+carried the shading. So that is what this does. Every pixel on screen is one of
+the palette's own colours, and only how many of each changes on the way down.
+
+The pattern is an ordered dither against an 8x8 Bayer matrix, the arrangement
+that spreads the minority colour as evenly as it can rather than clumping it —
+sparse dots at each end of a band, a clean checkerboard where two colours meet.
+It is generated as one strip a single Bayer tile wide and the full height tall,
+which a shader repeats sideways, so the whole background is one draw call and
+one small bitmap.
+
+The darkest shade is deliberately not in that ramp. It is the ink the windows
+are drawn in, and a background reaching it would leave their rules nothing to
+sit against.
 
 ## Getting access to your saves
 

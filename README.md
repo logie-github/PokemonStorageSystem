@@ -30,10 +30,10 @@ are deliberately out of scope.
   is still recoverable by hand.
 - Keeps provenance for everything it stores: which game, trainer, slot and
   place it came from, and when.
-- Opens on the PC's own storage menu: WITHDRAW PKMN, DEPOSIT PKMN, VIEW POKéMON,
-  OPTIONS. VIEW POKéMON is the browse side, where a stored Pokémon can be moved
-  between boxes, looked at, or released. The box is changed by tapping the
-  BOX No. window.
+- Opens on the PC's own storage menu: WITHDRAW PKMN, DEPOSIT PKMN, VIEW BOXES,
+  CHANGE CART, OPTIONS. VIEW BOXES is the browse side, where a stored Pokémon
+  can be moved between boxes, looked at, or released. The box is changed by
+  tapping the BOX No. window.
 - Never browses saves. A save is named only when a transfer needs one —
   DEPOSIT asks which save it is taking from, WITHDRAW asks which it is putting
   into — and as the provenance of a stored Pokémon. Turning ALL POKéMON on puts
@@ -208,10 +208,11 @@ outline rather than on a plate, so it stays readable without hiding the art.
 
 ## Controls
 
-Tapping works throughout: one tap on a menu row takes it. Swipe controls, off
-by default, add a second way in that never fights the first, because everything
-but one gesture is read only in empty space — off the windows, on the screen
-itself:
+Tapping works throughout: one tap on a menu row takes it. The gestures below
+are always on, and are not a setting — none of them competes with tapping,
+because everything but the hold is read only in empty space, off the windows
+and on the screen itself. A toggle would only ever have meant "does empty space
+do anything", which is not a question worth putting to anyone.
 
 | Gesture | |
 | --- | --- |

@@ -140,9 +140,9 @@ private fun StorageApp(model: StorageViewModel) {
             // The system bars are hidden, so only the camera cutout is still
             // something the interface has to stay out of.
             .displayCutoutPadding()
-            // Off unless the player turns them on in OPTIONS; the app is
-            // tappable either way, so this only adds a second way in.
-            .gen1Gestures(state.swipeControls, windows::isFreeSpace) { button ->
+            // Always on. Everything but the hold is read only in empty space,
+            // so this never takes a gesture a window wanted.
+            .gen1Gestures(windows::isFreeSpace) { button ->
                 when (button) {
                     // Back, from anywhere. At the top of the stack this does
                     // nothing rather than closing the app — a hold should never

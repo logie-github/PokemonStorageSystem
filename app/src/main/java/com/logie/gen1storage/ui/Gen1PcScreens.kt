@@ -85,7 +85,7 @@ fun Gen1DialogueBox(
 /**
  * The storage system's menu.
  *
- * WITHDRAW and DEPOSIT are the cartridge's own two rows. VIEW POKéMON is the
+ * WITHDRAW and DEPOSIT are the cartridge's own two rows. VIEW BOXES is the
  * browse-and-rearrange side, and RELEASE lives in the window that opens on a
  * chosen Pokémon rather than on the menu, where it was one tap from
  * everything else.
@@ -110,7 +110,7 @@ fun StorageSystemScreen(
     val rows: List<Pair<String, () -> Unit>> = buildList {
         add("WITHDRAW PKMN" to onWithdraw)
         add("DEPOSIT PKMN" to onDeposit)
-        add("VIEW POKéMON" to onView)
+        add("VIEW BOXES" to onView)
         add("CHANGE CART" to onChangeCart)
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add("OPTIONS" to onOptions)

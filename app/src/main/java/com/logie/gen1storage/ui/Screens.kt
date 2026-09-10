@@ -616,14 +616,8 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                 GbText("CONTROLS")
-                Spacer(Modifier.height(4.dp))
-                Gen1Toggle(
-                    label = "SWIPE CONTROLS",
-                    on = state.swipeControls,
-                    onToggle = { model.setSwipeControls(!state.swipeControls) },
-                )
                 GbText(
-                    "SWIPE FOR THE D-PAD, TAP FOR A, TAP AND HOLD FOR B, DOUBLE TAP FOR START, TAP THEN HOLD FOR SELECT.",
+                    "SWIPE TO MOVE THE CURSOR, TAP TO TAKE WHAT IT IS ON, DOUBLE TAP FOR OPTIONS, TAP AND HOLD TO GO BACK. TAPPING A MENU ROW TAKES IT DIRECTLY.",
                     style = Gen1TextSmall,
                 )
                 Spacer(Modifier.height(10.dp))

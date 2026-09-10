@@ -86,7 +86,6 @@ data class UiState(
     val prompt: Prompt? = null,
     val lastSyncedAtMillis: Long? = null,
     val currentStorageBox: Int = 1,
-    val swipeControls: Boolean = false,
     val showAllSaves: Boolean = false,
     /** The [GbPalette] id everything is drawn through. */
     val paletteId: String = GbPalette.ORIGINAL.id,
@@ -142,7 +141,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 storage = storage.state(),
                 linked = credentials.isLinked,
-                swipeControls = settings.swipeControls,
                 showAllSaves = settings.showAllSaves,
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
@@ -372,11 +370,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
 
     // ------- settings
-
-    fun setSwipeControls(enabled: Boolean) {
-        settings.swipeControls = enabled
-        mutable.update { it.copy(swipeControls = enabled) }
-    }
 
     /**
      * Picks the palette. The sprites are recoloured through the same ramp, so

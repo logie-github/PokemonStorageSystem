@@ -12,11 +12,6 @@ class AppSettings(private val prefs: SharedPreferences) {
     constructor(context: Context) :
         this(context.getSharedPreferences("gen1storage-settings", Context.MODE_PRIVATE))
 
-    /** Swipe controls, in the shape the TM35 Metronome mod defines them. */
-    var swipeControls: Boolean
-        get() = prefs.getBoolean(KEY_SWIPE, false)
-        set(value) = prefs.edit().putBoolean(KEY_SWIPE, value).apply()
-
     /**
      * Load every save on the account at once and show one combined list, so a
      * Pokémon can be found without remembering which playthrough it is in.
@@ -44,7 +39,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_WINDOW_PALETTE, value).apply()
 
     private companion object {
-        const val KEY_SWIPE = "swipe-controls"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"

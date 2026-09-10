@@ -15,7 +15,13 @@ import kotlin.math.abs
 enum class GbButton { UP, DOWN, LEFT, RIGHT, A, B, START, SELECT }
 
 /**
- * Swipe controls, off by default.
+ * How the app is driven, alongside tapping.
+ *
+ * Not a setting. There is nothing to turn off, because none of it competes
+ * with tapping: everything but the hold is read only in empty space, so a tap
+ * on a menu row is always that row's. A toggle would only ever have been a
+ * toggle for "does empty space do anything", which is not a question worth
+ * putting to anyone.
  *
  * The vocabulary is the TM35 Metronome mod's, and its thresholds, so muscle
  * memory carries over from the game:
@@ -36,11 +42,10 @@ enum class GbButton { UP, DOWN, LEFT, RIGHT, A, B, START, SELECT }
  * so the feel is the same on a small phone and on an unfolded one.
  */
 fun Modifier.gen1Gestures(
-    enabled: Boolean,
     isFreeSpace: (Offset) -> Boolean,
     onButton: (GbButton) -> Unit,
-): Modifier = if (!enabled) this else this.then(
-    Modifier.pointerInput(enabled) {
+): Modifier = this.then(
+    Modifier.pointerInput(Unit) {
         val shortSide = minOf(size.width, size.height).toFloat()
         val swipeThreshold = maxOf(MIN_SWIPE_PX, shortSide * SWIPE_RATIO)
         val tapSlop = maxOf(MIN_TAP_SLOP_PX, shortSide * TAP_SLOP_RATIO)

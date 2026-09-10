@@ -17,76 +17,48 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * The Generation I text-box frame.
+ * The Generation I window.
  *
- * The cartridge draws it from tiles: an outer rule, a one-pixel gap, an inner
- * rule, and a small bead at each corner where the two meet. Reproducing it as
- * geometry rather than as a bitmap keeps it exact at any density — there is no
- * source image to resample, so nothing can blur or half-pixel.
+ * One tile of border on every side, drawn from the cartridge's own tiles (see
+ * [drawGen1Border]), over a flat panel. Content is inset past the border, so a
+ * caller never has to know how thick it is.
  */
 @Composable
 fun Gen1Frame(
     modifier: Modifier = Modifier,
     fill: Color = Gen1Palette.Panel,
     ink: Color = Gen1Palette.Ink,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val pixel = gen1PixelPx().toFloat()
     Column(
         modifier
             .background(fill)
-            .drawBehind { drawGen1Border(ink) }
+            .drawBehind { drawGen1Border(ink, pixel) }
+            .padding(gen1Dp(GEN1_TILE - 2))
             .padding(contentPadding),
         content = content,
     )
 }
 
-/** The same frame as a Box, for screens that position their own children. */
+/** The same window as a Box, for screens that position their own children. */
 @Composable
 fun Gen1FrameBox(
     modifier: Modifier = Modifier,
     fill: Color = Gen1Palette.Panel,
     ink: Color = Gen1Palette.Ink,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     content: @Composable () -> Unit,
 ) {
+    val pixel = gen1PixelPx().toFloat()
     Box(
         modifier
             .background(fill)
-            .drawBehind { drawGen1Border(ink) }
+            .drawBehind { drawGen1Border(ink, pixel) }
+            .padding(gen1Dp(GEN1_TILE - 2))
             .padding(contentPadding),
     ) { content() }
-}
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGen1Border(ink: Color) {
-    // One design pixel per step of the border scale, read here rather than
-    // passed in: a draw lambda is not a composable and cannot observe state
-    // any other way.
-    val unit = (1.dp * Gen1Metrics.border).toPx()
-    val gap = unit * 2
-    val bead = unit * 2
-
-    fun rect(inset: Float) {
-        val size = Size(this.size.width - inset * 2, this.size.height - inset * 2)
-        // Four edges rather than a stroked rect: a stroke centres on the path
-        // and would straddle the boundary at fractional densities.
-        drawRect(ink, Offset(inset, inset), Size(size.width, unit))
-        drawRect(ink, Offset(inset, inset + size.height - unit), Size(size.width, unit))
-        drawRect(ink, Offset(inset, inset), Size(unit, size.height))
-        drawRect(ink, Offset(inset + size.width - unit, inset), Size(unit, size.height))
-    }
-
-    rect(0f)
-    rect(gap)
-
-    // The corner beads: the tile where the two rules join is solid.
-    val corners = listOf(
-        Offset(0f, 0f),
-        Offset(size.width - bead, 0f),
-        Offset(0f, size.height - bead),
-        Offset(size.width - bead, size.height - bead),
-    )
-    corners.forEach { drawRect(ink, it, Size(bead, bead)) }
 }
 
 /**
@@ -97,7 +69,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGen1Border(ink:
 fun Gen1CornerRule(
     modifier: Modifier = Modifier,
     ink: Color = Gen1Palette.Ink,
-    thickness: Dp = 2.dp * Gen1Metrics.border,
+    thickness: Dp = gen1Dp(1),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(

@@ -554,16 +554,6 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         }
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                GbText("SIZE")
-                Spacer(Modifier.height(4.dp))
-                ScaleRow("TEXT", state.textScale, model::setTextScale)
-                ScaleRow("BORDERS", state.borderScale, model::setBorderScale)
-                ScaleRow("STATUS PAGES", state.statusScale, model::setStatusScale)
-                ScaleRow("SPRITES", state.spriteScale, model::setSpriteScale)
-            }
-        }
-        item {
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                 GbText("COLOUR")
                 GbText("THE SCREEN AND THE SPRITES.", style = Gen1TextSmall)
                 Spacer(Modifier.height(4.dp))
@@ -743,40 +733,6 @@ fun CreditsScreen() {
 }
 
 /**
- * One scale, as the four multiples side by side with the current one marked.
- *
- * Four buttons rather than a slider: these are whole steps, and a control that
- * can land between them would be lying about what it does.
- */
-@Composable
-private fun ScaleRow(label: String, current: Int, onChoose: (Int) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 44.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        GbText(label, modifier = Modifier.weight(1f), maxLines = 1)
-        Gen1Metrics.CHOICES.forEach { scale ->
-            Box(
-                Modifier
-                    .padding(start = 6.dp)
-                    .background(if (scale == current) Gen1Palette.Ink else Gen1Palette.Panel)
-                    .padding(2.dp)
-                    .background(if (scale == current) Gen1Palette.Ink else Gen1Palette.Panel)
-                    .gen1Clickable { onChoose(scale) }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            ) {
-                GbText(
-                    "${scale}x",
-                    style = Gen1Text.copy(
-                        color = if (scale == current) Gen1Palette.Panel else Gen1Palette.Ink,
-                    ),
-                )
-            }
-        }
-    }
-}
-
-/**
  * The only place a save is named.
  *
  * A save is shown by its game and trainer — the playthrough id it is really
@@ -835,14 +791,27 @@ private fun Gen1Toggle(label: String, on: Boolean, onToggle: () -> Unit) {
     Gen1MenuRow(label, selected = on, onSelect = onToggle, onConfirm = onToggle, trailing = if (on) "ON" else "OFF")
 }
 
+/**
+ * A column of windows over the screen.
+ *
+ * The right inset is deliberately larger than the left: nothing in this
+ * interface should reach both edges of the screen at once, and leaving a strip
+ * of the dithered ground showing down one side is what keeps a list of windows
+ * looking like windows.
+ */
 @Composable
 fun ScreenColumn(content: LazyListScope.() -> Unit) {
     LazyColumn(
         Modifier
             .fillMaxSize()
             .gen1Ground(),
-        contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(
+            start = gen1Dp(2),
+            end = gen1Dp(10),
+            top = gen1Dp(2),
+            bottom = gen1Dp(6),
+        ),
+        verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
         content = content,
     )
 }
@@ -854,7 +823,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
         Modifier
             .fillMaxSize()
             .background(Gen1Palette.Surround.copy(alpha = 0.85f))
-            .padding(16.dp),
+            .padding(gen1Dp(4)),
         contentAlignment = Alignment.Center,
     ) {
         when (prompt) {

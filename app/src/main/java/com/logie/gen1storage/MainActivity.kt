@@ -34,7 +34,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
-import com.logie.gen1storage.ui.Gen1Metrics
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
@@ -99,10 +98,6 @@ private fun StorageApp(model: StorageViewModel) {
     SideEffect {
         Gen1Palette.palette = GbPalette.fromId(state.paletteId)
         Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
-        Gen1Metrics.text = state.textScale
-        Gen1Metrics.border = state.borderScale
-        Gen1Metrics.status = state.statusScale
-        Gen1Metrics.sprite = state.spriteScale
     }
 
     // The game can save at any moment, and every revision this app is holding

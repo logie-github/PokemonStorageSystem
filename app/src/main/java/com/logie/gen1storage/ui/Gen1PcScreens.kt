@@ -114,30 +114,25 @@ fun StorageSystemScreen(
         if (onOptions != null) add("OPTIONS" to onOptions)
     }
 
-    // Four layers, bottom to top: the menu and the box window, then whatever
-    // list is open over the bottom right, then the message window over its
-    // bottom left, and finally the small action window over all of it. The
-    // order is the whole point — the message has to stay readable behind a
-    // list, and the action window has to sit above both.
+    // Laid out as the cartridge lays it out, and layered in that order too.
+    // The menu sits in the top left. A list opens over it from the right,
+    // covering most of it but leaving the first letters of each row showing.
+    // The message window is along the bottom left and the box window bottom
+    // right, both above the list. The window that opens on a chosen Pokémon is
+    // last of all, over the same bottom-right corner.
+    //
+    // Nothing here is the width of the screen. Every window is sized to what is
+    // in it or to a fraction of the screen, which is what keeps it reading as
+    // a console rather than as a page.
     Box(
         Modifier
             .fillMaxSize()
             .gen1Ground()
-            .padding(12.dp),
+            .padding(gen1Dp(2)),
     ) {
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.End) {
-            // The window sits against the right edge, as the cartridge puts it;
-            // the rows inside it stay left-aligned so the cursor column lines up.
-            Gen1Frame(Modifier.fillMaxWidth(0.72f)) {
-                rows.forEachIndexed { index, (label, action) ->
-                    Gen1MenuRow(label, selected == index, { onSelect(index) }, action)
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Gen1Frame(Modifier.gen1Clickable(onClick = onChangeBox)) {
-                GbText("BOX No. $boxNumber")
-                GbText(boxName.uppercase(), style = Gen1TextSmall)
-                GbText("TAP TO CHANGE", style = Gen1TextSmall)
+        Gen1Frame(Modifier.align(Alignment.TopStart).fillMaxWidth(MENU_WIDTH)) {
+            rows.forEachIndexed { index, (label, action) ->
+                Gen1MenuRow(label, selected == index, { onSelect(index) }, action)
             }
         }
 
@@ -149,9 +144,26 @@ fun StorageSystemScreen(
             Gen1Frame(Modifier.wrapContentWidth()) { GbText(message, style = Gen1Text) }
         }
 
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+            Gen1Frame(
+                Modifier
+                    .wrapContentWidth()
+                    .gen1Clickable(onClick = onChangeBox)
+            ) {
+                GbText("BOX No. $boxNumber")
+                GbText(boxName.uppercase(), style = Gen1TextSmall)
+            }
+        }
+
         action?.invoke()
     }
 }
+
+/** Wide enough for the menu's own labels and no wider. */
+private const val MENU_WIDTH = 0.62f
+
+/** How much of the screen a list covers, opening from the right. */
+private const val LIST_WIDTH = 0.74f
 
 /**
  * One row of a Pokémon list. [header] labels the group this row starts, which
@@ -163,9 +175,11 @@ data class MonRow(val name: String, val trailing: String, val header: String? = 
 /**
  * The list a WITHDRAW, DEPOSIT or VIEW opens, drawn over the menu it came from.
  *
- * Pinned to the bottom right, which is where the cartridge puts it. The window
- * that opens on a chosen Pokémon is a separate layer above this one, so that
- * it is not clipped by the list's own bounds.
+ * It opens from the top right and covers most of the menu without hiding it —
+ * the first letters of each menu row stay visible down the left, which is what
+ * the cartridge does and what makes the two read as one screen rather than as
+ * two. The window that opens on a chosen Pokémon is a separate layer above
+ * this one, so it is not clipped by the list's own bounds.
  */
 @Composable
 fun MonListOverlay(
@@ -176,8 +190,8 @@ fun MonListOverlay(
     onCancel: () -> Unit,
     emptyMessage: String,
 ) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
-        Gen1Frame(Modifier.wrapContentWidth()) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+        Gen1Frame(Modifier.fillMaxWidth(LIST_WIDTH).padding(top = gen1Dp(4))) {
             if (entries.isEmpty()) {
                 GbText(emptyMessage)
             }
@@ -251,8 +265,8 @@ fun ChangeBoxOverlay(
     onConfirm: (Int) -> Unit,
     onCancel: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
-        Gen1Frame(Modifier.wrapContentWidth()) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+        Gen1Frame(Modifier.fillMaxWidth(LIST_WIDTH).padding(top = gen1Dp(4))) {
             LazyColumn(Modifier.heightIn(max = 380.dp)) {
                 itemsIndexed(boxes) { index, (number, name, count) ->
                     Gen1MenuRow(

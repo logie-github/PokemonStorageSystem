@@ -50,7 +50,8 @@ fun Gen1Sprite(
 
     Box(
         modifier
-            .size(48.dp * Gen1Metrics.sprite)
+            // Fifty-six Game Boy pixels, the size the games draw a front sprite.
+            .size(gen1Dp(56))
             .then(
                 if (onLongPress != null && speciesId != null) {
                     Modifier.pointerInput(speciesId) {

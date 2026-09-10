@@ -136,17 +136,42 @@ across every density Android ships, because it is the one thing the whole
 presentation rests on. Nothing is bold, either: the face has one weight, and
 asking for another has the renderer smear the glyphs sideways to fake it.
 
-## Size
+## One grid
 
-OPTIONS → SIZE carries four scales, each a whole multiple from 1x to 4x: TEXT,
-BORDERS, STATUS PAGES and SPRITES. They are separate because they do not want
-to move together — a bigger sprite on a small screen costs a stat row, and a
-heavier border costs nothing but looks wrong beside small type.
+Everything is measured in Game Boy pixels off a single grid. The type size is
+snapped to a whole multiple of eight device pixels (see **Type** above); an
+eighth of that is one Game Boy pixel, and the window borders, the sprites, the
+status pages and every gap between them are whole numbers of it. There is one
+scale for the whole interface and nothing can drift off it.
 
-The default is 2x, which is the size everything was drawn at before any of it
-was adjustable, so 1x is genuinely smaller rather than the scale only ever
-growing. Whole multiples only: a slider that could land between them would put
-the type back on fractional pixels.
+## Windows
+
+The window border is not an approximation of the Generation I one. It is tiles
+`$19`-`$1E` of `gfx/font/font_extra.png` in pret/pokered — the set
+`TextBoxGraphics` points at — transcribed a pixel at a time and checked against
+a screenshot of the PC, which it matches exactly.
+
+Every oddity in it is the cartridge's own, and reproducing those is the
+difference between the real frame and something that merely resembles it: the
+horizontal rule is one pixel, a gap, then two, while the vertical rule is one, a
+gap, then one; the left edge sits two and four pixels in while the right sits
+four and six; each corner carries a small ring and jogs its rules a pixel
+sideways to meet it; and no two corners are rotations of each other. A test
+pins all of that, because one wrong pixel still draws a plausible-looking box.
+
+A window is one tile of border on every side, as the games lay it out. The
+straight edges are uniform along their length, so each rule is a single
+rectangle however long the window is, and each corner is a dozen merged runs
+rather than sixty-four pixels.
+
+Nothing is drawn the full width of the screen. The PC screen is laid out and
+layered as the cartridge lays it out: the menu in the top left, a list opening
+over it from the right and leaving the first letters of each menu row showing,
+the message window along the bottom left and the box window bottom right above
+it, and the window that opens on a chosen Pokémon last of all over the same
+corner.
+
+## Screen
 
 The app runs full screen in every orientation and every posture. The system
 bars are hidden and stay reachable by a swipe from the edge; only the camera

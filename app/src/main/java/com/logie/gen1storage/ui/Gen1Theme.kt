@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,11 +122,17 @@ val Gen1FontFamily = FontFamily(Font(R.font.pokemon_font))
 private const val FONT_GRID_PX = 8
 
 /**
- * Roughly how tall the body em should be at one step of [Gen1Metrics.text],
- * before it is snapped to the grid. The default scale of two is the size the
- * app was drawn at before type became adjustable.
+ * How tall the body em wants to be before it is snapped to the grid.
+ *
+ * One number for the whole interface: the type, the window borders, the
+ * sprites and the status pages are all measured in Game Boy pixels off the
+ * size this settles on, so there is exactly one grid and nothing can drift off
+ * it. Three device pixels per Game Boy pixel at a typical phone density.
  */
-private val BodyEmPerStep = 6.5.dp
+private val BodyEm = 6.5.dp * UI_SCALE
+
+/** The scale everything is drawn at. */
+const val UI_SCALE = 3
 
 /** Extra line height, as a fraction of the em, before snapping. */
 private const val LEADING = 0.4f
@@ -143,7 +150,7 @@ private const val LEADING = 0.4f
 private fun pixelSize(steps: Int): Pair<TextUnit, TextUnit> {
     val density = LocalDensity.current
     return with(density) {
-        val (size, leading) = snapFontPixels((BodyEmPerStep * Gen1Metrics.text).toPx(), steps)
+        val (size, leading) = snapFontPixels(BodyEm.toPx(), steps)
         size.toFloat().toSp() to leading.toFloat().toSp()
     }
 }
@@ -168,6 +175,27 @@ internal fun snapFontPixels(bodyPx: Float, steps: Int): Pair<Int, Int> {
     val leading = size + (ceil(size * LEADING / FONT_GRID_PX).toInt() * FONT_GRID_PX)
         .coerceAtLeast(FONT_GRID_PX)
     return size to leading
+}
+
+/**
+ * One Game Boy pixel, in device pixels.
+ *
+ * The em is eight of these, so taking the snapped type size and dividing by
+ * eight gives the grid everything else is measured against — a whole number by
+ * construction, which is what keeps the borders and the sprites as square as
+ * the type.
+ */
+@Composable
+fun gen1PixelPx(): Int {
+    val density = LocalDensity.current
+    return with(density) { snapFontPixels(BodyEm.toPx(), 0).first / FONT_GRID_PX }
+}
+
+/** [gamePixels] of the shared grid, as a layout measurement. */
+@Composable
+fun gen1Dp(gamePixels: Int): Dp {
+    val pixel = gen1PixelPx()
+    return with(LocalDensity.current) { (gamePixels * pixel).toDp() }
 }
 
 /**
@@ -329,45 +357,6 @@ fun GbText(
 }
 
 /**
- * The Generation I window: a hard outer rule, a light gutter, and an inner
- * rule, over a flat panel. Every list, dialogue box and status panel in the app
- * is one of these, which is what makes the whole thing read as one machine.
- */
-@Composable
-fun Gen1Window(
-    modifier: Modifier = Modifier,
-    title: String? = null,
-    contentPadding: PaddingValues = PaddingValues(12.dp),
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
-) {
-    // Drawn as alternating fills rather than a border: modifiers paint
-    // outside-in, so a background after a border would cover it.
-    Column(
-        modifier
-            .fillMaxWidth()
-            .background(Gen1Palette.Ink)      // outer rule
-            .padding(3.dp)
-            .background(Gen1Palette.Panel)    // light gutter
-            .padding(2.dp)
-            .background(Gen1Palette.Ink)      // inner rule
-            .padding(2.dp)
-            .background(Gen1Palette.Panel)    // interior
-    ) {
-        if (title != null) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Gen1Palette.Ink)
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
-            ) {
-                GbText(title.uppercase(), style = Gen1Text.copy(color = Gen1Palette.Panel))
-            }
-        }
-        Column(Modifier.padding(contentPadding), content = content)
-    }
-}
-
-/**
  * A tap with nothing drawn under the finger.
  *
  * Material's default `clickable` paints a ripple, which on a flat four-shade
@@ -389,43 +378,6 @@ private fun Gen1Cursor(selected: Boolean) {
     Box(Modifier.width(18.dp), contentAlignment = Alignment.Center) {
         if (selected) {
             GbText("▶")
-        }
-    }
-}
-
-/**
- * A menu row. Touch-first: one tap moves the cursor onto a row, a second tap
- * confirms it — the original's cursor-then-A rhythm, without a virtual D-pad.
- */
-@Composable
-fun Gen1MenuItem(
-    label: String,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    onConfirm: () -> Unit,
-    trailing: String? = null,
-    subtitle: String? = null,
-    enabled: Boolean = true,
-) {
-    val ink = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            // No fill and no ripple: the cursor is the only thing that says
-            // what is selected, which is how the games show it.
-            .gen1Clickable(enabled) { if (selected) onConfirm() else onSelect() }
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Gen1Cursor(selected && enabled)
-        Column(Modifier.weight(1f)) {
-            GbText(label.uppercase(), style = Gen1Text.copy(color = ink), maxLines = 2)
-            if (subtitle != null) GbText(subtitle.uppercase(), style = Gen1TextSmall, maxLines = 2)
-        }
-        if (trailing != null) {
-            GbText(trailing.uppercase(), style = Gen1Text.copy(color = ink))
-            Spacer(Modifier.width(10.dp))
         }
     }
 }
@@ -453,20 +405,6 @@ fun Gen1Button(
             label.uppercase(),
             style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
         )
-    }
-}
-
-/** The dialogue box the games use for every message and confirmation. */
-@Composable
-fun Gen1Dialogue(
-    lines: List<String>,
-    modifier: Modifier = Modifier,
-    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
-) {
-    Gen1Window(modifier) {
-        lines.forEach { GbText(it.uppercase()) }
-        Spacer(Modifier.size(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), content = actions)
     }
 }
 

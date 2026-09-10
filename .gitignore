@@ -3,3 +3,8 @@
 local.properties
 **/build/
 *.iml
+captures/
+# Signing material never belongs in the repository.
+keystore.properties
+*.jks
+*.keystore

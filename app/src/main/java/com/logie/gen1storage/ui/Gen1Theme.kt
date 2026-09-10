@@ -1,0 +1,245 @@
+package com.logie.gen1storage.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Text as MaterialText
+
+/**
+ * The Generation I presentation layer.
+ *
+ * Four flat shades, hard black outlines, square corners, no gradients and no
+ * elevation. Everything is drawn with borders and solid fills so it stays crisp
+ * at any density — there is no bitmap to resample and therefore nothing to
+ * blur. Type is a monospace face at whole-pixel sizes with wide letter spacing,
+ * which reads as the Game Boy font without shipping one.
+ */
+object Gen1Palette {
+    /** The four-shade ramp, lightest to darkest. */
+    val Lightest = Color(0xFFF8F8F8)
+    val Light = Color(0xFFC8C8C8)
+    val Dark = Color(0xFF686868)
+    val Darkest = Color(0xFF101010)
+
+    /** The screen behind every window, as the console letterboxes it. */
+    val Surround = Color(0xFF303030)
+
+    val Ink = Darkest
+    val Panel = Lightest
+    val Shadow = Dark
+}
+
+val Gen1Text = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.Bold,
+    fontSize = 15.sp,
+    lineHeight = 22.sp,
+    letterSpacing = 0.6.sp,
+    color = Gen1Palette.Ink,
+)
+
+val Gen1TextSmall = Gen1Text.copy(fontSize = 12.sp, lineHeight = 17.sp, color = Gen1Palette.Dark)
+val Gen1TextLarge = Gen1Text.copy(fontSize = 19.sp, lineHeight = 26.sp)
+
+private val LocalGen1TextStyle = staticCompositionLocalOf { Gen1Text }
+
+@Composable
+fun Gen1Theme(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalGen1TextStyle provides Gen1Text, content = content)
+}
+
+@Composable
+fun GbText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = Gen1Text,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    MaterialText(
+        text = text,
+        modifier = modifier,
+        style = style,
+        color = style.color,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/**
+ * The Generation I window: a hard outer rule, a light gutter, and an inner
+ * rule, over a flat panel. Every list, dialogue box and status panel in the app
+ * is one of these, which is what makes the whole thing read as one machine.
+ */
+@Composable
+fun Gen1Window(
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    contentPadding: PaddingValues = PaddingValues(12.dp),
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(Gen1Palette.Ink)
+            .padding(3.dp)
+            .background(Gen1Palette.Panel)
+            .padding(2.dp)
+            .border(2.dp, Gen1Palette.Ink)
+            .background(Gen1Palette.Panel)
+    ) {
+        if (title != null) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Gen1Palette.Ink)
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                GbText(title.uppercase(), style = Gen1Text.copy(color = Gen1Palette.Lightest))
+            }
+        }
+        Column(Modifier.padding(contentPadding), content = content)
+    }
+}
+
+/** The rectangular selection cursor: a filled arrow before the chosen row. */
+@Composable
+private fun Gen1Cursor(selected: Boolean) {
+    Box(Modifier.width(18.dp), contentAlignment = Alignment.Center) {
+        if (selected) {
+            GbText("▶", style = Gen1Text.copy(fontSize = 13.sp))
+        }
+    }
+}
+
+/**
+ * A menu row. Touch-first: one tap moves the cursor onto a row, a second tap
+ * confirms it — the original's cursor-then-A rhythm, without a virtual D-pad.
+ */
+@Composable
+fun Gen1MenuItem(
+    label: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onConfirm: () -> Unit,
+    trailing: String? = null,
+    subtitle: String? = null,
+    enabled: Boolean = true,
+) {
+    val ink = if (enabled) Gen1Palette.Ink else Gen1Palette.Light
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .background(if (selected) Gen1Palette.Light else Gen1Palette.Panel)
+            .clickable(enabled = enabled) { if (selected) onConfirm() else onSelect() }
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Gen1Cursor(selected && enabled)
+        Column(Modifier.weight(1f)) {
+            GbText(label.uppercase(), style = Gen1Text.copy(color = ink), maxLines = 2)
+            if (subtitle != null) GbText(subtitle.uppercase(), style = Gen1TextSmall, maxLines = 2)
+        }
+        if (trailing != null) {
+            GbText(trailing.uppercase(), style = Gen1Text.copy(color = ink))
+            Spacer(Modifier.width(10.dp))
+        }
+    }
+}
+
+/** A full-width action, drawn as its own small window so it reads as a button. */
+@Composable
+fun Gen1Button(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Box(
+        modifier
+            .heightIn(min = 48.dp)
+            .background(Gen1Palette.Ink)
+            .padding(2.dp)
+            .background(if (enabled) Gen1Palette.Panel else Gen1Palette.Light)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        GbText(
+            label.uppercase(),
+            style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Dark),
+        )
+    }
+}
+
+/** The dialogue box the games use for every message and confirmation. */
+@Composable
+fun Gen1Dialogue(
+    lines: List<String>,
+    modifier: Modifier = Modifier,
+    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
+) {
+    Gen1Window(modifier) {
+        lines.forEach { GbText(it.uppercase()) }
+        Spacer(Modifier.size(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), content = actions)
+    }
+}
+
+/** A label/value pair as the status screens lay them out. */
+@Composable
+fun Gen1Field(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        GbText(label.uppercase(), style = Gen1TextSmall, modifier = Modifier.width(112.dp))
+        GbText(value.uppercase(), maxLines = 2)
+    }
+}
+
+/** The HP bar, drawn as the flat three-state bar the games use. */
+@Composable
+fun Gen1HpBar(current: Int, max: Int, modifier: Modifier = Modifier) {
+    val fraction = if (max <= 0) 0f else (current.toFloat() / max).coerceIn(0f, 1f)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .background(Gen1Palette.Ink)
+            .padding(2.dp)
+            .background(Gen1Palette.Lightest)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(fraction)
+                .heightIn(min = 8.dp)
+                .background(
+                    when {
+                        fraction > 0.5f -> Gen1Palette.Darkest
+                        fraction > 0.2f -> Gen1Palette.Dark
+                        else -> Gen1Palette.Light
+                    }
+                )
+        )
+    }
+}

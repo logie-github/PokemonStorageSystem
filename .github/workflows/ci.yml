@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test, lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Lint
+        run: ./gradlew lintRelease --no-daemon
+
+      - name: Build the debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Confirm the generated Gen I tables still match pret/pokered
+        run: |
+          git clone --depth 1 https://github.com/pret/pokered "$RUNNER_TEMP/pokered"
+          python3 tools/generate_gen1_data.py "$RUNNER_TEMP/pokered"
+          if ! git diff --quiet -- app/src/main/java/com/logie/gen1storage/pokemon/Gen1SpeciesTable.kt \
+                                    app/src/main/java/com/logie/gen1storage/pokemon/Gen1MoveTable.kt; then
+            echo "::warning::The committed species/move tables differ from a fresh generation."
+            echo "The only expected difference is the source-commit comment; review the diff below."
+            git --no-pager diff -- app/src/main/java/com/logie/gen1storage/pokemon/
+          fi
+          git checkout -- app/src/main/java/com/logie/gen1storage/pokemon/
+
+      - name: Upload the debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gen1Storage-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload the test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/**
+            app/build/reports/lint-results-release.*
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,19 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
     </queries>
-    <application android:theme="@style/Theme.PackageExporter" android:label="Pokémon Save Reader">
-        <activity android:name=".MainActivity" android:exported="true">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.Gen1Storage">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
@@ -21,6 +34,15 @@
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
-        <service android:name=".PackageFileService" android:exported="false" android:process=":shizuku_service" />
+
+        <!-- A Shizuku user service is a Binder hosted in Shizuku's process, not
+             an android.app.Service; the manifest entry is how Shizuku locates
+             the class. Never started by the platform, so Instantiatable does
+             not apply. -->
+        <service
+            android:name=".saveaccess.ShizukuFileService"
+            android:exported="false"
+            android:process=":shizuku_service"
+            tools:ignore="Instantiatable" />
     </application>
 </manifest>

@@ -1,8 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PackageExporter" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#CC0000</item>
-        <item name="android:navigationBarColor">#101010</item>
-        <item name="android:statusBarColor">#101010</item>
+    <!-- A flat, square, four-shade surface: no Material accent leaks into the
+         window background behind the Generation I interface. -->
+    <style name="Theme.Gen1Storage" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/gb_surround</item>
+        <item name="android:statusBarColor">@color/gb_darkest</item>
+        <item name="android:navigationBarColor">@color/gb_darkest</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

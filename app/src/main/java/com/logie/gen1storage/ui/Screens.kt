@@ -150,14 +150,15 @@ fun StorageSystemScreen(
     model: StorageViewModel,
     onOptions: (() -> Unit)? = null,
 ) {
-    var selected by remember { mutableStateOf(0) }
     var mode by remember { mutableStateOf(PcMode.MENU) }
-    var listCursor by remember(mode) { mutableStateOf(0) }
-    var actionCursor by remember(mode) { mutableStateOf(0) }
     var chosen by remember(mode) { mutableStateOf<Int?>(null) }
 
     val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
     val stored = box?.contents.orEmpty()
+
+    // ALL POKéMON puts every save in the lists at once, so there is nothing
+    // to choose; otherwise the PC works with one cartridge at a time.
+    val needsCart = !state.showAllSaves && state.save(state.activeSaveKey) == null
 
     val depositRows = buildList {
         val keys = if (state.showAllSaves) {
@@ -189,19 +190,24 @@ fun StorageSystemScreen(
     StorageSystemScreen(
         boxNumber = state.currentStorageBox,
         boxName = box?.name ?: "BOX ${state.currentStorageBox}",
-        selected = selected,
-        onSelect = { selected = it },
-        onWithdraw = { mode = PcMode.WITHDRAW },
+        // Both directions need a cartridge in the machine. If there is not one
+        // yet, that is the only question worth asking, so it gets the whole
+        // screen rather than a window over this one.
+        onWithdraw = {
+            if (needsCart) model.open(Screen.ChooseCart(null)) else mode = PcMode.WITHDRAW
+        },
         onDeposit = {
-            mode = PcMode.DEPOSIT
-            // Asked every time rather than remembered, so which save a deposit
-            // is coming from is never hidden state — and so it can be changed.
-            if (!state.showAllSaves) model.prompt(Prompt.ChooseDepositSave("TAKE FROM WHICH SAVE?"))
+            if (needsCart) model.open(Screen.ChooseCart(null)) else mode = PcMode.DEPOSIT
         },
         onView = { mode = PcMode.VIEW },
+        onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onChangeBox = { mode = PcMode.CHANGE_BOX },
         onOptions = onOptions,
-        message = if (state.linked) "What?" else "Link this device in OPTIONS.",
+        message = when {
+            !state.linked -> "Link this device in OPTIONS."
+            needsCart -> "No cart in the machine."
+            else -> "What?"
+        },
         overlay = when (mode) {
             PcMode.MENU -> null
 
@@ -210,8 +216,6 @@ fun StorageSystemScreen(
                     entries = stored.map {
                         MonRow(pokemonRowLabel(it.pokemon), pokemonRowLevel(it.pokemon))
                     },
-                    selected = listCursor,
-                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < stored.size } },
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "What? There are no POKéMON here!",
@@ -227,8 +231,6 @@ fun StorageSystemScreen(
                             header = depositHeader(index),
                         )
                     },
-                    selected = listCursor,
-                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < depositRows.size } },
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "There are no POKéMON here.",
@@ -240,8 +242,6 @@ fun StorageSystemScreen(
                     boxes = state.storage.boxes.map {
                         Triple(it.index, it.name, "${it.contents.size}/${StorageLayout.BOX_CAPACITY}")
                     },
-                    selected = listCursor,
-                    onSelect = { listCursor = it },
                     onConfirm = { model.setStorageBox(it); mode = PcMode.MENU },
                     onCancel = { mode = PcMode.MENU },
                 )
@@ -253,7 +253,11 @@ fun StorageSystemScreen(
                     actions = listOf(
                         MonAction(
                             "WITHDRAW",
-                            { model.prompt(Prompt.ChooseWithdrawSave(storedPick.uid)) },
+                            {
+                                val key = state.activeSaveKey
+                                if (key == null) model.prompt(Prompt.ChooseWithdrawSave(storedPick.uid))
+                                else model.prompt(Prompt.ChooseWithdrawTarget(storedPick.uid, key))
+                            },
                             enabled = state.saves.isNotEmpty(),
                         ),
                         MonAction("STATS", {
@@ -262,8 +266,6 @@ fun StorageSystemScreen(
                             )
                         }),
                     ),
-                    selected = actionCursor,
-                    onSelect = { actionCursor = it },
                     onCancel = { chosen = null },
                     note = if (state.saves.isEmpty()) "NO SAVES ON THE ACCOUNT" else null,
                 )
@@ -305,8 +307,6 @@ fun StorageSystemScreen(
                             )
                         }),
                     ),
-                    selected = actionCursor,
-                    onSelect = { actionCursor = it },
                     onCancel = { chosen = null },
                 )
             })
@@ -338,8 +338,6 @@ fun StorageSystemScreen(
                         ),
                         MonAction("STATS", { model.open(Screen.Status(pick.key, 0, pick.slot)) }),
                     ),
-                    selected = actionCursor,
-                    onSelect = { actionCursor = it },
                     onCancel = { chosen = null },
                     note = if (last) "CAN'T DEPOSIT THE LAST ONE" else null,
                 )

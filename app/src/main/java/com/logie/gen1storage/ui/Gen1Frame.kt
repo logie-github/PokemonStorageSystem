@@ -34,6 +34,7 @@ fun Gen1Frame(
     val pixel = gen1PixelPx().toFloat()
     Column(
         modifier
+            .gen1WindowBounds()
             .background(fill)
             .drawBehind { drawGen1Border(ink, pixel) }
             .padding(gen1Dp(GEN1_TILE - 2))
@@ -54,6 +55,7 @@ fun Gen1FrameBox(
     val pixel = gen1PixelPx().toFloat()
     Box(
         modifier
+            .gen1WindowBounds()
             .background(fill)
             .drawBehind { drawGen1Border(ink, pixel) }
             .padding(gen1Dp(GEN1_TILE - 2))

@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,8 +43,13 @@ import com.logie.gen1storage.ui.HomeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.SaveFilesScreen
+import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
 import com.logie.gen1storage.ui.GbButton
+import com.logie.gen1storage.ui.Gen1Cursor
+import com.logie.gen1storage.ui.Gen1WindowBounds
+import com.logie.gen1storage.ui.LocalGen1Cursor
+import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
@@ -119,6 +126,13 @@ private fun StorageApp(model: StorageViewModel) {
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(enabled = state.prompt != null || state.stack.size > 1) { model.back() }
 
+    val cursor = remember { Gen1Cursor() }
+    val windows = remember { Gen1WindowBounds() }
+
+    CompositionLocalProvider(
+        LocalGen1Cursor provides cursor,
+        LocalGen1WindowBounds provides windows,
+    ) {
     Box(
         Modifier
             .fillMaxSize()
@@ -128,11 +142,17 @@ private fun StorageApp(model: StorageViewModel) {
             .displayCutoutPadding()
             // Off unless the player turns them on in OPTIONS; the app is
             // tappable either way, so this only adds a second way in.
-            .gen1Gestures(state.swipeControls) { button ->
+            .gen1Gestures(state.swipeControls, windows::isFreeSpace) { button ->
                 when (button) {
+                    // Back, from anywhere. At the top of the stack this does
+                    // nothing rather than closing the app — a hold should never
+                    // be the thing that puts someone out of the machine.
                     GbButton.B -> model.back()
-                    GbButton.START -> model.home()
-                    GbButton.LEFT -> model.back()
+                    GbButton.A -> cursor.confirm()
+                    GbButton.START ->
+                        if (state.screen != Screen.Options) model.open(Screen.Options)
+                    GbButton.UP, GbButton.DOWN, GbButton.LEFT, GbButton.RIGHT ->
+                        cursor.move(button)
                     else -> Unit
                 }
             }
@@ -143,6 +163,7 @@ private fun StorageApp(model: StorageViewModel) {
                 when (val screen = state.screen) {
                     Screen.Home -> HomeScreen(state, model)
                     Screen.Link -> LinkScreen(state, model)
+                    is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game)
                     is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
                     Screen.Sprites -> SpritesScreen(state, model)
                     Screen.SaveFiles -> SaveFilesScreen(state, model)
@@ -156,6 +177,7 @@ private fun StorageApp(model: StorageViewModel) {
             }
         }
         if (state.prompt != null) PromptWindow(state, model)
+    }
     }
 }
 

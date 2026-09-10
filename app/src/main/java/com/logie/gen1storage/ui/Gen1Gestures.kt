@@ -15,24 +15,29 @@ import kotlin.math.abs
 enum class GbButton { UP, DOWN, LEFT, RIGHT, A, B, START, SELECT }
 
 /**
- * Swipe controls, off by default, and working anywhere on the screen when on.
+ * Swipe controls, off by default.
  *
- * The gesture vocabulary and its thresholds come from the TM35 Metronome mod
- * (`main.lua`), so muscle memory carries over from the game:
+ * The vocabulary is the TM35 Metronome mod's, and its thresholds, so muscle
+ * memory carries over from the game:
  *
- *  - swipe up / down / left / right  -> the D-pad
- *  - tap                             -> A
- *  - tap and hold                    -> B
- *  - double tap                      -> START
- *  - tap, release, then tap and hold -> SELECT
+ *  - swipe up / down / left / right  -> the D-pad, moving the cursor
+ *  - tap                             -> A, taking whatever the cursor is on
+ *  - tap and hold                    -> B, going back
+ *  - double tap                      -> START, opening OPTIONS
  *
- * The mod's long-hold fast-forward has no meaning here and is not implemented.
+ * Everything but the hold is read **only in empty space** — off the windows,
+ * on the screen itself. That is what lets both ways of driving the app exist at
+ * once: a tap on a menu row is that row's, a tap on the screen beside it is the
+ * cursor's, and neither has to guess. The hold is the exception and works
+ * anywhere, because going back should not depend on where a finger happens to
+ * be; it consumes the gesture so the row underneath does not also fire.
  *
  * Thresholds scale with the short side of the screen exactly as the mod's do,
- * so the feel is the same on a small phone and a tablet.
+ * so the feel is the same on a small phone and on an unfolded one.
  */
 fun Modifier.gen1Gestures(
     enabled: Boolean,
+    isFreeSpace: (Offset) -> Boolean,
     onButton: (GbButton) -> Unit,
 ): Modifier = if (!enabled) this else this.then(
     Modifier.pointerInput(enabled) {
@@ -41,41 +46,31 @@ fun Modifier.gen1Gestures(
         val tapSlop = maxOf(MIN_TAP_SLOP_PX, shortSide * TAP_SLOP_RATIO)
         val doubleTapDistance = maxOf(MIN_DOUBLE_TAP_DISTANCE_PX, shortSide * DOUBLE_TAP_DISTANCE_RATIO)
 
-        // "Tap, release, then tap and hold" is SELECT, so a hold has to know
-        // whether a tap preceded it. This is that memory.
         var lastTapAtMillis = 0L
         var lastTapPosition = Offset.Zero
-        var lastGestureWasTap = false
 
         awaitEachGesture {
-            // Everything below watches the Initial pass, which reaches an
-            // ancestor before its children rather than after. That is what
-            // makes a swipe work over a menu row or a scrolling list: on the
-            // Main pass the row's own click detector and the list's scroll
-            // would have taken the gesture first and this would only ever fire
-            // on the bare background.
+            // The Initial pass reaches an ancestor before its children, which
+            // is the only way to see a gesture that starts on a scrolling list
+            // at all. What is done with it still depends on where it started.
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val start = down.position
+            val free = isFreeSpace(start)
             var travelled = Offset.Zero
 
             /** Follows the pointer to its end, returning how far it ever got. */
-            suspend fun AwaitPointerEventScope.drain(from: Offset): Offset {
+            suspend fun AwaitPointerEventScope.drain(from: Offset, consume: Boolean): Offset {
                 var furthest = from
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: return furthest
-                    // Consumed, so whatever is underneath stops treating this
-                    // as a scroll or a press. Taps are never consumed, which is
-                    // why ordinary tapping still works with this switched on.
-                    change.consume()
+                    if (consume) change.consume()
                     val delta = change.position - start
                     if (delta.getDistance() > furthest.getDistance()) furthest = delta
                     if (!change.pressed) return furthest
                 }
             }
 
-            // A hold only counts while the finger stays put, so watch for
-            // movement up to the hold delay before deciding.
             val outcome = withTimeoutOrNull(HOLD_DELAY_MILLIS) {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -91,64 +86,53 @@ fun Modifier.gen1Gestures(
                 GestureOutcome.RELEASED
             }
 
-            val furthest = when (outcome) {
-                // The finger stayed down past the hold delay. Decide now, then
-                // follow the rest of the gesture so the press underneath is
-                // cancelled rather than firing on release as well.
-                null -> {
-                    val withinSlop = abs(travelled.x) <= tapSlop && abs(travelled.y) <= tapSlop
-                    if (withinSlop) {
-                        val sinceTap = System.currentTimeMillis() - lastTapAtMillis
-                        val nearLastTap = (start - lastTapPosition).getDistance() <= doubleTapDistance
-                        onButton(
-                            if (lastGestureWasTap && sinceTap <= SELECT_WINDOW_MILLIS && nearLastTap) {
-                                GbButton.SELECT
-                            } else {
-                                GbButton.B
-                            }
-                        )
-                        lastGestureWasTap = false
-                        drain(travelled)
-                        return@awaitEachGesture
-                    }
-                    drain(travelled)
+            // Held still past the delay: B, wherever the finger is. Consumed
+            // and drained so the row underneath does not fire on release too.
+            if (outcome == null) {
+                val withinSlop = abs(travelled.x) <= tapSlop && abs(travelled.y) <= tapSlop
+                if (withinSlop) {
+                    onButton(GbButton.B)
+                    drain(travelled, consume = true)
+                    return@awaitEachGesture
                 }
+            }
 
-                // Already past the swipe threshold: take the gesture.
-                GestureOutcome.SWIPED -> drain(travelled)
+            // Everything else belongs to whatever was touched unless the touch
+            // began on the screen itself.
+            if (!free) {
+                if (outcome != GestureOutcome.RELEASED) drain(travelled, consume = false)
+                return@awaitEachGesture
+            }
 
+            val furthest = when (outcome) {
                 // Up before the hold delay, so the gesture is already over and
                 // `travelled` is the whole of it. Draining here would block on
                 // the next gesture's events and report this one a touch late.
                 GestureOutcome.RELEASED -> travelled
+                else -> drain(travelled, consume = true)
             }
 
             val horizontal = abs(furthest.x)
             val vertical = abs(furthest.y)
             when {
-                horizontal >= swipeThreshold && horizontal >= vertical -> {
+                horizontal >= swipeThreshold && horizontal >= vertical ->
                     onButton(if (furthest.x > 0) GbButton.RIGHT else GbButton.LEFT)
-                    lastGestureWasTap = false
-                }
-                vertical >= swipeThreshold -> {
+
+                vertical >= swipeThreshold ->
                     onButton(if (furthest.y > 0) GbButton.DOWN else GbButton.UP)
-                    lastGestureWasTap = false
-                }
+
                 horizontal <= tapSlop && vertical <= tapSlop -> {
                     val now = System.currentTimeMillis()
-                    val sinceTap = now - lastTapAtMillis
                     val nearLastTap = (start - lastTapPosition).getDistance() <= doubleTapDistance
-                    if (lastGestureWasTap && sinceTap <= DOUBLE_TAP_MILLIS && nearLastTap) {
+                    if (now - lastTapAtMillis <= DOUBLE_TAP_MILLIS && nearLastTap) {
                         onButton(GbButton.START)
-                        lastGestureWasTap = false
+                        lastTapAtMillis = 0L
                     } else {
                         onButton(GbButton.A)
-                        lastGestureWasTap = true
                         lastTapAtMillis = now
                         lastTapPosition = start
                     }
                 }
-                else -> lastGestureWasTap = false
             }
         }
     }
@@ -163,11 +147,7 @@ private const val TAP_SLOP_RATIO = 0.025f
 private const val MIN_TAP_SLOP_PX = 10f
 private const val DOUBLE_TAP_DISTANCE_RATIO = 0.08f
 private const val MIN_DOUBLE_TAP_DISTANCE_PX = 28f
-private const val DOUBLE_TAP_MILLIS = 180L
+/** Long enough to be a deliberate double tap rather than the mod's 180ms. */
+private const val DOUBLE_TAP_MILLIS = 280L
 private const val HOLD_DELAY_MILLIS = 500L
 
-/**
- * The mod's SELECT is a tap followed by a hold, so its window has to outlast
- * the hold delay itself; the double-tap window is far too short for it.
- */
-private const val SELECT_WINDOW_MILLIS = 900L

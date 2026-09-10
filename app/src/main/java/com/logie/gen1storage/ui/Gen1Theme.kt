@@ -217,6 +217,13 @@ val Gen1TextSmall: TextStyle
         return Gen1BaseText.copy(fontSize = size, lineHeight = leading, color = Gen1Palette.Shadow)
     }
 
+/** Small enough to fit two words across a cartridge's label. */
+val Gen1TextTiny: TextStyle
+    @Composable get() {
+        val (size, leading) = pixelSize(-2)
+        return Gen1BaseText.copy(fontSize = size, lineHeight = leading, color = Gen1Palette.Ink)
+    }
+
 val Gen1TextLarge: TextStyle
     @Composable get() {
         val (size, leading) = pixelSize(2)

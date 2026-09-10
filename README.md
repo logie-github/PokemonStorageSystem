@@ -180,6 +180,58 @@ itself, so it does not recreate and lose what is on screen, and on a screen at
 least 600dp wide the status and moves pages keep to the left half instead of
 stretching a two-column layout across a tablet's width.
 
+## Choosing a cartridge
+
+WITHDRAW and DEPOSIT both need a save, and this is where one is named. The
+screen opens on the three games and nothing else — no menu behind it, no
+message window — because at that moment there is one decision to make. Picking
+a game keeps the three on screen and lists that game's saves underneath as
+cartridges, three to a row, so changing game is a tap rather than a trip
+backwards. CHANGE CART on the main menu comes back here.
+
+A save stays chosen until it is changed or the app is closed, and is
+deliberately not written to disk: which cartridge is in the machine is a fact
+about this sitting, not a preference, and a stale one silently pointing at a
+playthrough the player has moved on from is worse than asking again.
+
+The title cards and the cartridge ship as four flat greys and are recoloured
+onto a palette ramp when they load, which is how one image each serves Red,
+Blue and Yellow. The cartridge's silhouette is taken from a render — the
+notched corner and the proportions are its — but the label recess, the top
+plate and the ridges are drawn as pixel art, because the render is a flat grey
+throughout and carries no shading to extract.
+
+A trainer's details sit on the label the way they would have been written
+there: the name, the Pokémon at the head of their party, and their badges and
+catches. The text is the palette's lightest over its darkest, drawn as an
+outline rather than on a plate, so it stays readable without hiding the art.
+
+## Controls
+
+Tapping works throughout: one tap on a menu row takes it. Swipe controls, off
+by default, add a second way in that never fights the first, because everything
+but one gesture is read only in empty space — off the windows, on the screen
+itself:
+
+| Gesture | |
+| --- | --- |
+| Swipe, in empty space | Moves the cursor |
+| Tap, in empty space | Takes whatever the cursor is on |
+| Double tap, in empty space | OPTIONS |
+| Tap and hold, anywhere | Back |
+
+A tap on a menu row is that row's; a tap on the screen beside it is the
+cursor's, and neither has to guess. The windows report their own bounds for
+this, so nothing has to be kept in sync by hand.
+
+The hold is the exception and works anywhere, because going back should not
+depend on where a finger happens to be. At the top of the menu stack it does
+nothing rather than closing the app.
+
+The cursor is shared. Each menu pushes a layer while it is on screen and pops
+it when it leaves, and the cursor belongs to the topmost — which is the
+innermost thing the player opened, and the only one they could have meant.
+
 ## Colour
 
 OPTIONS → COLOUR draws the whole app through one four-shade Game Boy palette:

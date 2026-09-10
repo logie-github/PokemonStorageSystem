@@ -40,6 +40,8 @@ fun Gen1Sprite(
     gameVersionId: String?,
     store: SpriteStore,
     modifier: Modifier = Modifier,
+    /** Width and height in Game Boy pixels; the games draw a front sprite at 56. */
+    sizeInPixels: Int = 56,
     onLongPress: ((String) -> Unit)? = null,
 ) {
     var image by remember(speciesId, gameVersionId) { mutableStateOf<ImageBitmap?>(null) }
@@ -50,8 +52,7 @@ fun Gen1Sprite(
 
     Box(
         modifier
-            // Fifty-six Game Boy pixels, the size the games draw a front sprite.
-            .size(gen1Dp(56))
+            .size(gen1Dp(sizeInPixels))
             .then(
                 if (onLongPress != null && speciesId != null) {
                     Modifier.pointerInput(speciesId) {

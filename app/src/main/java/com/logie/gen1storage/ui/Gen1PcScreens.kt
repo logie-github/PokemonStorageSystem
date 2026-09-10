@@ -42,7 +42,9 @@ fun Gen1MenuRow(
         modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
-            .gen1Clickable(enabled) { if (selected) onConfirm() else onSelect() },
+            // One tap takes the row. The two-tap cursor-then-A rhythm belongs
+            // to the swipe controls, where there is a cursor to move first.
+            .gen1Clickable(enabled) { onSelect(); onConfirm() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(20.dp)) {
@@ -95,11 +97,10 @@ fun Gen1DialogueBox(
 fun StorageSystemScreen(
     boxNumber: Int,
     boxName: String,
-    selected: Int,
-    onSelect: (Int) -> Unit,
     onWithdraw: () -> Unit,
     onDeposit: () -> Unit,
     onView: () -> Unit,
+    onChangeCart: () -> Unit,
     onChangeBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
     message: String = "What?",
@@ -110,6 +111,7 @@ fun StorageSystemScreen(
         add("WITHDRAW PKMN" to onWithdraw)
         add("DEPOSIT PKMN" to onDeposit)
         add("VIEW POKéMON" to onView)
+        add("CHANGE CART" to onChangeCart)
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add("OPTIONS" to onOptions)
     }
@@ -130,9 +132,10 @@ fun StorageSystemScreen(
             .gen1Ground()
             .padding(gen1Dp(2)),
     ) {
+        val selected = rememberCursorLayer(rows.size) { rows[it].second() }
         Gen1Frame(Modifier.align(Alignment.TopStart).fillMaxWidth(MENU_WIDTH)) {
             rows.forEachIndexed { index, (label, action) ->
-                Gen1MenuRow(label, selected == index, { onSelect(index) }, action)
+                Gen1MenuRow(label, selected == index, {}, action)
             }
         }
 
@@ -184,12 +187,14 @@ data class MonRow(val name: String, val trailing: String, val header: String? = 
 @Composable
 fun MonListOverlay(
     entries: List<MonRow>,
-    selected: Int,
-    onSelect: (Int) -> Unit,
     onConfirm: (Int) -> Unit,
     onCancel: () -> Unit,
     emptyMessage: String,
 ) {
+    // One past the end is CANCEL, so the cursor can reach it like any row.
+    val selected = rememberCursorLayer(entries.size + 1) { index ->
+        if (index < entries.size) onConfirm(index) else onCancel()
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
         Gen1Frame(Modifier.fillMaxWidth(LIST_WIDTH).padding(top = gen1Dp(4))) {
             if (entries.isEmpty()) {
@@ -204,13 +209,13 @@ fun MonListOverlay(
                     Gen1MenuRow(
                         row.name,
                         selected == index,
-                        { onSelect(index) },
+                        {},
                         { onConfirm(index) },
                         trailing = row.trailing,
                     )
                 }
                 item {
-                    Gen1MenuRow("CANCEL", selected == entries.size, { onSelect(entries.size) }, onCancel)
+                    Gen1MenuRow("CANCEL", selected == entries.size, {}, onCancel)
                 }
             }
         }
@@ -234,23 +239,25 @@ data class MonAction(
 @Composable
 fun MonActionOverlay(
     actions: List<MonAction>,
-    selected: Int,
-    onSelect: (Int) -> Unit,
     onCancel: () -> Unit,
     note: String? = null,
 ) {
+    val selected = rememberCursorLayer(actions.size + 1) { index ->
+        val action = actions.getOrNull(index)
+        if (action == null) onCancel() else if (action.enabled) action.onAction()
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
         Gen1Frame(Modifier.wrapContentWidth()) {
             actions.forEachIndexed { index, entry ->
                 Gen1MenuRow(
                     entry.label,
                     selected == index,
-                    { onSelect(index) },
+                    {},
                     entry.onAction,
                     enabled = entry.enabled,
                 )
             }
-            Gen1MenuRow("CANCEL", selected == actions.size, { onSelect(actions.size) }, onCancel)
+            Gen1MenuRow("CANCEL", selected == actions.size, {}, onCancel)
             if (note != null) GbText(note, style = Gen1TextSmall)
         }
     }
@@ -260,11 +267,13 @@ fun MonActionOverlay(
 @Composable
 fun ChangeBoxOverlay(
     boxes: List<Triple<Int, String, String>>,
-    selected: Int,
-    onSelect: (Int) -> Unit,
     onConfirm: (Int) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val selected = rememberCursorLayer(boxes.size + 1) { index ->
+        val box = boxes.getOrNull(index)
+        if (box == null) onCancel() else onConfirm(box.first)
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
         Gen1Frame(Modifier.fillMaxWidth(LIST_WIDTH).padding(top = gen1Dp(4))) {
             LazyColumn(Modifier.heightIn(max = 380.dp)) {
@@ -272,13 +281,13 @@ fun ChangeBoxOverlay(
                     Gen1MenuRow(
                         "BOX $number $name".trim(),
                         selected == index,
-                        { onSelect(index) },
+                        {},
                         { onConfirm(number) },
                         trailing = count,
                     )
                 }
                 item {
-                    Gen1MenuRow("CANCEL", selected == boxes.size, { onSelect(boxes.size) }, onCancel)
+                    Gen1MenuRow("CANCEL", selected == boxes.size, {}, onCancel)
                 }
             }
         }

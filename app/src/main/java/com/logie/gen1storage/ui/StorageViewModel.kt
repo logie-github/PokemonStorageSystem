@@ -41,6 +41,11 @@ sealed interface Screen {
     data object Home : Screen
     data object Link : Screen
     /**
+     * Choosing a cartridge. A null [game] shows only the three games; once one
+     * is picked they stay on screen and its saves are listed underneath.
+     */
+    data class ChooseCart(val game: String?) : Screen
+    /**
      * The status screen. A null [key] means the Pokémon is in this app's PC and
      * [area] is its box; otherwise [area] 0 is the save's party and 1..12 its
      * boxes.
@@ -349,6 +354,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             is SyncResult.Failed -> message(result.message.uppercase())
         }
     }
+
+    /**
+     * Puts a cartridge in the machine.
+     *
+     * Held in memory rather than written to disk on purpose: which save is
+     * loaded is a fact about this sitting, not a preference, and a stale one
+     * silently pointing at a playthrough the player has moved on from is worse
+     * than asking again.
+     */
+    fun chooseCart(key: String) = selectSave(key) { back() }
 
     /** Picks the save a withdrawal lands in, then asks where inside it. */
     fun chooseWithdrawSave(uid: String, key: String) =

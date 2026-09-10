@@ -25,11 +25,16 @@ are deliberately out of scope.
   carried through every transfer, but never displayed.
 - Deposits a Pokémon from a save into the app's twelve boxes of twenty, and
   withdraws one back into any compatible save's party or PC.
+- Releases a stored Pokémon when asked, and appends the entry to a log beside
+  the storage file first, so the one deliberately destructive action in the app
+  is still recoverable by hand.
 - Keeps provenance for everything it stores: which game, trainer, slot and
   place it came from, and when.
-- Opens on the PC's own storage menu — WITHDRAW, DEPOSIT, MOVE, RELEASE, CHANGE
-  BOX, then SEE YA! Anything the cartridge's menu never had sits behind OPTIONS,
-  which is placed directly above SEE YA!.
+- Opens on the PC's own storage menu: TRANSFER, VIEW POKéMON, OPTIONS. TRANSFER
+  lists both sides at once — the current box, then the open save's party — so a
+  Pokémon is chosen before its direction. VIEW POKéMON is the browse side, where
+  one can be moved between boxes, looked at, or released. The box is changed by
+  tapping the BOX No. window.
 
 ## The rule the whole app is built around
 
@@ -55,6 +60,11 @@ Everything else follows from it:
 - **Backups stay on this device.** The blob being replaced is written to app
   storage before any upload, so the previous state of a playthrough is
   recoverable without the server and without a network.
+- **The one exception is asked for out loud.** RELEASE is the only thing that
+  removes a Pokémon without putting it somewhere, it is reachable only from the
+  window that opens on a chosen Pokémon in this app's own PC, it is confirmed,
+  and the entry is written to `released.lua.log` before it goes. Nothing in the
+  app reads that log back; it exists so the action is undoable by hand.
 - **A failed parse is never a licence to rewrite.** Unreadable saves are
   classified — malformed, incomplete, wrong generation, unsupported, read-only,
   readable-only-from-backup — and left as they are.

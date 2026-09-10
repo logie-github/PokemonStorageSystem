@@ -49,7 +49,6 @@ import com.logie.gen1storage.ui.SavePartyScreen
 import com.logie.gen1storage.ui.Screen
 import com.logie.gen1storage.ui.StorageSystemScreen
 import com.logie.gen1storage.ui.StorageViewModel
-import com.logie.gen1storage.ui.TransferScreen
 import java.net.URLEncoder
 
 class MainActivity : ComponentActivity() {
@@ -123,7 +122,6 @@ private fun StorageApp(model: StorageViewModel) {
                     is Screen.StorageSystem -> StorageSystemScreen(state, model, screen.key)
                     Screen.AllPokemon -> AllPokemonScreen(state, model)
                     is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
-                    Screen.Transfer -> TransferScreen(state, model)
                     Screen.Sprites -> SpritesScreen(state, model)
                     Screen.SaveFiles -> SaveFilesScreen(state, model)
                     Screen.Options -> OptionsScreen(
@@ -176,7 +174,6 @@ private fun titleFor(screen: Screen): String = when (screen) {
     is Screen.StorageSystem -> "STORAGE SYSTEM"
     Screen.AllPokemon -> "ALL POKéMON"
     is Screen.Status -> "STATUS"
-    Screen.Transfer -> "TRANSFER"
     Screen.Sprites -> "SPRITES"
     Screen.SaveFiles -> "SAVE FILES"
     Screen.Options -> "OPTIONS"

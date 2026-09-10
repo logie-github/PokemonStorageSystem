@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -119,11 +120,15 @@ fun SpriteSetPicker(
     val installed = store.installedSets().filter { store.has(it, speciesId) }
     val current = store.overrideFor(speciesId)
 
-    Gen1Frame(Modifier.size(width = 260.dp, height = 0.dp).then(Modifier)) {
+    // Width only: a fixed height here collapsed the window to a rule, which is
+    // all a long press used to put on screen.
+    Gen1Frame(Modifier.width(260.dp)) {
         GbText("SPRITE")
         Spacer(Modifier.height(4.dp))
         if (installed.isEmpty()) {
-            GbText("NO SPRITES YET.", style = Gen1TextSmall)
+            GbText("NO SPRITES FOR THIS ONE YET.", style = Gen1TextSmall)
+            GbText("OPTIONS → DOWNLOAD SPRITES.", style = Gen1TextSmall)
+            Spacer(Modifier.height(4.dp))
         }
         Gen1MenuRow(
             "MATCH THE GAME",

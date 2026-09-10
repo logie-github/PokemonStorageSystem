@@ -44,6 +44,7 @@ class StorageRepository(private val directory: File) {
     private val file = File(directory, FILE_NAME)
     private val backup = File(directory, "$FILE_NAME.bak")
     private val staged = File(directory, "$FILE_NAME.tmp")
+    private val releasedLog = File(directory, RELEASED_FILE_NAME)
 
     private val lock = Any()
     private var boxes: MutableList<MutableList<StoredPokemon>> = emptyBoxes()
@@ -112,6 +113,39 @@ class StorageRepository(private val directory: File) {
             }
         }
         null
+    }
+
+    /**
+     * Releases a stored Pokémon: it leaves the PC, at the player's request.
+     *
+     * The app's rule is that it never loses a Pokémon, and a release is the one
+     * place a player deliberately asks it to — so the entry is appended to a
+     * plain-text log beside the storage file before it goes. Nothing reads that
+     * log back; it exists so a release is recoverable by hand rather than gone.
+     * Returns what was released, or null when the uid was not here.
+     */
+    fun release(uid: String): StoredPokemon? = synchronized(lock) {
+        ensureLoaded()
+        val stored = get(uid) ?: return null
+        val record = LuaValue.Table()
+        record["releasedAtEpochMillis"] = luaNum(System.currentTimeMillis().toDouble())
+        record["pokemon"] = stored.toLua()
+        // Best effort: a log that cannot be written is not a reason to refuse
+        // the release the player asked for, and it is reported through the
+        // load notes the next time the file is read.
+        runCatching {
+            directory.mkdirs()
+            releasedLog.appendBytes(LuaText.encode(LuaWriter.encode(record)))
+        }
+        withdraw(uid)
+    }
+
+    /** How many releases the log holds, so the save files screen can say so. */
+    fun releasedCount(): Int = synchronized(lock) {
+        if (!releasedLog.isFile) return 0
+        runCatching {
+            LuaText.decode(releasedLog.readBytes()).lineSequence().count { it.startsWith("return ") }
+        }.getOrDefault(0)
     }
 
     /** Moves a stored Pokémon to another box, for reorganising the PC. */
@@ -258,6 +292,12 @@ class StorageRepository(private val directory: File) {
 
     companion object {
         const val FILE_NAME = "storage.lua"
+
+        /**
+         * Append-only, one `return { ... }` chunk per release, each readable on
+         * its own by the same parser the saves use.
+         */
+        const val RELEASED_FILE_NAME = "released.lua.log"
         const val MAX_BOX_NAME = 12
     }
 }

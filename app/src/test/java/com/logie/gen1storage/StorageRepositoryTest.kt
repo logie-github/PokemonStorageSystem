@@ -31,6 +31,60 @@ class StorageRepositoryTest {
     )
 
     @Test
+    fun `a release takes the Pokemon out of the PC and keeps a record of it`() {
+        val directory = temporaryFolder.newFolder()
+        val repository = StorageRepository(directory)
+        val stored = repository.deposit(SaveFixtures.pokemon(nickname = "SPARKY"), provenance())!!
+
+        val released = repository.release(stored.uid)
+
+        assertNotNull(released)
+        assertEquals(stored.uid, released!!.uid)
+        assertFalse(repository.contains(stored.uid))
+        assertEquals(0, repository.state().total)
+        // Gone from the PC, but recorded: the app never loses one outright.
+        assertEquals(1, repository.releasedCount())
+        val log = File(directory, StorageRepository.RELEASED_FILE_NAME)
+        assertTrue(log.isFile)
+        assertTrue(log.readText().contains("SPARKY"))
+    }
+
+    @Test
+    fun `each release appends its own readable chunk`() {
+        val directory = temporaryFolder.newFolder()
+        val repository = StorageRepository(directory)
+        val first = repository.deposit(SaveFixtures.pokemon(nickname = "ONE"), provenance())!!
+        val second = repository.deposit(SaveFixtures.pokemon(nickname = "TWO"), provenance())!!
+
+        repository.release(first.uid)
+        repository.release(second.uid)
+
+        assertEquals(2, repository.releasedCount())
+        // Every chunk parses on its own with the same reader the saves use.
+        File(directory, StorageRepository.RELEASED_FILE_NAME)
+            .readText()
+            .split("return ")
+            .filter { it.isNotBlank() }
+            .forEach { chunk ->
+                val table = com.logie.gen1storage.lua.LuaParser.parse("return $chunk")
+                assertNotNull(table["pokemon"])
+                assertNotNull(table["releasedAtEpochMillis"])
+            }
+    }
+
+    @Test
+    fun `releasing something that is not there changes nothing`() {
+        val directory = temporaryFolder.newFolder()
+        val repository = StorageRepository(directory)
+        repository.deposit(SaveFixtures.pokemon(nickname = "SPARKY"), provenance())
+
+        assertNull(repository.release("not-a-uid"))
+
+        assertEquals(1, repository.state().total)
+        assertEquals(0, repository.releasedCount())
+    }
+
+    @Test
     fun `a deposited Pokemon survives a restart with its data byte-identical`() {
         val directory = temporaryFolder.newFolder()
         val mon = SaveFixtures.pokemon(nickname = "SPARKY")

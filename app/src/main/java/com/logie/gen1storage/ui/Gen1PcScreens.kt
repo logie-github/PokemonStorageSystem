@@ -112,12 +112,15 @@ fun PcMainScreen(
 }
 
 /**
- * The storage system's own menu, with the box number in its small window at
- * the bottom right and the dialogue box beside it.
+ * The storage system's menu.
  *
- * The rows are built as a list rather than written out, because OPTIONS only
- * appears on the app's own top-level menu — and the cursor index has to keep
- * matching whichever rows are actually drawn.
+ * TRANSFER covers both directions at once, so a Pokémon is chosen before its
+ * direction rather than after it. VIEW POKéMON is the browse-and-rearrange
+ * side, and RELEASE lives in the window that opens on a chosen Pokémon rather
+ * than on the menu, where it was one tap from everything else.
+ *
+ * The box is changed by tapping the BOX No. window itself, which is why there
+ * is no row for it.
  */
 @Composable
 fun StorageSystemScreen(
@@ -125,26 +128,18 @@ fun StorageSystemScreen(
     boxName: String,
     selected: Int,
     onSelect: (Int) -> Unit,
-    onWithdraw: () -> Unit,
-    onDeposit: () -> Unit,
-    onMove: () -> Unit,
-    onRelease: () -> Unit,
+    onTransfer: () -> Unit,
+    onView: () -> Unit,
     onChangeBox: () -> Unit,
-    onExit: () -> Unit,
     onOptions: (() -> Unit)? = null,
-    exitLabel: String = "SEE YA!",
     message: String = "What?",
     overlay: @Composable (() -> Unit)? = null,
 ) {
     val rows: List<Pair<String, () -> Unit>> = buildList {
-        add("WITHDRAW PKMN" to onWithdraw)
-        add("DEPOSIT PKMN" to onDeposit)
-        add("MOVE PKMN" to onMove)
-        add("RELEASE PKMN" to onRelease)
-        add("CHANGE BOX" to onChangeBox)
+        add("TRANSFER" to onTransfer)
+        add("VIEW POKéMON" to onView)
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add("OPTIONS" to onOptions)
-        add(exitLabel to onExit)
     }
 
     Box(
@@ -162,9 +157,14 @@ fun StorageSystemScreen(
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                 Gen1Frame(Modifier.weight(1f)) { GbText(message, style = Gen1Text) }
-                Gen1Frame(Modifier.width(160.dp)) {
+                Gen1Frame(
+                    Modifier
+                        .width(160.dp)
+                        .clickable(onClick = onChangeBox)
+                ) {
                     GbText("BOX No. $boxNumber")
                     GbText(boxName.uppercase(), style = Gen1TextSmall)
+                    GbText("TAP TO CHANGE", style = Gen1TextSmall)
                 }
             }
         }
@@ -172,10 +172,17 @@ fun StorageSystemScreen(
     }
 }
 
-/** The list a WITHDRAW or DEPOSIT opens, drawn over the menu it came from. */
+/**
+ * One row of a Pokémon list. [header] labels the group this row starts, which
+ * is how the transfer list keeps a save's party and the PC box apart while
+ * still being one list with one cursor.
+ */
+data class MonRow(val name: String, val trailing: String, val header: String? = null)
+
+/** The list a TRANSFER or VIEW opens, drawn over the menu it came from. */
 @Composable
 fun MonListOverlay(
-    entries: List<Pair<String, String>>,
+    entries: List<MonRow>,
     selected: Int,
     onSelect: (Int) -> Unit,
     onConfirm: (Int) -> Unit,
@@ -190,8 +197,18 @@ fun MonListOverlay(
                 GbText(emptyMessage)
             }
             LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                itemsIndexed(entries) { index, (name, level) ->
-                    Gen1MenuRow(name, selected == index, { onSelect(index) }, { onConfirm(index) }, trailing = level)
+                itemsIndexed(entries) { index, row ->
+                    if (row.header != null) {
+                        if (index > 0) Spacer(Modifier.height(6.dp))
+                        GbText(row.header, style = Gen1TextSmall)
+                    }
+                    Gen1MenuRow(
+                        row.name,
+                        selected == index,
+                        { onSelect(index) },
+                        { onConfirm(index) },
+                        trailing = row.trailing,
+                    )
                 }
                 item {
                     Gen1MenuRow("CANCEL", selected == entries.size, { onSelect(entries.size) }, onCancel)
@@ -205,22 +222,39 @@ fun MonListOverlay(
     }
 }
 
-/** The small WITHDRAW / STATS / CANCEL window that opens on a chosen Pokémon. */
+/** One entry in the window that opens on a chosen Pokémon. */
+data class MonAction(
+    val label: String,
+    val onAction: () -> Unit,
+    val enabled: Boolean = true,
+)
+
+/**
+ * The small window that opens on a chosen Pokémon.
+ *
+ * Row-driven rather than fixed, because what a Pokémon can have done to it
+ * depends on where it is: one in the PC can be moved and released, one still
+ * in a save can only be deposited or looked at.
+ */
 @Composable
 fun MonActionOverlay(
-    actionLabel: String,
+    actions: List<MonAction>,
     selected: Int,
     onSelect: (Int) -> Unit,
-    onAction: () -> Unit,
-    onStats: () -> Unit,
     onCancel: () -> Unit,
-    actionEnabled: Boolean = true,
     note: String? = null,
 ) {
     Gen1Frame(Modifier.width(230.dp)) {
-        Gen1MenuRow(actionLabel, selected == 0, { onSelect(0) }, onAction, enabled = actionEnabled)
-        Gen1MenuRow("STATS", selected == 1, { onSelect(1) }, onStats)
-        Gen1MenuRow("CANCEL", selected == 2, { onSelect(2) }, onCancel)
+        actions.forEachIndexed { index, entry ->
+            Gen1MenuRow(
+                entry.label,
+                selected == index,
+                { onSelect(index) },
+                entry.onAction,
+                enabled = entry.enabled,
+            )
+        }
+        Gen1MenuRow("CANCEL", selected == actions.size, { onSelect(actions.size) }, onCancel)
         if (note != null) GbText(note, style = Gen1TextSmall)
     }
 }

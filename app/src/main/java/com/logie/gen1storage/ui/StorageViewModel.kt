@@ -56,7 +56,6 @@ sealed interface Screen {
      * boxes.
      */
     data class Status(val key: String?, val area: Int, val slot: Int) : Screen
-    data object Transfer : Screen
     data object Sprites : Screen
     data object SaveFiles : Screen
     data object Options : Screen
@@ -68,7 +67,6 @@ sealed interface Prompt {
     data class Confirm(val lines: List<String>, val confirmLabel: String, val onConfirm: () -> Unit) : Prompt
     data class ChooseBox(val title: String, val onChoose: (Int) -> Unit) : Prompt
     data class ChooseWithdrawTarget(val uid: String, val key: String) : Prompt
-    data class ChooseSave(val title: String, val onChoose: (String) -> Unit) : Prompt
     /** The long-press sprite picker for one species. */
     data class ChooseSpriteSet(val speciesId: String) : Prompt
 }
@@ -478,6 +476,22 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             )
         }
     }
+
+    /**
+     * Releases a stored Pokémon at the player's request. Only ever from this
+     * app's own PC — nothing in a save is touched outside a transfer.
+     */
+    fun releaseStored(uid: String) {
+        val name = storage.get(uid)?.pokemon?.displayName?.uppercase() ?: "IT"
+        if (storage.release(uid) == null) {
+            message("THAT POKéMON IS NO LONGER THERE.")
+            return
+        }
+        mutable.update { it.copy(storage = storage.state(), prompt = null) }
+        message("$name was released.", "BYE BYE, $name!")
+    }
+
+    fun releasedCount(): Int = storage.releasedCount()
 
     fun moveStored(uid: String, targetBox: Int) {
         if (!storage.moveTo(uid, targetBox)) {

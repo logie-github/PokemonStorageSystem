@@ -23,8 +23,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.SpriteStore
@@ -101,7 +99,7 @@ fun SpritePlaceholderMark(modifier: Modifier = Modifier) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        GbText("?", style = Gen1TextLarge.copy(fontSize = TextUnit(40f, TextUnitType.Sp)))
+        GbText("?", style = Gen1TextLarge)
     }
 }
 

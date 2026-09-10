@@ -22,13 +22,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.logie.gen1storage.R
+import kotlin.math.ceil
 import androidx.compose.material3.Text as MaterialText
 
 /**
@@ -80,36 +86,110 @@ object Gen1Palette {
 }
 
 /**
+ * The Generation I face itself, bundled with the app.
+ *
+ * It is a vector font drawing square pixels rather than a bitmap one, so it
+ * carries the same rule any pixel font does: it is only crisp when one design
+ * pixel lands on a whole number of device pixels.
+ *
+ * Measured from the source rather than taken on faith — the project's own
+ * README says to use multiples of ten, which does not hold. The em is 320
+ * units and all but a handful of the Latin outline coordinates are multiples
+ * of 40, so one design pixel is an **eighth** of the em: in that grid a capital
+ * is 7 pixels tall, the advance is 8, and the ascender is 10. A size that is a whole
+ * multiple of eight device pixels therefore puts every glyph edge on a pixel
+ * boundary, and any other size hands the anti-aliaser a fractional edge to
+ * soften. [pixelSize] is what enforces it.
+ */
+val Gen1FontFamily = FontFamily(Font(R.font.pokemon_font))
+
+/** Device pixels per design pixel step. The em is eight of these. */
+private const val FONT_GRID_PX = 8
+
+/** Roughly how tall the body em should be, before it is snapped to the grid. */
+private val BodyEm = 13.dp
+
+/** Extra line height, as a fraction of the em, before snapping. */
+private const val LEADING = 0.4f
+
+/**
+ * A grid-aligned type size.
+ *
+ * [steps] moves in whole design-pixel steps away from the body size, so every
+ * size in the app stays a multiple of eight device pixels however dense the
+ * screen is. The result is converted back through the density, which also
+ * absorbs the user's font scale — so what comes out renders at exactly the
+ * pixel count asked for.
+ */
+@Composable
+private fun pixelSize(steps: Int): Pair<TextUnit, TextUnit> {
+    val density = LocalDensity.current
+    return with(density) {
+        val (size, leading) = snapFontPixels(BodyEm.toPx(), steps)
+        size.toFloat().toSp() to leading.toFloat().toSp()
+    }
+}
+
+/**
+ * The grid arithmetic, as size and leading in device pixels.
+ *
+ * Kept separate from the composable so the one claim the whole presentation
+ * rests on — that every size is a whole multiple of the grid — is checkable
+ * without a screen.
+ *
+ * The leading is about four tenths again, snapped to the same grid so
+ * baselines land on pixels too. The face's own line box is 1.375 em, so this
+ * always leaves it room rather than compressing it.
+ */
+internal fun snapFontPixels(bodyPx: Float, steps: Int): Pair<Int, Int> {
+    val body = (Math.round(bodyPx / FONT_GRID_PX) * FONT_GRID_PX)
+        .coerceAtLeast(FONT_GRID_PX * 3)
+    val size = (body + steps * FONT_GRID_PX).coerceAtLeast(FONT_GRID_PX * 2)
+    // Rounded up, never to nearest: rounding down here is what would push the
+    // line box under the face's own and have the renderer compress it.
+    val leading = size + (ceil(size * LEADING / FONT_GRID_PX).toInt() * FONT_GRID_PX)
+        .coerceAtLeast(FONT_GRID_PX)
+    return size to leading
+}
+
+/**
  * The three type sizes, read fresh on every composition.
  *
- * They are composable getters rather than constants because the ink colour is
- * now a setting: a `val` would bake whichever palette happened to be active
- * when the class initialised and never change again.
+ * They are composable getters rather than constants because both halves of a
+ * style are now context: the ink colour is a setting, and the size depends on
+ * the screen's density.
  */
 val Gen1Text: TextStyle
-    @Composable get() = Gen1BaseText.copy(color = Gen1Palette.Ink)
+    @Composable get() {
+        val (size, leading) = pixelSize(0)
+        return Gen1BaseText.copy(fontSize = size, lineHeight = leading, color = Gen1Palette.Ink)
+    }
 
 val Gen1TextSmall: TextStyle
-    @Composable get() = Gen1BaseText.copy(
-        fontSize = 12.sp,
-        lineHeight = 17.sp,
-        color = Gen1Palette.Shadow,
-    )
+    @Composable get() {
+        val (size, leading) = pixelSize(-1)
+        return Gen1BaseText.copy(fontSize = size, lineHeight = leading, color = Gen1Palette.Shadow)
+    }
 
 val Gen1TextLarge: TextStyle
-    @Composable get() = Gen1BaseText.copy(
-        fontSize = 19.sp,
-        lineHeight = 26.sp,
-        color = Gen1Palette.Ink,
-    )
+    @Composable get() {
+        val (size, leading) = pixelSize(2)
+        return Gen1BaseText.copy(fontSize = size, lineHeight = leading, color = Gen1Palette.Ink)
+    }
 
-/** Everything but the colour, which is the only part a palette changes. */
+/**
+ * Everything that does not depend on the palette or the density.
+ *
+ * No synthetic bold: the face has one weight, and asking for another would have
+ * the renderer smear the glyphs sideways to fake it. No letter spacing either —
+ * the advances are already whole design pixels, and adding a fraction of one
+ * would push every glyph after the first off the grid.
+ */
 private val Gen1BaseText = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontWeight = FontWeight.Bold,
-    fontSize = 15.sp,
-    lineHeight = 22.sp,
-    letterSpacing = 0.6.sp,
+    fontFamily = Gen1FontFamily,
+    fontWeight = FontWeight.Normal,
+    letterSpacing = 0.sp,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
 )
 
 @Composable
@@ -180,7 +260,7 @@ fun Gen1Window(
 private fun Gen1Cursor(selected: Boolean) {
     Box(Modifier.width(18.dp), contentAlignment = Alignment.Center) {
         if (selected) {
-            GbText("▶", style = Gen1Text.copy(fontSize = 13.sp))
+            GbText("▶")
         }
     }
 }

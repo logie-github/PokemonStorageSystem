@@ -30,11 +30,10 @@ are deliberately out of scope.
   is still recoverable by hand.
 - Keeps provenance for everything it stores: which game, trainer, slot and
   place it came from, and when.
-- Opens on the PC's own storage menu: TRANSFER, VIEW POKéMON, OPTIONS. TRANSFER
-  lists both sides at once — the current box, then the open save's party — so a
-  Pokémon is chosen before its direction. VIEW POKéMON is the browse side, where
-  one can be moved between boxes, looked at, or released. The box is changed by
-  tapping the BOX No. window.
+- Opens on the PC's own storage menu: WITHDRAW PKMN, DEPOSIT PKMN, VIEW POKéMON,
+  OPTIONS. VIEW POKéMON is the browse side, where a stored Pokémon can be moved
+  between boxes, looked at, or released. The box is changed by tapping the
+  BOX No. window.
 
 ## The rule the whole app is built around
 
@@ -106,6 +105,29 @@ documents the Generation I sprite sets and asks only that the repository be
 credited. This app ships none of that art; it is downloaded on the player's
 request and stored only on their own device.
 
+
+## Type
+
+The interface is set in the Generation I face itself, bundled with the app —
+[pokemon-font](https://github.com/cooljeanius/pokemon-font), an extended
+Unicode clone of the font the Game Boy games shipped with, by Superpencil,
+under the SIL Open Font License 1.1. The licence travels with it, both in
+`third_party/pokemon-font/` and inside the APK.
+
+It is a vector font drawing square pixels, which means it is only crisp when
+one design pixel covers a whole number of device pixels. The project's own
+README says to use multiples of ten; measuring the source says otherwise. The
+em is 320 units and all but a handful of the Latin outline coordinates are
+multiples of 40, so one design pixel is an **eighth** of the em — a capital is
+7 of those pixels tall, the advance is 8, the ascender 10.
+
+So the app does not size type in `sp` by eye. Every size is snapped to a whole
+multiple of eight device pixels for the density it is actually rendering at,
+and line height is snapped up to the same grid so baselines land on pixels too.
+`snapFontPixels` is that arithmetic, kept out of the composable and tested
+across every density Android ships, because it is the one thing the whole
+presentation rests on. Nothing is bold, either: the face has one weight, and
+asking for another has the renderer smear the glyphs sideways to fake it.
 
 ## Colour
 

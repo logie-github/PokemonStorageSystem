@@ -114,10 +114,10 @@ fun PcMainScreen(
 /**
  * The storage system's menu.
  *
- * TRANSFER covers both directions at once, so a Pokémon is chosen before its
- * direction rather than after it. VIEW POKéMON is the browse-and-rearrange
- * side, and RELEASE lives in the window that opens on a chosen Pokémon rather
- * than on the menu, where it was one tap from everything else.
+ * WITHDRAW and DEPOSIT are the cartridge's own two rows. VIEW POKéMON is the
+ * browse-and-rearrange side, and RELEASE lives in the window that opens on a
+ * chosen Pokémon rather than on the menu, where it was one tap from
+ * everything else.
  *
  * The box is changed by tapping the BOX No. window itself, which is why there
  * is no row for it.
@@ -128,7 +128,8 @@ fun StorageSystemScreen(
     boxName: String,
     selected: Int,
     onSelect: (Int) -> Unit,
-    onTransfer: () -> Unit,
+    onWithdraw: () -> Unit,
+    onDeposit: () -> Unit,
     onView: () -> Unit,
     onChangeBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
@@ -136,7 +137,8 @@ fun StorageSystemScreen(
     overlay: @Composable (() -> Unit)? = null,
 ) {
     val rows: List<Pair<String, () -> Unit>> = buildList {
-        add("TRANSFER" to onTransfer)
+        add("WITHDRAW PKMN" to onWithdraw)
+        add("DEPOSIT PKMN" to onDeposit)
         add("VIEW POKéMON" to onView)
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add("OPTIONS" to onOptions)

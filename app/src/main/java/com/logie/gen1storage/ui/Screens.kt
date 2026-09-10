@@ -265,12 +265,11 @@ fun SaveMenuScreen(state: UiState, model: StorageViewModel, key: String) {
 }
 
 /**
- * The storage system itself.
+ * The storage system itself, in the shape the games give it.
  *
- * TRANSFER lists both sides at once — the current box, then the open save's
- * party — so the Pokémon is picked before the direction, and the direction is
- * then whichever way it has to go. VIEW POKéMON lists only what this app holds,
- * where a Pokémon can be moved between boxes, looked at, or released.
+ * WITHDRAW takes from this app's PC into the open save; DEPOSIT goes the other
+ * way, out of that save's party. VIEW POKéMON only ever touches this app's own
+ * boxes, where a Pokémon can be moved, looked at, or released.
  */
 @Composable
 fun StorageSystemScreen(
@@ -288,39 +287,18 @@ fun StorageSystemScreen(
     val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
     val stored = box?.contents.orEmpty()
     val save = key?.let { state.save(it)?.save }
-    val boxLabel = box?.name?.uppercase() ?: "BOX ${state.currentStorageBox}"
 
-    // One list, both sides. The index a row sits at is what the cursor and the
-    // action window work from, so the two halves are built together.
-    val partyOffset = stored.size
-    val rows = buildList {
-        stored.forEachIndexed { index, entry ->
-            add(
-                MonRow(
-                    pokemonRowLabel(entry.pokemon),
-                    pokemonRowLevel(entry.pokemon),
-                    header = if (index == 0) boxLabel else null,
-                )
-            )
-        }
-        val party = save?.party.orEmpty()
-        party.forEachIndexed { index, mon ->
-            add(
-                MonRow(
-                    pokemonRowLabel(mon),
-                    pokemonRowLevel(mon),
-                    header = if (index == 0) "${save?.trainerName?.uppercase()}'s PARTY" else null,
-                )
-            )
-        }
-    }
+    val noSaveOpen = Prompt.Message(listOf("OPEN A SAVE FIRST.", "OPTIONS → ACCESS SAVE."))
 
     StorageSystemScreen(
         boxNumber = state.currentStorageBox,
         boxName = box?.name ?: "BOX ${state.currentStorageBox}",
         selected = selected,
         onSelect = { selected = it },
-        onTransfer = { mode = PcMode.TRANSFER },
+        onWithdraw = { mode = PcMode.WITHDRAW },
+        onDeposit = {
+            if (save == null) model.prompt(noSaveOpen) else mode = PcMode.DEPOSIT
+        },
         onView = { mode = PcMode.VIEW },
         onChangeBox = { mode = PcMode.CHANGE_BOX },
         onOptions = onOptions,
@@ -332,88 +310,87 @@ fun StorageSystemScreen(
         overlay = when (mode) {
             PcMode.MENU -> null
 
-            PcMode.TRANSFER -> ({
+            PcMode.WITHDRAW -> ({
                 MonListOverlay(
-                    entries = rows,
+                    entries = stored.map {
+                        MonRow(pokemonRowLabel(it.pokemon), pokemonRowLevel(it.pokemon))
+                    },
                     selected = listCursor,
-                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < rows.size } },
+                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < stored.size } },
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "What? There are no POKéMON here!",
                     action = {
-                        val index = chosen
-                        when {
-                            index == null || index >= rows.size -> Unit
-
-                            // In the box already: the only way it can go is out.
-                            index < partyOffset -> {
-                                val pick = stored[index]
-                                MonActionOverlay(
-                                    actions = listOf(
-                                        MonAction(
-                                            "WITHDRAW",
-                                            {
-                                                if (key == null) {
-                                                    model.prompt(
-                                                        Prompt.Message(
-                                                            listOf("OPEN A SAVE FIRST.", "OPTIONS → ACCESS SAVE.")
-                                                        )
-                                                    )
-                                                } else {
-                                                    model.prompt(Prompt.ChooseWithdrawTarget(pick.uid, key))
-                                                }
-                                            },
-                                            enabled = key != null,
-                                        ),
-                                        MonAction("STATS", {
-                                            model.open(
-                                                Screen.Status(null, state.currentStorageBox, index)
-                                            )
-                                        }),
+                        val pick = chosen?.let { stored.getOrNull(it) }
+                        if (pick != null) {
+                            MonActionOverlay(
+                                actions = listOf(
+                                    MonAction(
+                                        "WITHDRAW",
+                                        {
+                                            if (key == null) model.prompt(noSaveOpen)
+                                            else model.prompt(Prompt.ChooseWithdrawTarget(pick.uid, key))
+                                        },
+                                        enabled = key != null,
                                     ),
-                                    selected = actionCursor,
-                                    onSelect = { actionCursor = it },
-                                    onCancel = { chosen = null },
-                                    note = if (key == null) "NO SAVE IS OPEN" else null,
-                                )
-                            }
+                                    MonAction("STATS", {
+                                        model.open(
+                                            Screen.Status(null, state.currentStorageBox, stored.indexOf(pick))
+                                        )
+                                    }),
+                                ),
+                                selected = actionCursor,
+                                onSelect = { actionCursor = it },
+                                onCancel = { chosen = null },
+                                note = if (key == null) "NO SAVE IS OPEN" else null,
+                            )
+                        }
+                    },
+                )
+            })
 
-                            // Still in the save: the only way it can go is in.
-                            else -> {
-                                val slot = index - partyOffset
-                                val pick = save?.party?.getOrNull(slot)
-                                if (pick != null && key != null) {
-                                    val last = (save.partyCount) <= 1
-                                    MonActionOverlay(
-                                        actions = listOf(
-                                            MonAction(
-                                                "DEPOSIT",
-                                                {
-                                                    model.prompt(
-                                                        Prompt.Confirm(
-                                                            lines = listOf("DEPOSIT ${pick.displayName.uppercase()}?"),
-                                                            confirmLabel = "DEPOSIT",
-                                                            onConfirm = {
-                                                                model.depositFromSave(
-                                                                    key,
-                                                                    SaveLocation.Party(slot + 1),
-                                                                    state.currentStorageBox,
-                                                                )
-                                                            },
+            PcMode.DEPOSIT -> ({
+                val party = save?.party.orEmpty()
+                MonListOverlay(
+                    entries = party.map { MonRow(pokemonRowLabel(it), pokemonRowLevel(it)) },
+                    selected = listCursor,
+                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < party.size } },
+                    onConfirm = { chosen = it },
+                    onCancel = { mode = PcMode.MENU },
+                    emptyMessage = "There are no POKéMON here.",
+                    action = {
+                        val index = chosen
+                        val pick = index?.let { party.getOrNull(it) }
+                        if (pick != null && key != null) {
+                            val last = (save?.partyCount ?: 0) <= 1
+                            MonActionOverlay(
+                                actions = listOf(
+                                    MonAction(
+                                        "DEPOSIT",
+                                        {
+                                            model.prompt(
+                                                Prompt.Confirm(
+                                                    lines = listOf("DEPOSIT ${pick.displayName.uppercase()}?"),
+                                                    confirmLabel = "DEPOSIT",
+                                                    onConfirm = {
+                                                        model.depositFromSave(
+                                                            key,
+                                                            SaveLocation.Party(index + 1),
+                                                            state.currentStorageBox,
                                                         )
-                                                    )
-                                                },
-                                                enabled = !last,
-                                            ),
-                                            MonAction("STATS", { model.open(Screen.Status(key, 0, slot)) }),
-                                        ),
-                                        selected = actionCursor,
-                                        onSelect = { actionCursor = it },
-                                        onCancel = { chosen = null },
-                                        note = if (last) "CAN'T DEPOSIT THE LAST ONE" else null,
-                                    )
-                                }
-                            }
+                                                    },
+                                                )
+                                            )
+                                        },
+                                        enabled = !last,
+                                    ),
+                                    MonAction("STATS", { model.open(Screen.Status(key, 0, index)) }),
+                                ),
+                                selected = actionCursor,
+                                onSelect = { actionCursor = it },
+                                onCancel = { chosen = null },
+                                note = if (last) "CAN'T DEPOSIT THE LAST ONE" else null,
+                            )
                         }
                     },
                 )
@@ -491,7 +468,7 @@ fun StorageSystemScreen(
     )
 }
 
-private enum class PcMode { MENU, TRANSFER, VIEW, CHANGE_BOX }
+private enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW, CHANGE_BOX }
 
 @Composable
 fun SavePartyScreen(state: UiState, model: StorageViewModel, key: String) {

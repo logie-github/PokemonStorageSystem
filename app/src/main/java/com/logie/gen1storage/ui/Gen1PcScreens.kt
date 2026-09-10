@@ -36,9 +36,10 @@ fun Gen1MenuRow(
     onConfirm: () -> Unit,
     trailing: String? = null,
     enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
             .clickable(enabled = enabled) { if (selected) onConfirm() else onSelect() },
@@ -50,7 +51,7 @@ fun Gen1MenuRow(
         GbText(
             label.uppercase(),
             modifier = Modifier.weight(1f),
-            style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Dark),
+            style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
             maxLines = 1,
         )
         if (trailing != null) {
@@ -112,7 +113,11 @@ fun PcMainScreen(
 
 /**
  * The storage system's own menu, with the box number in its small window at
- * the bottom right and "What?" in the dialogue box beside it.
+ * the bottom right and the dialogue box beside it.
+ *
+ * The rows are built as a list rather than written out, because OPTIONS only
+ * appears on the app's own top-level menu — and the cursor index has to keep
+ * matching whichever rows are actually drawn.
  */
 @Composable
 fun StorageSystemScreen(
@@ -126,8 +131,22 @@ fun StorageSystemScreen(
     onRelease: () -> Unit,
     onChangeBox: () -> Unit,
     onExit: () -> Unit,
+    onOptions: (() -> Unit)? = null,
+    exitLabel: String = "SEE YA!",
+    message: String = "What?",
     overlay: @Composable (() -> Unit)? = null,
 ) {
+    val rows: List<Pair<String, () -> Unit>> = buildList {
+        add("WITHDRAW PKMN" to onWithdraw)
+        add("DEPOSIT PKMN" to onDeposit)
+        add("MOVE PKMN" to onMove)
+        add("RELEASE PKMN" to onRelease)
+        add("CHANGE BOX" to onChangeBox)
+        // Everything the cartridge's PC does not have lives behind this row.
+        if (onOptions != null) add("OPTIONS" to onOptions)
+        add(exitLabel to onExit)
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -136,16 +155,13 @@ fun StorageSystemScreen(
     ) {
         Column(Modifier.fillMaxSize()) {
             Gen1Frame(Modifier.fillMaxWidth(0.72f)) {
-                Gen1MenuRow("WITHDRAW PKMN", selected == 0, { onSelect(0) }, onWithdraw)
-                Gen1MenuRow("DEPOSIT PKMN", selected == 1, { onSelect(1) }, onDeposit)
-                Gen1MenuRow("MOVE PKMN", selected == 2, { onSelect(2) }, onMove)
-                Gen1MenuRow("RELEASE PKMN", selected == 3, { onSelect(3) }, onRelease)
-                Gen1MenuRow("CHANGE BOX", selected == 4, { onSelect(4) }, onChangeBox)
-                Gen1MenuRow("SEE YA!", selected == 5, { onSelect(5) }, onExit)
+                rows.forEachIndexed { index, (label, action) ->
+                    Gen1MenuRow(label, selected == index, { onSelect(index) }, action)
+                }
             }
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                Gen1Frame(Modifier.weight(1f)) { GbText("What?", style = Gen1Text) }
+                Gen1Frame(Modifier.weight(1f)) { GbText(message, style = Gen1Text) }
                 Gen1Frame(Modifier.width(160.dp)) {
                     GbText("BOX No. $boxNumber")
                     GbText(boxName.uppercase(), style = Gen1TextSmall)

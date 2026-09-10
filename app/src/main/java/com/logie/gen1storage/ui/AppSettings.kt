@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 
 /**
- * The player's own preferences. Both default to off: the app should behave the
- * ordinary way until someone asks for something else.
+ * The player's own preferences. Every one defaults to the plain behaviour: the
+ * app should look and act ordinary until someone asks for something else.
  */
 class AppSettings(private val prefs: SharedPreferences) {
 
@@ -27,8 +27,26 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_SHOW_ALL, false)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_ALL, value).apply()
 
+    /**
+     * The colour palette everything is drawn through, by [GbPalette] id.
+     * Defaults to the untinted look.
+     */
+    var paletteId: String
+        get() = prefs.getString(KEY_PALETTE, null) ?: GbPalette.ORIGINAL.id
+        set(value) = prefs.edit().putString(KEY_PALETTE, value).apply()
+
+    /**
+     * Whether the windows take the palette too. Off keeps every box black on
+     * white, the way the cartridge draws them whatever the screen is tinted.
+     */
+    var windowsFollowPalette: Boolean
+        get() = prefs.getBoolean(KEY_WINDOW_PALETTE, false)
+        set(value) = prefs.edit().putBoolean(KEY_WINDOW_PALETTE, value).apply()
+
     private companion object {
         const val KEY_SWIPE = "swipe-controls"
         const val KEY_SHOW_ALL = "show-all-saves"
+        const val KEY_PALETTE = "palette"
+        const val KEY_WINDOW_PALETTE = "windows-follow-palette"
     }
 }

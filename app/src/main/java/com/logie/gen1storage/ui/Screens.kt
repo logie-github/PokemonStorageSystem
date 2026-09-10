@@ -1,5 +1,6 @@
 package com.logie.gen1storage.ui
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -44,78 +46,23 @@ fun pokemonRowLabel(pokemon: Gen1Pokemon): String = pokemon.displayName.uppercas
 
 fun pokemonRowLevel(pokemon: Gen1Pokemon): String = ":L${pokemon.level}"
 
+/**
+ * The app's top level is the PC's own storage menu, in the order the cartridge
+ * lists it. Everything this app adds that the cartridge never had — access to
+ * saves, transfers, sprites, colours, diagnostics — sits behind OPTIONS, which
+ * is placed directly above SEE YA!.
+ */
 @Composable
 fun HomeScreen(state: UiState, model: StorageViewModel) {
-    var selected by remember { mutableStateOf(0) }
-    val entries = listOf(
-        Triple("ACCESS SAVE", "${state.saves.size} SAVE(S) ON THE ACCOUNT") {
-            if (state.linked) model.open(Screen.SaveList) else model.open(Screen.Link)
-        },
-        Triple("STORAGE BOXES", "${state.storage.total}/${StorageLayout.TOTAL_CAPACITY} STORED") {
-            model.open(Screen.StorageSystem(null))
-        },
-        Triple("TRANSFER", "MOVE BETWEEN SAVES") { model.open(Screen.Transfer) },
-        Triple(
-            "DOWNLOAD SPRITES",
-            if (state.spritesInstalled > 0) "${state.spritesInstalled} SPRITES READY" else "NOT DOWNLOADED",
-        ) { model.open(Screen.Sprites) },
-        Triple("SAVE FILES", "BACKUPS AND REPAIR") { model.open(Screen.SaveFiles) },
-        Triple("OPTIONS", "SYNC, CONTROLS AND DIAGNOSTICS") { model.open(Screen.Options) },
+    val activity = LocalActivity.current
+    StorageSystemScreen(
+        state = state,
+        model = model,
+        key = state.activeSaveKey,
+        onOptions = { model.open(Screen.Options) },
+        // SEE YA! is how the games leave the PC; here it leaves the app.
+        onExit = { activity?.finish() },
     )
-
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("POKéMON", style = Gen1TextLarge)
-                GbText("STORAGE SYSTEM", style = Gen1TextLarge)
-                Spacer(Modifier.height(6.dp))
-                GbText("FOR GEN1RECOMP - RED, BLUE, YELLOW", style = Gen1TextSmall)
-            }
-        }
-        item {
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
-                entries.forEachIndexed { index, (label, subtitle, action) ->
-                    Gen1MenuRow(label, selected == index, { selected = index }, action)
-                    GbText(subtitle, style = Gen1TextSmall)
-                }
-            }
-        }
-        if (state.showAllSaves && state.linked) {
-            item {
-                Gen1Frame {
-                    Gen1MenuRow(
-                        "ALL POKéMON",
-                        selected == entries.size,
-                        { selected = entries.size },
-                        { model.open(Screen.AllPokemon) },
-                    )
-                    GbText("EVERY SAVE IN ONE LIST", style = Gen1TextSmall)
-                }
-            }
-        }
-        if (!state.linked) {
-            item {
-                Gen1Frame {
-                    GbText("NOT LINKED YET")
-                    Spacer(Modifier.height(6.dp))
-                    GbText(
-                        "OPEN SAVE SYNC IN GEN1RECOMP AND ENTER ITS TWO CODES HERE.",
-                        style = Gen1TextSmall,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Gen1Button("ENTER SYNC CODES", { model.open(Screen.Link) })
-                }
-            }
-        }
-        if (state.recoveryNotes.isNotEmpty()) {
-            item {
-                Gen1Frame {
-                    GbText("RECOVERY")
-                    state.recoveryNotes.forEach { GbText(it.uppercase(), style = Gen1TextSmall) }
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -175,12 +122,12 @@ private fun CodeField(label: String, value: String, onChange: (String) -> Unit) 
         textStyle = Gen1Text,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = Gen1Palette.Lightest,
-            unfocusedContainerColor = Gen1Palette.Lightest,
+            focusedContainerColor = Gen1Palette.Panel,
+            unfocusedContainerColor = Gen1Palette.Panel,
             focusedTextColor = Gen1Palette.Ink,
             unfocusedTextColor = Gen1Palette.Ink,
             focusedIndicatorColor = Gen1Palette.Ink,
-            unfocusedIndicatorColor = Gen1Palette.Dark,
+            unfocusedIndicatorColor = Gen1Palette.Shadow,
             cursorColor = Gen1Palette.Ink,
         ),
         modifier = Modifier.fillMaxWidth(),
@@ -328,7 +275,13 @@ fun SaveMenuScreen(state: UiState, model: StorageViewModel, key: String) {
  * browsable.
  */
 @Composable
-fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
+fun StorageSystemScreen(
+    state: UiState,
+    model: StorageViewModel,
+    key: String?,
+    onOptions: (() -> Unit)? = null,
+    onExit: () -> Unit = { model.back() },
+) {
     var selected by remember { mutableStateOf(0) }
     var mode by remember { mutableStateOf(PcMode.MENU) }
     var listCursor by remember(mode) { mutableStateOf(0) }
@@ -346,7 +299,7 @@ fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
         onSelect = { selected = it },
         onWithdraw = { mode = PcMode.WITHDRAW },
         onDeposit = {
-            if (save == null) model.prompt(Prompt.Message(listOf("OPEN A SAVE FROM ACCESS SAVE FIRST.")))
+            if (save == null) model.prompt(Prompt.Message(listOf("OPEN A SAVE FIRST.", "OPTIONS → ACCESS SAVE.")))
             else mode = PcMode.DEPOSIT
         },
         onMove = { mode = PcMode.MOVE },
@@ -361,7 +314,13 @@ fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
             )
         },
         onChangeBox = { mode = PcMode.CHANGE_BOX },
-        onExit = { model.back() },
+        onExit = onExit,
+        onOptions = onOptions,
+        message = when {
+            !state.linked -> "Link this device in OPTIONS."
+            save == null -> "Open a save in OPTIONS."
+            else -> "What?"
+        },
         overlay = when (mode) {
             PcMode.MENU -> null
             PcMode.WITHDRAW -> ({
@@ -381,7 +340,9 @@ fun StorageSystemScreen(state: UiState, model: StorageViewModel, key: String?) {
                                 onSelect = { actionCursor = it },
                                 onAction = {
                                     if (key == null) {
-                                        model.prompt(Prompt.Message(listOf("OPEN A SAVE FROM ACCESS SAVE FIRST.")))
+                                        model.prompt(
+                                            Prompt.Message(listOf("OPEN A SAVE FIRST.", "OPTIONS → ACCESS SAVE."))
+                                        )
                                     } else {
                                         model.prompt(Prompt.ChooseWithdrawTarget(pick.uid, key))
                                     }
@@ -779,6 +740,14 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
                 )
             }
         }
+        if (state.recoveryNotes.isNotEmpty()) {
+            item {
+                Gen1Frame {
+                    GbText("RECOVERY")
+                    state.recoveryNotes.forEach { GbText(it.uppercase(), style = Gen1TextSmall) }
+                }
+            }
+        }
         model.pendingTransferSummary()?.let { pending ->
             item {
                 Gen1Frame {
@@ -810,9 +779,73 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
     }
 }
 
+/**
+ * Everything the cartridge's PC menu does not have.
+ *
+ * The main menu is the PC's own, so this screen carries the rest: the saves on
+ * the account, transfers, the sprite download, the save files, and the app's
+ * own settings.
+ */
 @Composable
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
+    var cursor by remember { mutableStateOf(-1) }
+    val entries = buildList<Triple<String, String, () -> Unit>> {
+        add(
+            Triple("ACCESS SAVE", "${state.saves.size} SAVE(S) ON THE ACCOUNT") {
+                if (state.linked) model.open(Screen.SaveList) else model.open(Screen.Link)
+            }
+        )
+        if (state.showAllSaves) {
+            add(Triple("ALL POKéMON", "EVERY SAVE IN ONE LIST") { model.open(Screen.AllPokemon) })
+        }
+        add(Triple("TRANSFER", "MOVE BETWEEN SAVES") { model.open(Screen.Transfer) })
+        add(
+            Triple(
+                "DOWNLOAD SPRITES",
+                if (state.spritesInstalled > 0) "${state.spritesInstalled} SPRITES READY" else "NOT DOWNLOADED",
+            ) { model.open(Screen.Sprites) }
+        )
+        add(Triple("SAVE FILES", "BACKUPS AND REPAIR") { model.open(Screen.SaveFiles) })
+    }
+
     ScreenColumn {
+        item {
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
+                entries.forEachIndexed { index, (label, subtitle, action) ->
+                    Gen1MenuRow(label, cursor == index, { cursor = index }, action)
+                    GbText(subtitle, style = Gen1TextSmall)
+                }
+            }
+        }
+        item {
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                GbText("COLOUR")
+                GbText("THE SCREEN AND THE SPRITES.", style = Gen1TextSmall)
+                Spacer(Modifier.height(4.dp))
+                GbPalette.ALL.forEach { palette ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Gen1MenuRow(
+                            palette.label,
+                            selected = state.paletteId == palette.id,
+                            onSelect = { model.setPalette(palette.id) },
+                            onConfirm = { model.setPalette(palette.id) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        PaletteSwatch(palette)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Gen1Toggle(
+                    label = "BLACK ON WHITE BOXES",
+                    on = !state.windowsFollowPalette,
+                    onToggle = { model.setWindowsFollowPalette(!state.windowsFollowPalette) },
+                )
+                GbText(
+                    "ON KEEPS EVERY WINDOW BLACK ON WHITE, THE WAY THE GAMES DRAW THEM. OFF LETS THEM TAKE THE PALETTE TOO.",
+                    style = Gen1TextSmall,
+                )
+            }
+        }
         item {
             Gen1Frame {
                 GbText("SAVE SYNC")
@@ -886,6 +919,21 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                     style = Gen1TextSmall,
                 )
             }
+        }
+    }
+}
+
+/** The four shades of a palette, drawn as the ramp itself so it can be judged. */
+@Composable
+private fun PaletteSwatch(palette: GbPalette) {
+    Row(
+        Modifier
+            .background(Gen1Palette.Ink)
+            .padding(2.dp)
+    ) {
+        // Lightest first, so it reads left to right the way the ramp is written.
+        palette.ramp.reversed().forEach { shade ->
+            Box(Modifier.size(width = 14.dp, height = 20.dp).background(shade))
         }
     }
 }

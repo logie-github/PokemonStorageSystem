@@ -20,12 +20,16 @@ are deliberately out of scope.
   anything that is not Generation I rather than misreading it.
 - Identifies each save by its contents — game, trainer, trainer ID, badges,
   play time, party and PC counts.
-- Shows party and PC Pokémon on a Generation I status screen, with DVs and stat
-  experience behind a DETAILS screen.
+- Shows party and PC Pokémon on the Generation I status screen, limited to what
+  the cartridge itself puts on screen — DVs and stat experience are read and
+  carried through every transfer, but never displayed.
 - Deposits a Pokémon from a save into the app's twelve boxes of twenty, and
   withdraws one back into any compatible save's party or PC.
 - Keeps provenance for everything it stores: which game, trainer, slot and
   place it came from, and when.
+- Opens on the PC's own storage menu — WITHDRAW, DEPOSIT, MOVE, RELEASE, CHANGE
+  BOX, then SEE YA! Anything the cartridge's menu never had sits behind OPTIONS,
+  which is placed directly above SEE YA!.
 
 ## The rule the whole app is built around
 
@@ -92,6 +96,26 @@ documents the Generation I sprite sets and asks only that the repository be
 credited. This app ships none of that art; it is downloaded on the player's
 request and stored only on their own device.
 
+
+## Colour
+
+OPTIONS → COLOUR draws the whole app through one four-shade Game Boy palette:
+ORIGINAL (untinted), RED, BLUE, GREEN and YELLOW, and the pastel mix a Game Boy
+Color applied to an original Game Boy cartridge.
+
+The game palettes are built to each game's identity — white, a light tint, a
+dark tint, black — rather than transcribed from a particular ROM's palette
+table, so treat them as a starting point rather than a reproduction.
+
+Sprites are recoloured through the same ramp. A Generation I sprite was four
+shades to begin with, so each pixel is bucketed by brightness onto exactly one
+palette entry rather than blended towards it — the result is a recoloured
+sprite, not a tinted one, and the transparent surround stays transparent.
+ORIGINAL leaves the art alone.
+
+The windows are the exception: they stay black on white whatever the screen is
+tinted, which is how the cartridge draws its text boxes. BLACK ON WHITE BOXES
+turns that off, and the windows then take the palette too.
 
 ## Getting access to your saves
 

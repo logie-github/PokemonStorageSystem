@@ -43,6 +43,24 @@ class SpriteStore(
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > 60
         })
 
+    /**
+     * The four shades the art is mapped onto, darkest first, or null to leave
+     * it alone. Set from the palette the player picked in OPTIONS.
+     */
+    private var tintId: String = "original"
+    private var tintRamp: IntArray? = null
+
+    /**
+     * Points every sprite at a palette. [id] takes part in the cache key, so a
+     * change repaints from the files rather than handing back the old colours.
+     */
+    fun setTint(id: String, ramp: IntArray?) {
+        if (id == tintId) return
+        tintId = id
+        tintRamp = ramp
+        memory.clear()
+    }
+
     fun fileFor(set: SpriteSet, speciesId: String): File =
         File(File(directory, set.id), "${spriteFileName(speciesId)}.png")
 
@@ -92,7 +110,7 @@ class SpriteStore(
     }
 
     fun load(set: SpriteSet, speciesId: String): ImageBitmap? {
-        val key = "${set.id}/${spriteFileName(speciesId)}"
+        val key = "$tintId/${set.id}/${spriteFileName(speciesId)}"
         memory[key]?.let { return it }
         val file = fileFor(set, speciesId)
         if (!file.isFile) return null
@@ -104,10 +122,59 @@ class SpriteStore(
         }.getOrNull() ?: return null
 
         val reduced = runCatching { pointSample(full) }.getOrNull()
-        if (reduced !== full) full.recycle()
-        val image = (reduced ?: return null).asImageBitmap()
+        if (reduced == null) {
+            full.recycle()
+            return null
+        }
+        val ramp = tintRamp
+        val shown =
+            if (ramp == null) reduced
+            else runCatching { recolour(reduced, ramp) }.getOrNull() ?: reduced
+
+        // Recycle every intermediate that is not the bitmap being kept.
+        if (full !== shown) full.recycle()
+        if (reduced !== shown && reduced !== full) reduced.recycle()
+
+        val image = shown.asImageBitmap()
         memory[key] = image
         return image
+    }
+
+    /**
+     * Maps the art onto a four-shade ramp by brightness.
+     *
+     * A Game Boy sprite was four shades to begin with, so bucketing by
+     * luminance lands each original shade on exactly one palette entry rather
+     * than blending towards it — the result is a recoloured sprite, not a
+     * tinted photograph. Alpha is carried through untouched, so the transparent
+     * surround stays transparent.
+     */
+    private fun recolour(source: Bitmap, ramp: IntArray): Bitmap {
+        val width = source.width
+        val height = source.height
+        val pixels = IntArray(width * height)
+        source.getPixels(pixels, 0, width, 0, 0, width, height)
+        for (i in pixels.indices) {
+            val pixel = pixels[i]
+            val alpha = pixel ushr 24
+            if (alpha == 0) continue
+            // Integer luma weights, the usual 77/151/28 over 256.
+            val luma = (
+                ((pixel shr 16) and 0xFF) * 77 +
+                    ((pixel shr 8) and 0xFF) * 151 +
+                    (pixel and 0xFF) * 28
+                ) shr 8
+            val shade = ramp[
+                when {
+                    luma < 64 -> 0
+                    luma < 128 -> 1
+                    luma < 192 -> 2
+                    else -> 3
+                }
+            ]
+            pixels[i] = (alpha shl 24) or (shade and 0x00FFFFFF)
+        }
+        return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
     }
 
     /**

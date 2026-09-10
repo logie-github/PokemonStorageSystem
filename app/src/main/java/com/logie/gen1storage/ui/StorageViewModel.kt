@@ -3,6 +3,7 @@ package com.logie.gen1storage.ui
 import android.app.Application
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.viewModelScope
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
@@ -89,6 +90,14 @@ data class UiState(
     val currentStorageBox: Int = 1,
     val swipeControls: Boolean = false,
     val showAllSaves: Boolean = false,
+    /** The [GbPalette] id everything is drawn through. */
+    val paletteId: String = GbPalette.ORIGINAL.id,
+    val windowsFollowPalette: Boolean = false,
+    /**
+     * The save the top-level PC menu deposits from and withdraws to. Set by
+     * opening one, so the menu is never asking which save it means.
+     */
+    val activeSaveKey: String? = null,
     val loadingAll: Boolean = false,
     val spriteProgress: SpriteProgress? = null,
     val spritesInstalled: Int = 0,
@@ -96,6 +105,7 @@ data class UiState(
     val spriteRevision: Int = 0,
 ) {
     val screen: Screen get() = stack.last()
+    val palette: GbPalette get() = GbPalette.fromId(paletteId)
     val saves: List<RemoteSave> get() = account?.saves.orEmpty()
     fun remote(key: String?): RemoteSave? = saves.firstOrNull { it.key == key }
     fun save(key: String?): LoadedSave? = loaded[key]
@@ -129,12 +139,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             .take(40)
 
     init {
+        applySpriteTint(GbPalette.fromId(settings.paletteId))
         mutable.update {
             it.copy(
                 storage = storage.state(),
                 linked = credentials.isLinked,
                 swipeControls = settings.swipeControls,
                 showAllSaves = settings.showAllSaves,
+                paletteId = settings.paletteId,
+                windowsFollowPalette = settings.windowsFollowPalette,
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
             )
         }
@@ -208,6 +221,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 linked = false,
                 account = null,
                 loaded = emptyMap(),
+                activeSaveKey = null,
                 stack = listOf(Screen.Home),
             )
         }
@@ -281,7 +295,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun openSave(key: String) = viewModelScope.launch {
         val remote = mutable.value.remote(key) ?: return@launch message("THAT SAVE IS GONE.")
         if (mutable.value.loaded[key] != null) {
-            open(Screen.SaveMenu(key))
+            mutable.update { it.copy(activeSaveKey = key) }
+            open(Screen.Pc(key))
             return@launch
         }
         mutable.update { it.copy(busy = true) }
@@ -289,7 +304,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(busy = false) }
         when (result) {
             is SyncResult.Ok -> {
-                mutable.update { it.copy(loaded = it.loaded + (key to result.value)) }
+                mutable.update {
+                    it.copy(
+                        loaded = it.loaded + (key to result.value),
+                        activeSaveKey = if (result.value.isUsable) key else it.activeSaveKey,
+                    )
+                }
                 if (result.value.isUsable) open(Screen.Pc(key))
                 else message(result.value.classification.summary.uppercase())
             }
@@ -304,6 +324,29 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setSwipeControls(enabled: Boolean) {
         settings.swipeControls = enabled
         mutable.update { it.copy(swipeControls = enabled) }
+    }
+
+    /**
+     * Picks the palette. The sprites are recoloured through the same ramp, so
+     * one choice covers the screen and the art together.
+     */
+    fun setPalette(id: String) {
+        val palette = GbPalette.fromId(id)
+        settings.paletteId = palette.id
+        applySpriteTint(palette)
+        mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
+    }
+
+    fun setWindowsFollowPalette(enabled: Boolean) {
+        settings.windowsFollowPalette = enabled
+        mutable.update { it.copy(windowsFollowPalette = enabled) }
+    }
+
+    private fun applySpriteTint(palette: GbPalette) {
+        sprites.setTint(
+            palette.id,
+            if (palette.tintsSprites) palette.ramp.map { it.toArgb() }.toIntArray() else null,
+        )
     }
 
     fun setShowAllSaves(enabled: Boolean) {

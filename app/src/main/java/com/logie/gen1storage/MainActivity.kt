@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
 import com.logie.gen1storage.ui.Gen1Button
 import com.logie.gen1storage.ui.Gen1Palette
@@ -71,6 +73,15 @@ class MainActivity : ComponentActivity() {
 private fun StorageApp(model: StorageViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // The palette is global to the drawing code, including the draw lambdas
+    // that cannot observe view-model state themselves. Applied as a side effect
+    // rather than during composition, so nothing writes snapshot state while
+    // the frame it belongs to is still being built.
+    SideEffect {
+        Gen1Palette.palette = GbPalette.fromId(state.paletteId)
+        Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
+    }
 
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(enabled = state.prompt != null || state.stack.size > 1) { model.back() }
@@ -155,7 +166,7 @@ private fun TopBar(
 }
 
 private fun titleFor(screen: Screen): String = when (screen) {
-    Screen.Home -> "POKéMON STORAGE"
+    Screen.Home -> "STORAGE SYSTEM"
     Screen.Link -> "SAVE SYNC"
     Screen.SaveList -> "ACCESS SAVE"
     is Screen.SaveMenu -> "PC"

@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,38 +41,83 @@ import androidx.compose.material3.Text as MaterialText
  * which reads as the Game Boy font without shipping one.
  */
 object Gen1Palette {
-    /** The four-shade ramp, lightest to darkest. */
-    val Lightest = Color(0xFFF8F8F8)
-    val Light = Color(0xFFC8C8C8)
-    val Dark = Color(0xFF686868)
-    val Darkest = Color(0xFF101010)
+
+    /**
+     * The palette everything is drawn through. Snapshot state rather than a
+     * constant, so a change in OPTIONS repaints every screen at once —
+     * including the `drawBehind` lambdas, which read these getters directly.
+     */
+    var palette by mutableStateOf(GbPalette.ORIGINAL)
+
+    /**
+     * Whether the windows follow the palette as well as the screen behind them.
+     *
+     * Off by default, because the cartridge draws its text boxes black on white
+     * whatever the screen is tinted, and that is the more readable of the two.
+     * Turning it on lets the boxes take the palette too.
+     */
+    var windowsFollowPalette by mutableStateOf(false)
+
+    /** The four-shade ramp, lightest to darkest. Always the chosen palette. */
+    val Lightest: Color get() = palette.lightest
+    val Light: Color get() = palette.light
+    val Dark: Color get() = palette.dark
+    val Darkest: Color get() = palette.darkest
 
     /** The screen behind every window, as the console letterboxes it. */
-    val Surround = Color(0xFF303030)
+    val Surround: Color get() = palette.surround
 
-    val Ink = Darkest
-    val Panel = Lightest
-    val Shadow = Dark
+    // Window chrome. Black on white unless the player says otherwise.
+    val Ink: Color get() = if (windowsFollowPalette) palette.darkest else MonoInk
+    val Panel: Color get() = if (windowsFollowPalette) palette.lightest else MonoPanel
+    val Shadow: Color get() = if (windowsFollowPalette) palette.dark else MonoShadow
+    val Muted: Color get() = if (windowsFollowPalette) palette.light else MonoMuted
+
+    private val MonoInk = Color(0xFF101010)
+    private val MonoPanel = Color(0xFFF8F8F8)
+    private val MonoShadow = Color(0xFF686868)
+    private val MonoMuted = Color(0xFFC8C8C8)
 }
 
-val Gen1Text = TextStyle(
+/**
+ * The three type sizes, read fresh on every composition.
+ *
+ * They are composable getters rather than constants because the ink colour is
+ * now a setting: a `val` would bake whichever palette happened to be active
+ * when the class initialised and never change again.
+ */
+val Gen1Text: TextStyle
+    @Composable get() = Gen1BaseText.copy(color = Gen1Palette.Ink)
+
+val Gen1TextSmall: TextStyle
+    @Composable get() = Gen1BaseText.copy(
+        fontSize = 12.sp,
+        lineHeight = 17.sp,
+        color = Gen1Palette.Shadow,
+    )
+
+val Gen1TextLarge: TextStyle
+    @Composable get() = Gen1BaseText.copy(
+        fontSize = 19.sp,
+        lineHeight = 26.sp,
+        color = Gen1Palette.Ink,
+    )
+
+/** Everything but the colour, which is the only part a palette changes. */
+private val Gen1BaseText = TextStyle(
     fontFamily = FontFamily.Monospace,
     fontWeight = FontWeight.Bold,
     fontSize = 15.sp,
     lineHeight = 22.sp,
     letterSpacing = 0.6.sp,
-    color = Gen1Palette.Ink,
 )
-
-val Gen1TextSmall = Gen1Text.copy(fontSize = 12.sp, lineHeight = 17.sp, color = Gen1Palette.Dark)
-val Gen1TextLarge = Gen1Text.copy(fontSize = 19.sp, lineHeight = 26.sp)
-
-private val LocalGen1TextStyle = staticCompositionLocalOf { Gen1Text }
 
 @Composable
 fun Gen1Theme(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalGen1TextStyle provides Gen1Text, content = content)
 }
+
+private val LocalGen1TextStyle = compositionLocalOf { Gen1BaseText }
 
 @Composable
 fun GbText(
@@ -120,7 +168,7 @@ fun Gen1Window(
                     .background(Gen1Palette.Ink)
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
-                GbText(title.uppercase(), style = Gen1Text.copy(color = Gen1Palette.Lightest))
+                GbText(title.uppercase(), style = Gen1Text.copy(color = Gen1Palette.Panel))
             }
         }
         Column(Modifier.padding(contentPadding), content = content)
@@ -151,12 +199,12 @@ fun Gen1MenuItem(
     subtitle: String? = null,
     enabled: Boolean = true,
 ) {
-    val ink = if (enabled) Gen1Palette.Ink else Gen1Palette.Light
+    val ink = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .background(if (selected) Gen1Palette.Light else Gen1Palette.Panel)
+            .background(if (selected) Gen1Palette.Muted else Gen1Palette.Panel)
             .clickable(enabled = enabled) { if (selected) onConfirm() else onSelect() }
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -186,7 +234,7 @@ fun Gen1Button(
             .heightIn(min = 48.dp)
             .background(Gen1Palette.Ink)
             .padding(2.dp)
-            .background(if (enabled) Gen1Palette.Panel else Gen1Palette.Light)
+            .background(if (enabled) Gen1Palette.Panel else Gen1Palette.Muted)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         // A flat two-tone plate: outer rule, inner fill, no rounding.
@@ -194,7 +242,7 @@ fun Gen1Button(
     ) {
         GbText(
             label.uppercase(),
-            style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Dark),
+            style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
         )
     }
 }
@@ -231,7 +279,7 @@ fun Gen1HpBar(current: Int, max: Int, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .background(Gen1Palette.Ink)
             .padding(2.dp)
-            .background(Gen1Palette.Lightest)
+            .background(Gen1Palette.Panel)
     ) {
         Box(
             Modifier

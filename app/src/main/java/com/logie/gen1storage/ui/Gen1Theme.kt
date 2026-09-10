@@ -1,7 +1,6 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -100,15 +100,18 @@ fun Gen1Window(
     contentPadding: PaddingValues = PaddingValues(12.dp),
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
+    // Drawn as alternating fills rather than a border: modifiers paint
+    // outside-in, so a background after a border would cover it.
     Column(
         modifier
             .fillMaxWidth()
-            .background(Gen1Palette.Ink)
+            .background(Gen1Palette.Ink)      // outer rule
             .padding(3.dp)
-            .background(Gen1Palette.Panel)
+            .background(Gen1Palette.Panel)    // light gutter
             .padding(2.dp)
-            .border(2.dp, Gen1Palette.Ink)
-            .background(Gen1Palette.Panel)
+            .background(Gen1Palette.Ink)      // inner rule
+            .padding(2.dp)
+            .background(Gen1Palette.Panel)    // interior
     ) {
         if (title != null) {
             Box(
@@ -186,6 +189,7 @@ fun Gen1Button(
             .background(if (enabled) Gen1Palette.Panel else Gen1Palette.Light)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
+        // A flat two-tone plate: outer rule, inner fill, no rounding.
         contentAlignment = Alignment.Center,
     ) {
         GbText(
@@ -232,7 +236,7 @@ fun Gen1HpBar(current: Int, max: Int, modifier: Modifier = Modifier) {
         Box(
             Modifier
                 .fillMaxWidth(fraction)
-                .heightIn(min = 8.dp)
+                .height(10.dp)
                 .background(
                     when {
                         fraction > 0.5f -> Gen1Palette.Darkest

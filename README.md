@@ -34,6 +34,13 @@ are deliberately out of scope.
   OPTIONS. VIEW POKéMON is the browse side, where a stored Pokémon can be moved
   between boxes, looked at, or released. The box is changed by tapping the
   BOX No. window.
+- Never browses saves. A save is named only when a transfer needs one —
+  DEPOSIT asks which save it is taking from, WITHDRAW asks which it is putting
+  into — and as the provenance of a stored Pokémon. Turning ALL POKéMON on puts
+  every save's party in the deposit list at once, so there is nothing to ask.
+- Re-reads the account as soon as it is on screen and every thirty seconds it
+  stays there, silently: the game can save at any moment, and every revision
+  the app is holding is stale the instant it does.
 
 ## The rule the whole app is built around
 

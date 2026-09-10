@@ -1,6 +1,7 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,7 +56,6 @@ fun HomeScreen(state: UiState, model: StorageViewModel) {
     StorageSystemScreen(
         state = state,
         model = model,
-        key = state.activeSaveKey,
         onOptions = { model.open(Screen.Options) },
     )
 }
@@ -129,153 +129,18 @@ private fun CodeField(label: String, value: String, onChange: (String) -> Unit) 
     )
 }
 
-@Composable
-fun SaveListScreen(state: UiState, model: StorageViewModel) {
-    var selected by remember { mutableStateOf(-1) }
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("ACCESS SAVE")
-                GbText("CHOOSE A PLAYTHROUGH.", style = Gen1TextSmall)
-                state.lastSyncedAtMillis?.let {
-                    GbText("SYNCED ${Instant.ofEpochMilli(it)}", style = Gen1TextSmall)
-                }
-            }
-        }
-        if (state.syncing) item { Gen1Frame { GbText("CHECKING THE ACCOUNT...") } }
-        itemsIndexed(state.saves) { index, remote ->
-            SaveCard(remote, state.save(remote.key), selected == index, { selected = index }) {
-                model.openSave(remote.key)
-            }
-        }
-        if (!state.syncing && state.saves.isEmpty()) {
-            item {
-                Gen1Frame {
-                    GbText("NO SAVES ON THE ACCOUNT.")
-                    Spacer(Modifier.height(6.dp))
-                    GbText(
-                        "SAVE IN THE GAME, THEN TAP SYNC NOW IN ITS SAVE SYNC DIALOG.",
-                        style = Gen1TextSmall,
-                    )
-                }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Gen1Button("REFRESH", { model.sync() }, enabled = !state.syncing)
-                if (state.showAllSaves) {
-                    Gen1Button("ALL POKéMON", { model.open(Screen.AllPokemon) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SaveCard(
-    remote: RemoteSave,
-    loaded: LoadedSave?,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    Gen1Frame {
-        Gen1MenuRow(
-            "${remote.version.label}   ${remote.summary.trainerName ?: remote.label}",
-            selected,
-            onSelect,
-            onConfirm,
-        )
-        remote.summary.badges?.let { Gen1Field("BADGES", it.toString()) }
-        remote.summary.timeText?.let { Gen1Field("PLAY TIME", it) }
-        remote.summary.dexCount?.let { Gen1Field("POKéDEX", it.toString()) }
-        val save = loaded?.save
-        if (save != null) {
-            Gen1Field("PARTY", "${save.partyCount}/${Gen1RecompSave.PARTY_MAX}")
-            Gen1Field("IN BOXES", save.storedCount.toString())
-            Gen1Field("IDNo/", save.trainerId?.let { "%05d".format(it) } ?: "?")
-        }
-        val status = loaded?.classification
-        if (status != null && (status !is SaveClassification.Valid || status.warnings.isNotEmpty())) {
-            GbText(status.summary.uppercase(), style = Gen1TextSmall)
-        }
-    }
-}
-
-/** "<TRAINER> turned on the PC." then the PC's own menu. */
-@Composable
-fun PcScreen(state: UiState, model: StorageViewModel, key: String) {
-    val loaded = state.save(key)
-    val save = loaded?.save
-    if (save == null) {
-        ScreenColumn { item { Gen1Frame { GbText("OPEN THIS SAVE FROM ACCESS SAVE FIRST.") } } }
-        return
-    }
-    var selected by remember(key) { mutableStateOf(0) }
-    PcMainScreen(
-        trainerName = save.trainerName.uppercase(),
-        selected = selected,
-        onSelect = { selected = it },
-        onStorageSystem = { model.open(Screen.StorageSystem(key)) },
-        onTrainerPc = { model.open(Screen.SaveMenu(key)) },
-        onLogOff = { model.back() },
-        message = listOf("${save.trainerName.uppercase()} turned on", "the PC."),
-    )
-}
-
-/** The trainer's own PC: their party and their in-game boxes, to look through. */
-@Composable
-fun SaveMenuScreen(state: UiState, model: StorageViewModel, key: String) {
-    val save = state.save(key)?.save
-    if (save == null) {
-        ScreenColumn { item { Gen1Frame { GbText("OPEN THIS SAVE FIRST.") } } }
-        return
-    }
-    var selected by remember(key) { mutableStateOf(0) }
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("${save.trainerName.uppercase()}'s PC")
-                Gen1Field("BADGES", save.badgeCount.toString())
-                Gen1Field("PLAY TIME", save.playTimeText)
-            }
-        }
-        item {
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
-                Gen1MenuRow(
-                    "PARTY POKéMON",
-                    selected == 0,
-                    { selected = 0 },
-                    { model.open(Screen.SaveParty(key)) },
-                    trailing = "${save.partyCount}/${Gen1RecompSave.PARTY_MAX}",
-                )
-                save.boxes.forEachIndexed { index, box ->
-                    val number = index + 1
-                    Gen1MenuRow(
-                        save.boxName(number),
-                        selected == number,
-                        { selected = number },
-                        { model.open(Screen.SaveBox(key, number)) },
-                        trailing = "${box.size}/${Gen1RecompSave.BOX_CAPACITY}",
-                    )
-                }
-            }
-        }
-    }
-}
-
 /**
  * The storage system itself, in the shape the games give it.
  *
- * WITHDRAW takes from this app's PC into the open save; DEPOSIT goes the other
- * way, out of that save's party. VIEW POKéMON only ever touches this app's own
- * boxes, where a Pokémon can be moved, looked at, or released.
+ * There is no save browser in this app, so a save is only ever named because a
+ * transfer needs one: DEPOSIT asks which save it is taking from, WITHDRAW asks
+ * which save it is putting into. With ALL POKéMON on, every save's party is in
+ * the deposit list at once and there is nothing to ask.
  */
 @Composable
 fun StorageSystemScreen(
     state: UiState,
     model: StorageViewModel,
-    key: String?,
     onOptions: (() -> Unit)? = null,
 ) {
     var selected by remember { mutableStateOf(0) }
@@ -286,9 +151,29 @@ fun StorageSystemScreen(
 
     val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
     val stored = box?.contents.orEmpty()
-    val save = key?.let { state.save(it)?.save }
 
-    val noSaveOpen = Prompt.Message(listOf("OPEN A SAVE FIRST.", "OPTIONS → ACCESS SAVE."))
+    /** Every party this app can currently see, in the order it will list them. */
+    data class PartyRow(val key: String, val slot: Int, val mon: Gen1Pokemon, val save: Gen1RecompSave)
+
+    val depositRows = buildList {
+        val keys = if (state.showAllSaves) {
+            state.saves.map { it.key }
+        } else {
+            listOfNotNull(state.activeSaveKey)
+        }
+        keys.forEach { key ->
+            val save = state.save(key)?.save ?: return@forEach
+            save.party.forEachIndexed { index, mon -> add(PartyRow(key, index, mon, save)) }
+        }
+    }
+
+    /** The label a group of party rows sits under, or null once it is open. */
+    fun depositHeader(index: Int): String? {
+        val row = depositRows[index]
+        if (index > 0 && depositRows[index - 1].key == row.key) return null
+        val version = state.remote(row.key)?.version?.label ?: ""
+        return "$version ${row.save.trainerName.uppercase()}'s PARTY".trim()
+    }
 
     StorageSystemScreen(
         boxNumber = state.currentStorageBox,
@@ -297,16 +182,15 @@ fun StorageSystemScreen(
         onSelect = { selected = it },
         onWithdraw = { mode = PcMode.WITHDRAW },
         onDeposit = {
-            if (save == null) model.prompt(noSaveOpen) else mode = PcMode.DEPOSIT
+            mode = PcMode.DEPOSIT
+            // Asked every time rather than remembered, so which save a deposit
+            // is coming from is never hidden state — and so it can be changed.
+            if (!state.showAllSaves) model.prompt(Prompt.ChooseDepositSave("TAKE FROM WHICH SAVE?"))
         },
         onView = { mode = PcMode.VIEW },
         onChangeBox = { mode = PcMode.CHANGE_BOX },
         onOptions = onOptions,
-        message = when {
-            !state.linked -> "Link this device in OPTIONS."
-            save == null -> "Open a save in OPTIONS."
-            else -> "What?"
-        },
+        message = if (state.linked) "What?" else "Link this device in OPTIONS.",
         overlay = when (mode) {
             PcMode.MENU -> null
 
@@ -327,11 +211,8 @@ fun StorageSystemScreen(
                                 actions = listOf(
                                     MonAction(
                                         "WITHDRAW",
-                                        {
-                                            if (key == null) model.prompt(noSaveOpen)
-                                            else model.prompt(Prompt.ChooseWithdrawTarget(pick.uid, key))
-                                        },
-                                        enabled = key != null,
+                                        { model.prompt(Prompt.ChooseWithdrawSave(pick.uid)) },
+                                        enabled = state.saves.isNotEmpty(),
                                     ),
                                     MonAction("STATS", {
                                         model.open(
@@ -342,7 +223,7 @@ fun StorageSystemScreen(
                                 selected = actionCursor,
                                 onSelect = { actionCursor = it },
                                 onCancel = { chosen = null },
-                                note = if (key == null) "NO SAVE IS OPEN" else null,
+                                note = if (state.saves.isEmpty()) "NO SAVES ON THE ACCOUNT" else null,
                             )
                         }
                     },
@@ -350,19 +231,25 @@ fun StorageSystemScreen(
             })
 
             PcMode.DEPOSIT -> ({
-                val party = save?.party.orEmpty()
                 MonListOverlay(
-                    entries = party.map { MonRow(pokemonRowLabel(it), pokemonRowLevel(it)) },
+                    entries = depositRows.mapIndexed { index, row ->
+                        MonRow(
+                            pokemonRowLabel(row.mon),
+                            pokemonRowLevel(row.mon),
+                            header = depositHeader(index),
+                        )
+                    },
                     selected = listCursor,
-                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < party.size } },
+                    onSelect = { listCursor = it; chosen = it.takeIf { i -> i < depositRows.size } },
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "There are no POKéMON here.",
                     action = {
-                        val index = chosen
-                        val pick = index?.let { party.getOrNull(it) }
-                        if (pick != null && key != null) {
-                            val last = (save?.partyCount ?: 0) <= 1
+                        val pick = chosen?.let { depositRows.getOrNull(it) }
+                        if (pick != null) {
+                            // The games never let the last one go, and neither
+                            // does this — counted per save, not per list.
+                            val last = pick.save.partyCount <= 1
                             MonActionOverlay(
                                 actions = listOf(
                                     MonAction(
@@ -370,12 +257,12 @@ fun StorageSystemScreen(
                                         {
                                             model.prompt(
                                                 Prompt.Confirm(
-                                                    lines = listOf("DEPOSIT ${pick.displayName.uppercase()}?"),
+                                                    lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
                                                     confirmLabel = "DEPOSIT",
                                                     onConfirm = {
                                                         model.depositFromSave(
-                                                            key,
-                                                            SaveLocation.Party(index + 1),
+                                                            pick.key,
+                                                            SaveLocation.Party(pick.slot + 1),
                                                             state.currentStorageBox,
                                                         )
                                                     },
@@ -384,7 +271,9 @@ fun StorageSystemScreen(
                                         },
                                         enabled = !last,
                                     ),
-                                    MonAction("STATS", { model.open(Screen.Status(key, 0, index)) }),
+                                    MonAction("STATS", {
+                                        model.open(Screen.Status(pick.key, 0, pick.slot))
+                                    }),
                                 ),
                                 selected = actionCursor,
                                 onSelect = { actionCursor = it },
@@ -469,115 +358,6 @@ fun StorageSystemScreen(
 }
 
 private enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW, CHANGE_BOX }
-
-@Composable
-fun SavePartyScreen(state: UiState, model: StorageViewModel, key: String) {
-    val save = state.save(key)?.save ?: return
-    MonBrowseScreen(
-        title = "${save.trainerName.uppercase()}'s PARTY",
-        entries = save.party,
-        emptyMessage = "There are no POKéMON here.",
-        onStats = { index -> model.open(Screen.Status(key, 0, index)) },
-    )
-}
-
-@Composable
-fun SaveBoxScreen(state: UiState, model: StorageViewModel, key: String, box: Int) {
-    val save = state.save(key)?.save ?: return
-    MonBrowseScreen(
-        title = save.boxName(box),
-        entries = save.boxes.getOrNull(box - 1).orEmpty(),
-        emptyMessage = "What? There are no POKéMON here!",
-        onStats = { index -> model.open(Screen.Status(key, box, index)) },
-    )
-}
-
-@Composable
-private fun MonBrowseScreen(
-    title: String,
-    entries: List<Gen1Pokemon>,
-    emptyMessage: String,
-    onStats: (Int) -> Unit,
-) {
-    var cursor by remember(title, entries.size) { mutableStateOf(-1) }
-    ScreenColumn {
-        item { Gen1Frame { GbText(title); GbText("${entries.size} POKéMON", style = Gen1TextSmall) } }
-        if (entries.isEmpty()) item { Gen1Frame { GbText(emptyMessage) } }
-        item {
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
-                entries.forEachIndexed { index, pokemon ->
-                    Gen1MenuRow(
-                        pokemonRowLabel(pokemon),
-                        cursor == index,
-                        { cursor = index },
-                        { onStats(index) },
-                        trailing = pokemonRowLevel(pokemon),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Every save's Pokémon in one list, when the option is on. */
-@Composable
-fun AllPokemonScreen(state: UiState, model: StorageViewModel) {
-    var cursor by remember { mutableStateOf(-1) }
-    data class Row(val key: String, val area: Int, val slot: Int, val where: String, val mon: Gen1Pokemon)
-
-    val rows = buildList {
-        state.saves.forEach { remote ->
-            val save = state.save(remote.key)?.save ?: return@forEach
-            val trainer = save.trainerName.uppercase()
-            save.party.forEachIndexed { index, mon ->
-                add(Row(remote.key, 0, index, "${remote.version.label} $trainer PARTY", mon))
-            }
-            save.boxes.forEachIndexed { boxIndex, box ->
-                box.forEachIndexed { index, mon ->
-                    add(Row(remote.key, boxIndex + 1, index, "${remote.version.label} $trainer BOX ${boxIndex + 1}", mon))
-                }
-            }
-        }
-    }
-
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("ALL POKéMON")
-                GbText(
-                    "${rows.size} ACROSS ${state.saves.count { state.save(it.key)?.isUsable == true }} SAVE(S)",
-                    style = Gen1TextSmall,
-                )
-                if (state.loadingAll) GbText("LOADING SAVES...", style = Gen1TextSmall)
-                Spacer(Modifier.height(8.dp))
-                Gen1Button("RELOAD", { model.loadAllSaves() }, enabled = !state.loadingAll)
-            }
-        }
-        if (state.storage.total > 0) {
-            item {
-                Gen1Frame {
-                    GbText("IN THIS APP'S PC")
-                    GbText("${state.storage.total} STORED", style = Gen1TextSmall)
-                }
-            }
-        }
-        itemsIndexed(rows) { index, row ->
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                Gen1MenuRow(
-                    pokemonRowLabel(row.mon),
-                    cursor == index,
-                    { cursor = index },
-                    { model.open(Screen.Status(row.key, row.area, row.slot)) },
-                    trailing = pokemonRowLevel(row.mon),
-                )
-                GbText(row.where, style = Gen1TextSmall)
-            }
-        }
-        if (rows.isEmpty() && !state.loadingAll) {
-            item { Gen1Frame { GbText("NOTHING LOADED YET. TAP RELOAD.") } }
-        }
-    }
-}
 
 /** The full status screen for one Pokémon, wherever it lives. */
 @Composable
@@ -746,14 +526,10 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
                 if (backups.isEmpty()) {
                     GbText("NONE YET. ONE IS KEPT EACH TIME A SAVE IS WRITTEN.", style = Gen1TextSmall)
                 }
-                backups.take(20).forEach { Gen1Field(it.key, "REV ${it.rev}") }
-            }
-        }
-        if (state.diagnostics.isNotEmpty()) {
-            item {
-                Gen1Frame {
-                    GbText("WHAT THE ACCOUNT HOLDS")
-                    state.diagnostics.forEach { GbText(it, style = Gen1TextSmall) }
+                // The key is a game and a playthrough id; only the game half
+                // means anything to a player, and the id overran the row.
+                backups.take(20).forEach {
+                    Gen1Field(it.key.substringBefore('/').uppercase(), "REV ${it.rev}")
                 }
             }
         }
@@ -770,30 +546,16 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
 @Composable
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
     var cursor by remember { mutableStateOf(-1) }
-    val entries = buildList<Triple<String, String, () -> Unit>> {
-        add(
-            Triple("ACCESS SAVE", "${state.saves.size} SAVE(S) ON THE ACCOUNT") {
-                if (state.linked) model.open(Screen.SaveList) else model.open(Screen.Link)
-            }
-        )
-        if (state.showAllSaves) {
-            add(Triple("ALL POKéMON", "EVERY SAVE IN ONE LIST") { model.open(Screen.AllPokemon) })
-        }
-        add(
-            Triple(
-                "DOWNLOAD SPRITES",
-                if (state.spritesInstalled > 0) "${state.spritesInstalled} SPRITES READY" else "NOT DOWNLOADED",
-            ) { model.open(Screen.Sprites) }
-        )
-        add(Triple("SAVE FILES", "BACKUPS AND REPAIR") { model.open(Screen.SaveFiles) })
-    }
+    val entries = listOf<Pair<String, () -> Unit>>(
+        "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
+        "SAVE FILES" to { model.open(Screen.SaveFiles) },
+    )
 
     ScreenColumn {
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
-                entries.forEachIndexed { index, (label, subtitle, action) ->
+                entries.forEachIndexed { index, (label, action) ->
                     Gen1MenuRow(label, cursor == index, { cursor = index }, action)
-                    GbText(subtitle, style = Gen1TextSmall)
                 }
             }
         }
@@ -803,7 +565,14 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                 GbText("THE SCREEN AND THE SPRITES.", style = Gen1TextSmall)
                 Spacer(Modifier.height(4.dp))
                 GbPalette.ALL.forEach { palette ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    // The swatch is part of the control, not a picture beside
+                    // it: tapping the colours is the obvious way to pick them.
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { model.setPalette(palette.id) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Gen1MenuRow(
                             palette.label,
                             selected = state.paletteId == palette.id,
@@ -868,12 +637,12 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                 )
                 Spacer(Modifier.height(10.dp))
                 Gen1Toggle(
-                    label = "SHOW ALL SAVES AT ONCE",
+                    label = "ALL POKéMON",
                     on = state.showAllSaves,
                     onToggle = { model.setShowAllSaves(!state.showAllSaves) },
                 )
                 GbText(
-                    "LOADS EVERY SAVE ON THE ACCOUNT AND LISTS THEIR POKéMON TOGETHER.",
+                    "PUTS EVERY SAVE'S POKéMON IN THE TRANSFER LISTS AT ONCE, SO THERE IS NO SAVE TO PICK FIRST.",
                     style = Gen1TextSmall,
                 )
             }
@@ -889,8 +658,6 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         item {
             Gen1Frame {
                 GbText("DIAGNOSTICS")
-                Gen1Field("SAVES", state.saves.size.toString())
-                Gen1Field("STORED", state.storage.total.toString())
                 Spacer(Modifier.height(8.dp))
                 Gen1Button("SEND REPORT", onShareReport)
                 Spacer(Modifier.height(6.dp))
@@ -900,6 +667,113 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                 )
             }
         }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                Gen1Button("CREDITS", { model.open(Screen.Credits) })
+            }
+        }
+    }
+}
+
+/**
+ * Who made what this app is built out of.
+ *
+ * None of it is this project's work, and two of the four ask to be credited in
+ * writing, so the app says so where a player can actually read it rather than
+ * only in a README they will never open.
+ */
+@Composable
+fun CreditsScreen() {
+    ScreenColumn {
+        item {
+            Gen1Frame {
+                GbText("CREDITS", style = Gen1TextLarge)
+            }
+        }
+        item {
+            Gen1Frame {
+                GbText("SPRITES")
+                GbText("THE RBY SPRITES PROJECT", style = Gen1TextSmall)
+                GbText("BY SHIRATHEMOGUL", style = Gen1TextSmall)
+                Spacer(Modifier.height(4.dp))
+                GbText("github.com/ShiraTheMogul/", style = Gen1TextSmall)
+                GbText("rby-sprites-project", style = Gen1TextSmall)
+            }
+        }
+        item {
+            Gen1Frame {
+                GbText("FONT")
+                GbText("POKEMON-FONT BY SUPERPENCIL", style = Gen1TextSmall)
+                GbText("SIL OPEN FONT LICENSE 1.1", style = Gen1TextSmall)
+                Spacer(Modifier.height(4.dp))
+                GbText("github.com/cooljeanius/", style = Gen1TextSmall)
+                GbText("pokemon-font", style = Gen1TextSmall)
+            }
+        }
+        item {
+            Gen1Frame {
+                GbText("GAME DATA")
+                GbText("SPECIES, MOVES AND THE STAT", style = Gen1TextSmall)
+                GbText("FORMULAS COME FROM PRET/POKERED,", style = Gen1TextSmall)
+                GbText("THE DISASSEMBLY OF THE ORIGINAL", style = Gen1TextSmall)
+                GbText("GAMES.", style = Gen1TextSmall)
+            }
+        }
+        item {
+            Gen1Frame {
+                GbText("SAVES")
+                GbText("THE SAVE FORMAT AND THE SYNC", style = Gen1TextSmall)
+                GbText("SERVICE ARE GEN1RECOMP'S. THIS", style = Gen1TextSmall)
+                GbText("APP READS AND WRITES THEM THE", style = Gen1TextSmall)
+                GbText("WAY THE GAME ITSELF DOES.", style = Gen1TextSmall)
+            }
+        }
+        item {
+            Gen1Frame {
+                GbText("POKéMON IS NINTENDO, CREATURES", style = Gen1TextSmall)
+                GbText("AND GAME FREAK'S. THIS APP IS", style = Gen1TextSmall)
+                GbText("NOT AFFILIATED WITH THEM AND", style = Gen1TextSmall)
+                GbText("SHIPS NONE OF THEIR CODE OR ART.", style = Gen1TextSmall)
+            }
+        }
+    }
+}
+
+/**
+ * The only place a save is named.
+ *
+ * A save is shown by its game and trainer — the playthrough id it is really
+ * keyed by is an implementation detail and never appears. If the blob has been
+ * fetched the party count comes with it; otherwise the row still works and the
+ * count fills in once it loads.
+ */
+@Composable
+private fun SavePicker(
+    title: String,
+    state: UiState,
+    onChoose: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    Gen1Frame {
+        GbText(title)
+        if (state.saves.isEmpty()) {
+            GbText("NO SAVES ON THE ACCOUNT.", style = Gen1TextSmall)
+        }
+        LazyColumn(Modifier.heightIn(max = 320.dp)) {
+            itemsIndexed(state.saves) { _, remote ->
+                val save = state.save(remote.key)?.save
+                val trainer = save?.trainerName ?: remote.summary.trainerName ?: remote.label
+                Gen1MenuRow(
+                    "${remote.version.label}  ${trainer.uppercase()}",
+                    selected = state.activeSaveKey == remote.key,
+                    onSelect = { onChoose(remote.key) },
+                    onConfirm = { onChoose(remote.key) },
+                    trailing = save?.let { "${it.partyCount}/${Gen1RecompSave.PARTY_MAX}" } ?: "",
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Gen1Button("CANCEL", onCancel)
     }
 }
 
@@ -929,7 +803,7 @@ fun ScreenColumn(content: LazyListScope.() -> Unit) {
     LazyColumn(
         Modifier
             .fillMaxSize()
-            .background(Gen1Palette.Surround),
+            .background(gen1SurroundBrush()),
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content,
@@ -978,6 +852,20 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 Spacer(Modifier.height(8.dp))
                 Gen1Button("CANCEL", model::dismissPrompt)
             }
+
+            is Prompt.ChooseWithdrawSave -> SavePicker(
+                title = "PUT IT IN WHICH SAVE?",
+                state = state,
+                onChoose = { key -> model.chooseWithdrawSave(prompt.uid, key) },
+                onCancel = model::dismissPrompt,
+            )
+
+            is Prompt.ChooseDepositSave -> SavePicker(
+                title = prompt.title,
+                state = state,
+                onChoose = { key -> model.selectSave(key) },
+                onCancel = model::dismissPrompt,
+            )
 
             is Prompt.ChooseSpriteSet -> SpriteSetPicker(
                 speciesId = prompt.speciesId,

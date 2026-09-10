@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,37 +18,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
-import com.logie.gen1storage.ui.Gen1Button
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
-import com.logie.gen1storage.ui.Gen1TextSmall
 import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.HomeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
-import com.logie.gen1storage.ui.SaveBoxScreen
 import com.logie.gen1storage.ui.SaveFilesScreen
-import com.logie.gen1storage.ui.AllPokemonScreen
+import com.logie.gen1storage.ui.CreditsScreen
 import com.logie.gen1storage.ui.GbButton
 import com.logie.gen1storage.ui.LinkScreen
-import com.logie.gen1storage.ui.PcScreen
 import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
 import com.logie.gen1storage.ui.gen1Gestures
-import com.logie.gen1storage.ui.SaveListScreen
-import com.logie.gen1storage.ui.SaveMenuScreen
-import com.logie.gen1storage.ui.SavePartyScreen
+import com.logie.gen1storage.ui.gen1SurroundBrush
 import com.logie.gen1storage.ui.Screen
-import com.logie.gen1storage.ui.StorageSystemScreen
 import com.logie.gen1storage.ui.StorageViewModel
 import java.net.URLEncoder
 
@@ -58,13 +57,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { Gen1Theme { StorageApp(model) } }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // The game may have synced while this app was in the background, so
-        // every revision it is holding is stale until the account is re-read.
-        model.sync()
     }
 }
 
@@ -82,13 +74,29 @@ private fun StorageApp(model: StorageViewModel) {
         Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
     }
 
+    // The game can save at any moment, and every revision this app is holding
+    // is stale the instant it does. So the account is re-read as soon as the
+    // app is on screen and every thirty seconds it stays there — silently,
+    // because a poll that opens a window over what someone is doing is worse
+    // than one that quietly gets on with it. It stops with the lifecycle, so
+    // nothing is fetched while the app is in the background.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                model.sync(silent = true)
+                delay(SYNC_INTERVAL_MILLIS)
+            }
+        }
+    }
+
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(enabled = state.prompt != null || state.stack.size > 1) { model.back() }
 
     Box(
         Modifier
             .fillMaxSize()
-            .background(Gen1Palette.Surround)
+            .background(gen1SurroundBrush())
             .statusBarsPadding()
             .navigationBarsPadding()
             // Off unless the player turns them on in OPTIONS; the app is
@@ -103,27 +111,15 @@ private fun StorageApp(model: StorageViewModel) {
             }
     ) {
         Column(Modifier.fillMaxSize()) {
-            TopBar(
-                title = titleFor(state.screen),
-                canGoBack = state.stack.size > 1,
-                busy = state.busy || state.syncing || state.linking,
-                onBack = { model.back() },
-                onHome = { model.home() },
-            )
+            TopBar()
             Box(Modifier.weight(1f)) {
                 when (val screen = state.screen) {
                     Screen.Home -> HomeScreen(state, model)
                     Screen.Link -> LinkScreen(state, model)
-                    Screen.SaveList -> SaveListScreen(state, model)
-                    is Screen.SaveMenu -> SaveMenuScreen(state, model, screen.key)
-                    is Screen.SaveParty -> SavePartyScreen(state, model, screen.key)
-                    is Screen.SaveBox -> SaveBoxScreen(state, model, screen.key, screen.box)
-                    is Screen.Pc -> PcScreen(state, model, screen.key)
-                    is Screen.StorageSystem -> StorageSystemScreen(state, model, screen.key)
-                    Screen.AllPokemon -> AllPokemonScreen(state, model)
                     is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
                     Screen.Sprites -> SpritesScreen(state, model)
                     Screen.SaveFiles -> SaveFilesScreen(state, model)
+                    Screen.Credits -> CreditsScreen()
                     Screen.Options -> OptionsScreen(
                         state = state,
                         model = model,
@@ -136,48 +132,33 @@ private fun StorageApp(model: StorageViewModel) {
     }
 }
 
+/**
+ * The console's own header: the machine's name, centred, and nothing else.
+ *
+ * There are deliberately no buttons in it. Back is Android's own — its gesture,
+ * its key, and the B button when swipe controls are on — so the bar has no
+ * state of its own to get wrong and reads the same on every screen.
+ */
 @Composable
-private fun TopBar(
-    title: String,
-    canGoBack: Boolean,
-    busy: Boolean,
-    onBack: () -> Unit,
-    onHome: () -> Unit,
-) {
+private fun TopBar() {
     Row(
         Modifier
             .fillMaxWidth()
             .background(Gen1Palette.Darkest)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (canGoBack) {
-            Gen1Button("B", onBack)
-            Box(Modifier.padding(horizontal = 8.dp))
-        }
-        Box(Modifier.weight(1f)) {
-            GbText(title, style = Gen1Text.copy(color = Gen1Palette.Lightest))
-        }
-        if (busy) GbText("...", style = Gen1TextSmall.copy(color = Gen1Palette.Light))
-        else if (canGoBack) Gen1Button("MENU", onHome)
+        GbText(
+            "POKéMON STORAGE SYSTEM",
+            style = Gen1Text.copy(color = Gen1Palette.Lightest),
+            maxLines = 1,
+        )
     }
 }
 
-private fun titleFor(screen: Screen): String = when (screen) {
-    Screen.Home -> "STORAGE SYSTEM"
-    Screen.Link -> "SAVE SYNC"
-    Screen.SaveList -> "ACCESS SAVE"
-    is Screen.SaveMenu -> "PC"
-    is Screen.SaveParty -> "PARTY POKéMON"
-    is Screen.SaveBox -> "BOX ${screen.box}"
-    is Screen.Pc -> "PC"
-    is Screen.StorageSystem -> "STORAGE SYSTEM"
-    Screen.AllPokemon -> "ALL POKéMON"
-    is Screen.Status -> "STATUS"
-    Screen.Sprites -> "SPRITES"
-    Screen.SaveFiles -> "SAVE FILES"
-    Screen.Options -> "OPTIONS"
-}
+/** How often the account is re-read while the app is on screen. */
+private const val SYNC_INTERVAL_MILLIS = 30_000L
 
 private fun shareReport(context: android.content.Context, report: String) {
     val title = URLEncoder.encode("Gen1 Storage debug report", "UTF-8")

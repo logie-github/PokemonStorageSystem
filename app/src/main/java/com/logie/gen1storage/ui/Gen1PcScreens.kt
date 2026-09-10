@@ -81,37 +81,6 @@ fun Gen1DialogueBox(
 }
 
 /**
- * The screen a save's PC opens on. Structure follows the cartridge:
- * SOMEONE'S PC is the storage system, the trainer's own PC is their party and
- * boxes, and LOG OFF backs out.
- */
-@Composable
-fun PcMainScreen(
-    trainerName: String,
-    selected: Int,
-    onSelect: (Int) -> Unit,
-    onStorageSystem: () -> Unit,
-    onTrainerPc: () -> Unit,
-    onLogOff: () -> Unit,
-    message: List<String>,
-) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Gen1Palette.Surround)
-            .padding(12.dp),
-    ) {
-        Gen1Frame(Modifier.fillMaxWidth(0.86f)) {
-            Gen1MenuRow("SOMEONE'S PC", selected == 0, { onSelect(0) }, onStorageSystem)
-            Gen1MenuRow("$trainerName's PC", selected == 1, { onSelect(1) }, onTrainerPc)
-            Gen1MenuRow("LOG OFF", selected == 2, { onSelect(2) }, onLogOff)
-        }
-        Spacer(Modifier.weight(1f))
-        Gen1DialogueBox(message, more = true)
-    }
-}
-
-/**
  * The storage system's menu.
  *
  * WITHDRAW and DEPOSIT are the cartridge's own two rows. VIEW POKéMON is the
@@ -147,10 +116,12 @@ fun StorageSystemScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Gen1Palette.Surround)
+            .background(gen1SurroundBrush())
             .padding(12.dp),
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.End) {
+            // The window sits against the right edge, as the cartridge puts it;
+            // the rows inside it stay left-aligned so the cursor column lines up.
             Gen1Frame(Modifier.fillMaxWidth(0.72f)) {
                 rows.forEachIndexed { index, (label, action) ->
                     Gen1MenuRow(label, selected == index, { onSelect(index) }, action)

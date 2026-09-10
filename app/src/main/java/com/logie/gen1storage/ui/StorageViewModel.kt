@@ -37,19 +37,9 @@ import java.time.Instant
 
 /** Where the player currently is. The back stack is a plain list of these. */
 sealed interface Screen {
+    /** The PC's own storage menu. There is nothing above it. */
     data object Home : Screen
     data object Link : Screen
-    data object SaveList : Screen
-    /** The "<TRAINER> turned on the PC" boot, then its main menu. */
-    data class Pc(val key: String) : Screen
-    /** The trainer's own PC: their party and their in-game boxes. */
-    data class SaveMenu(val key: String) : Screen
-    data class SaveParty(val key: String) : Screen
-    data class SaveBox(val key: String, val box: Int) : Screen
-    /** The storage system. [key] is the save it will deposit from, if any. */
-    data class StorageSystem(val key: String?) : Screen
-    /** Every save's Pokémon in one list, when the option is on. */
-    data object AllPokemon : Screen
     /**
      * The status screen. A null [key] means the Pokémon is in this app's PC and
      * [area] is its box; otherwise [area] 0 is the save's party and 1..12 its
@@ -59,6 +49,7 @@ sealed interface Screen {
     data object Sprites : Screen
     data object SaveFiles : Screen
     data object Options : Screen
+    data object Credits : Screen
 }
 
 /** A modal the Generation I menus would draw as a window over everything. */
@@ -66,7 +57,11 @@ sealed interface Prompt {
     data class Message(val lines: List<String>) : Prompt
     data class Confirm(val lines: List<String>, val confirmLabel: String, val onConfirm: () -> Unit) : Prompt
     data class ChooseBox(val title: String, val onChoose: (Int) -> Unit) : Prompt
+    /** Which save to put a withdrawn Pokémon into, before asking where in it. */
+    data class ChooseWithdrawSave(val uid: String) : Prompt
     data class ChooseWithdrawTarget(val uid: String, val key: String) : Prompt
+    /** Which save to take a deposit from, when the lists are not showing all. */
+    data class ChooseDepositSave(val title: String) : Prompt
     /** The long-press sprite picker for one species. */
     data class ChooseSpriteSet(val speciesId: String) : Prompt
 }
@@ -228,8 +223,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     // ------- syncing
 
-    fun sync() = viewModelScope.launch {
-        if (mutable.value.syncing || !credentials.isLinked) return@launch
+    /**
+     * Re-reads the account.
+     *
+     * [silent] is what the automatic sync uses: it still refreshes everything
+     * and still records what went wrong in the diagnostics, but it never opens
+     * a window over whatever the player is doing. A failed poll every thirty
+     * seconds is not news; losing the link is, so that one still speaks up.
+     */
+    fun sync(silent: Boolean = false) = viewModelScope.launch {
+        val current = mutable.value
+        // A transfer is mid-flight, and the revisions it is working against
+        // must not be pulled out from under it.
+        if (current.syncing || current.busy || !credentials.isLinked) return@launch
         mutable.update { it.copy(syncing = true) }
         when (val result = withContext(Dispatchers.IO) { saves.listSaves() }) {
             is SyncResult.Ok -> {
@@ -252,11 +258,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 reportRecovery(notes)
-                if (settings.showAllSaves) loadAllSaves()
+                // Reloading every save on the account is a fetch per save, so
+                // the automatic pass only does it when a blob is actually
+                // missing — which is exactly when a revision moved.
+                if (settings.showAllSaves && (!silent || missingLoadedSaves())) loadAllSaves()
             }
             SyncResult.Unauthorized -> {
                 credentials.clear()
-                mutable.update { it.copy(syncing = false, linked = false, account = null) }
+                mutable.update {
+                    it.copy(syncing = false, linked = false, account = null, activeSaveKey = null)
+                }
                 message("THIS DEVICE IS NO LONGER LINKED.", "LINK IT AGAIN WITH FRESH CODES.")
             }
             is SyncResult.Conflict -> mutable.update { it.copy(syncing = false) }
@@ -264,15 +275,27 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 mutable.update {
                     it.copy(syncing = false, diagnostics = listOf("Sync failed: ${result.message}"))
                 }
-                message(result.message.uppercase())
+                if (!silent) message(result.message.uppercase())
             }
         }
     }
 
+    private fun missingLoadedSaves(): Boolean {
+        val current = mutable.value
+        return current.saves.any { current.loaded[it.key] == null }
+    }
+
+    /**
+     * An unfinished transfer is worth interrupting for, but only once. The
+     * automatic sync re-runs recovery every thirty seconds and would otherwise
+     * reopen the same window over and over.
+     */
+    private var reportedRecovery: List<String> = emptyList()
+
     private fun reportRecovery(notes: RecoveryReport) {
-        if (notes.unresolved.isNotEmpty()) {
-            mutable.update { it.copy(prompt = Prompt.Message(notes.unresolved)) }
-        }
+        if (notes.unresolved.isEmpty() || notes.unresolved == reportedRecovery) return
+        reportedRecovery = notes.unresolved
+        mutable.update { it.copy(prompt = Prompt.Message(notes.unresolved)) }
     }
 
     /**
@@ -289,12 +312,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         add("Devices linked: ${account.devices.size}")
     }
 
-    /** Fetches a save's actual contents; the listing alone carries only a summary. */
-    fun openSave(key: String) = viewModelScope.launch {
+    /**
+     * Fetches a save's contents and makes it the one the PC is working with.
+     *
+     * There is no save browser any more: a save is only ever chosen because a
+     * transfer needs one, so this is called from those prompts and leaves the
+     * player where they already were.
+     */
+    fun selectSave(key: String, onReady: (String) -> Unit = {}) = viewModelScope.launch {
         val remote = mutable.value.remote(key) ?: return@launch message("THAT SAVE IS GONE.")
         if (mutable.value.loaded[key] != null) {
-            mutable.update { it.copy(activeSaveKey = key) }
-            open(Screen.Pc(key))
+            mutable.update { it.copy(activeSaveKey = key, prompt = null) }
+            onReady(key)
             return@launch
         }
         mutable.update { it.copy(busy = true) }
@@ -302,20 +331,30 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(busy = false) }
         when (result) {
             is SyncResult.Ok -> {
-                mutable.update {
-                    it.copy(
-                        loaded = it.loaded + (key to result.value),
-                        activeSaveKey = if (result.value.isUsable) key else it.activeSaveKey,
-                    )
+                if (result.value.isUsable) {
+                    mutable.update {
+                        it.copy(
+                            loaded = it.loaded + (key to result.value),
+                            activeSaveKey = key,
+                            prompt = null,
+                        )
+                    }
+                    onReady(key)
+                } else {
+                    message(result.value.classification.summary.uppercase())
                 }
-                if (result.value.isUsable) open(Screen.Pc(key))
-                else message(result.value.classification.summary.uppercase())
             }
             SyncResult.Unauthorized -> message("THIS DEVICE IS NO LONGER LINKED.")
             is SyncResult.Conflict -> message("THE SERVER REFUSED THE READ.")
             is SyncResult.Failed -> message(result.message.uppercase())
         }
     }
+
+    /** Picks the save a withdrawal lands in, then asks where inside it. */
+    fun chooseWithdrawSave(uid: String, key: String) =
+        selectSave(key) { ready ->
+            mutable.update { it.copy(prompt = Prompt.ChooseWithdrawTarget(uid, ready)) }
+        }
 
     // ------- settings
 
@@ -347,6 +386,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    /**
+     * Shows every save's Pokémon in the transfer lists at once.
+     *
+     * With it on there is no save to pick before depositing — everything on the
+     * account is in the one list, grouped by where it lives. Off, the PC asks
+     * which save a deposit is coming from, which is one fetch instead of all
+     * of them.
+     */
     fun setShowAllSaves(enabled: Boolean) {
         settings.showAllSaves = enabled
         mutable.update { it.copy(showAllSaves = enabled) }
@@ -475,6 +522,28 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 "NOTHING WAS LOST. OPEN SAVE FILES TO FINISH IT.",
             )
         }
+        refreshTransferSources()
+    }
+
+    /**
+     * Re-reads whatever the transfer lists are showing.
+     *
+     * Every cached blob is dropped after a transfer, which would otherwise
+     * leave the deposit list empty behind the result message. Deliberately does
+     * not touch the prompt, so that message stays up.
+     */
+    private fun refreshTransferSources() = viewModelScope.launch {
+        val current = mutable.value
+        if (current.showAllSaves) {
+            loadAllSaves()
+            return@launch
+        }
+        val key = current.activeSaveKey ?: return@launch
+        val remote = current.remote(key) ?: return@launch
+        val result = withContext(Dispatchers.IO) { saves.load(remote) }
+        if (result is SyncResult.Ok && result.value.isUsable) {
+            mutable.update { it.copy(loaded = it.loaded + (key to result.value)) }
+        }
     }
 
     /**
@@ -505,6 +574,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearPendingTransferRecord() {
         engine.dismissUnresolved()
+        reportedRecovery = emptyList()
         mutable.update { it.copy(recoveryNotes = emptyList(), prompt = null) }
     }
 

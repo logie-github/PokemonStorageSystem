@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,7 +24,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.Font
@@ -35,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.logie.gen1storage.R
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 import androidx.compose.material3.Text as MaterialText
 
 /**
@@ -191,6 +202,60 @@ private val Gen1BaseText = TextStyle(
     letterSpacing = 0.sp,
     platformStyle = PlatformTextStyle(includeFontPadding = false),
 )
+
+/**
+ * The screen behind the windows, dithered.
+ *
+ * A Game Boy could not blend two colours, so a designer wanting a shade
+ * between them alternated pixels of each and let the eye do the mixing. This
+ * is that idea kept as texture: a small cross on a regular grid, in a tone
+ * pulled towards the darkest end of the palette.
+ *
+ * It is drawn as a repeating shader over one tile rather than as thousands of
+ * little rectangles, so the whole background costs a single draw call however
+ * large the screen is. The tile is built in device pixels and repeated at 1:1,
+ * which is what keeps every cross square.
+ */
+@Composable
+fun gen1SurroundBrush(): Brush {
+    val palette = Gen1Palette.palette
+    val unit = with(LocalDensity.current) { density.roundToInt().coerceAtLeast(1) }
+    val ground = palette.surround.toArgb()
+    val mark = lerp(palette.surround, palette.darkest, DITHER_STRENGTH).toArgb()
+    val tile = remember(ground, mark, unit) { ditherTile(unit, ground, mark) }
+    return remember(tile) {
+        ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
+    }
+}
+
+/**
+ * One cell of the pattern: eight design pixels square, with a three-by-three
+ * cross at its centre, drawn a design pixel at a time.
+ */
+private fun ditherTile(unit: Int, ground: Int, mark: Int): ImageBitmap {
+    val cells = 8
+    val side = cells * unit
+    val pixels = IntArray(side * side) { ground }
+
+    fun block(cellX: Int, cellY: Int) {
+        for (y in 0 until unit) {
+            val row = (cellY * unit + y) * side
+            for (x in 0 until unit) pixels[row + cellX * unit + x] = mark
+        }
+    }
+
+    val centre = cells / 2
+    block(centre, centre)
+    block(centre - 1, centre)
+    block(centre + 1, centre)
+    block(centre, centre - 1)
+    block(centre, centre + 1)
+
+    return Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888).asImageBitmap()
+}
+
+/** How far the cross is pulled from the screen tone towards the darkest. */
+private const val DITHER_STRENGTH = 0.45f
 
 @Composable
 fun Gen1Theme(content: @Composable () -> Unit) {

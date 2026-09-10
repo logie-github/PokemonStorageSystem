@@ -5,9 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -36,6 +34,7 @@ import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.SaveBoxScreen
 import com.logie.gen1storage.ui.SaveFilesScreen
+import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.SaveListScreen
 import com.logie.gen1storage.ui.SaveMenuScreen
 import com.logie.gen1storage.ui.SavePartyScreen
@@ -56,9 +55,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Gen1Recomp may have written the save while this app was in the
-        // background; every cached fingerprint is stale until a rescan.
-        model.scan()
+        // The game may have synced while this app was in the background, so
+        // every revision it is holding is stale until the account is re-read.
+        model.sync()
     }
 }
 
@@ -66,10 +65,6 @@ class MainActivity : ComponentActivity() {
 private fun StorageApp(model: StorageViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-
-    val chooseFolder = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> uri?.let(model::onFolderChosen) }
 
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(enabled = state.prompt != null || state.stack.size > 1) { model.back() }
@@ -85,24 +80,24 @@ private fun StorageApp(model: StorageViewModel) {
             TopBar(
                 title = titleFor(state.screen),
                 canGoBack = state.stack.size > 1,
-                busy = state.busy || state.scanning,
+                busy = state.busy || state.syncing || state.linking,
                 onBack = { model.back() },
                 onHome = { model.home() },
             )
             Box(Modifier.weight(1f)) {
                 when (val screen = state.screen) {
                     Screen.Home -> HomeScreen(state, model)
+                    Screen.Link -> LinkScreen(state, model)
                     Screen.SaveList -> SaveListScreen(state, model)
-                    is Screen.SaveMenu -> SaveMenuScreen(state, model, screen.sourceId)
-                    is Screen.SaveParty -> SavePartyScreen(state, model, screen.sourceId)
-                    is Screen.SaveBox -> SaveBoxScreen(state, model, screen.sourceId, screen.box)
+                    is Screen.SaveMenu -> SaveMenuScreen(state, model, screen.key)
+                    is Screen.SaveParty -> SavePartyScreen(state, model, screen.key)
+                    is Screen.SaveBox -> SaveBoxScreen(state, model, screen.key, screen.box)
                     is Screen.StorageBoxes -> StorageBoxesScreen(state, model, screen.box)
                     Screen.Transfer -> TransferScreen(state, model)
                     Screen.SaveFiles -> SaveFilesScreen(state, model)
                     Screen.Options -> OptionsScreen(
                         state = state,
                         model = model,
-                        onChooseFolder = { chooseFolder.launch(null) },
                         onShareReport = { shareReport(context, model.debugReport()) },
                     )
                 }
@@ -141,6 +136,7 @@ private fun TopBar(
 
 private fun titleFor(screen: Screen): String = when (screen) {
     Screen.Home -> "POKéMON STORAGE"
+    Screen.Link -> "SAVE SYNC"
     Screen.SaveList -> "ACCESS SAVE"
     is Screen.SaveMenu -> "PC"
     is Screen.SaveParty -> "PARTY POKéMON"

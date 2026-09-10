@@ -2,9 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <queries>
-        <package android:name="moe.shizuku.privileged.api" />
-    </queries>
+    <!-- Saves arrive over Gen1Recomp's own save-sync service; the app needs
+         no storage permission and touches no other app's files. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"
@@ -27,22 +28,6 @@
             </intent-filter>
         </activity>
 
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:enabled="true"
-            android:exported="true"
-            android:multiprocess="false"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
-        <!-- A Shizuku user service is a Binder hosted in Shizuku's process, not
-             an android.app.Service; the manifest entry is how Shizuku locates
-             the class. Never started by the platform, so Instantiatable does
-             not apply. -->
-        <service
-            android:name=".saveaccess.ShizukuFileService"
-            android:exported="false"
-            android:process=":shizuku_service"
-            tools:ignore="Instantiatable" />
     </application>
 </manifest>

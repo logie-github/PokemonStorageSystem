@@ -45,6 +45,8 @@ data class TransferEntry(
     val sourceIndex: Int,
     val boxIndex: Int,
     val startedAtEpochMillis: Long,
+    /** The server revision the save was read at, for the diagnostics screen. */
+    val baseRev: Long = 0,
     val note: String? = null,
 ) {
     fun toLua(): LuaValue.Table = LuaValue.Table().apply {
@@ -63,6 +65,7 @@ data class TransferEntry(
         this["sourceIndex"] = luaNum(sourceIndex)
         this["boxIndex"] = luaNum(boxIndex)
         this["startedAt"] = luaNum(startedAtEpochMillis.toDouble())
+        this["baseRev"] = luaNum(baseRev.toDouble())
         note?.let { this["note"] = luaStr(it) }
     }
 
@@ -89,6 +92,7 @@ data class TransferEntry(
                 sourceIndex = table["sourceIndex"].asInt() ?: 0,
                 boxIndex = table["boxIndex"].asInt() ?: 1,
                 startedAtEpochMillis = (table["startedAt"] as? LuaValue.Num)?.value?.toLong() ?: 0L,
+                baseRev = (table["baseRev"] as? LuaValue.Num)?.value?.toLong() ?: 0L,
                 note = table["note"].asString(),
             )
         }

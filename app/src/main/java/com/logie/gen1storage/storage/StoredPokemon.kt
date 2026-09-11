@@ -91,13 +91,22 @@ data class StoredPokemon(
     }
 }
 
-/** One of this app's storage boxes. Modelled on Bill's PC: 12 boxes of 20. */
+/** One of this app's storage boxes: twelve of them, each a 6x5 grid. */
 data class StorageBox(
     val index: Int,
     /** What the player called it, or null if they never did. */
     val name: String?,
-    val contents: List<StoredPokemon>,
+    /**
+     * Every spot in the box, in place, null where nothing is sitting. A box
+     * is a grid a player arranges rather than a list that closes up behind
+     * what leaves it, so an empty spot in the middle is a real thing and has
+     * to survive being written down.
+     */
+    val slots: List<StoredPokemon?>,
 ) {
+    /** What is actually in the box, in reading order. */
+    val contents: List<StoredPokemon> get() = slots.filterNotNull()
+
     /**
      * "BOX 4", or "BOX 4 SHINIES" once it has been named. The number always
      * leads, so a renamed box is still findable by the number it has always
@@ -105,13 +114,16 @@ data class StorageBox(
      */
     val label: String get() = if (name.isNullOrBlank()) "BOX $index" else "BOX $index $name"
 
-    val isFull: Boolean get() = contents.size >= StorageLayout.BOX_CAPACITY
-    val freeSlots: Int get() = StorageLayout.BOX_CAPACITY - contents.size
+    val isFull: Boolean get() = slots.none { it == null }
+    val freeSlots: Int get() = slots.count { it == null }
 }
 
 object StorageLayout {
-    /** Deliberately the same shape as the Generation I PC. */
     const val BOX_COUNT = 12
-    const val BOX_CAPACITY = 20
+
+    /** The grid a box is drawn as, and so the shape it is stored in. */
+    const val BOX_COLUMNS = 6
+    const val BOX_ROWS = 5
+    const val BOX_CAPACITY = BOX_COLUMNS * BOX_ROWS
     const val TOTAL_CAPACITY = BOX_COUNT * BOX_CAPACITY
 }

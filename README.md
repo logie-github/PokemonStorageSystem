@@ -8,7 +8,7 @@ no Shizuku, no file permissions.
 
 ## Features
 
-- **12 boxes of 20**, on top of what your saves already hold.
+- **12 boxes of 30**, on top of what your saves already hold.
 - **Deposit** from a save's boxes. **Withdraw** back into the cart in the
   machine. Parties are never touched.
 - **Select** one Pokémon or several: SELECT in the window that opens on one
@@ -20,8 +20,10 @@ no Shizuku, no file permissions.
 - **Rename** boxes and saves by holding them.
 - **Auto-sync** on open and every 30 seconds.
 - **Status screens** with stats, types, moves and PP.
-- **Sound effects**, and **sprites and cries** downloaded from OPTIONS →
-  DOWNLOADS. Tap a sprite to hear it again. Each sound can be turned off in
+- **Box grid**: six across, five down, each Pokémon on its own spot. Drag one
+  by holding it, or pick MOVE and tap where it goes.
+- **Sound effects**, and **sprites, cries and overworld followers** downloaded
+  from OPTIONS → DOWNLOADS. Tap a sprite to hear it again. Each sound can be turned off in
   OPTIONS → SOUND FX.
 - **Seven palettes**, windows on the left or right, full screen, foldable
   aware.
@@ -51,6 +53,8 @@ downloaded on request. Not affiliated with Nintendo, Game Freak or The Pokémon
 Company.
 
 [Sprites](https://github.com/ShiraTheMogul/rby-sprites-project) ·
+[Followers](https://github.com/burgerslayer7/PokePCFollowers) ·
+[Followers, original](https://github.com/gamecorner-033/PokePCFollowers) ·
 [Cries](https://github.com/PokeAPI/cries) ·
 [Font](https://github.com/cooljeanius/pokemon-font) ·
 [Game data](https://github.com/pret/pokered) ·

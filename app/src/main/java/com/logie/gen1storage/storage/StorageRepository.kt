@@ -47,7 +47,7 @@ class StorageRepository(private val directory: File) {
     private val releasedLog = File(directory, RELEASED_FILE_NAME)
 
     private val lock = Any()
-    private var boxes: MutableList<MutableList<StoredPokemon>> = emptyBoxes()
+    private var boxes: MutableList<MutableList<StoredPokemon?>> = emptyBoxes()
     private var names: MutableMap<Int, String> = LinkedHashMap()
     private var revision: Long = 0
     private var loaded = false
@@ -68,12 +68,12 @@ class StorageRepository(private val directory: File) {
 
     fun contains(uid: String): Boolean = synchronized(lock) {
         ensureLoaded()
-        boxes.any { box -> box.any { it.uid == uid } }
+        boxes.any { box -> box.any { it?.uid == uid } }
     }
 
     fun get(uid: String): StoredPokemon? = synchronized(lock) {
         ensureLoaded()
-        boxes.firstNotNullOfOrNull { box -> box.firstOrNull { it.uid == uid } }
+        boxes.firstNotNullOfOrNull { box -> box.firstOrNull { it?.uid == uid } }
     }
 
     /**
@@ -91,9 +91,10 @@ class StorageRepository(private val directory: File) {
         val start = (preferredBox - 1).coerceIn(0, StorageLayout.BOX_COUNT - 1)
         for (offset in 0 until StorageLayout.BOX_COUNT) {
             val index = (start + offset) % StorageLayout.BOX_COUNT
-            if (boxes[index].size < StorageLayout.BOX_CAPACITY) {
+            val slot = boxes[index].indexOfFirst { it == null }
+            if (slot >= 0) {
                 val stored = StoredPokemon(uid, data, provenance)
-                boxes[index].add(stored)
+                boxes[index][slot] = stored
                 persist()
                 return stored
             }
@@ -105,9 +106,13 @@ class StorageRepository(private val directory: File) {
     fun withdraw(uid: String): StoredPokemon? = synchronized(lock) {
         ensureLoaded()
         for (box in boxes) {
-            val position = box.indexOfFirst { it.uid == uid }
+            val position = box.indexOfFirst { it?.uid == uid }
             if (position >= 0) {
-                val removed = box.removeAt(position)
+                val removed = box[position]
+                // The spot is left empty rather than closed up: the rest of
+                // the box is where the player put it, and a withdrawal is no
+                // reason to rearrange it for them.
+                box[position] = null
                 persist()
                 return removed
             }
@@ -148,22 +153,51 @@ class StorageRepository(private val directory: File) {
         }.getOrDefault(0)
     }
 
-    /** Moves a stored Pokémon to another box, for reorganising the PC. */
+    /** Moves a stored Pokémon to the first free spot of another box. */
     fun moveTo(uid: String, targetBox: Int): Boolean = synchronized(lock) {
         ensureLoaded()
         val index = targetBox - 1
         if (index !in 0 until StorageLayout.BOX_COUNT) return false
-        if (boxes[index].size >= StorageLayout.BOX_CAPACITY) return false
-        for (box in boxes) {
-            val position = box.indexOfFirst { it.uid == uid }
-            if (position >= 0) {
-                if (box === boxes[index]) return true
-                boxes[index].add(box.removeAt(position))
-                persist()
-                return true
+        val free = boxes[index].indexOfFirst { it == null }
+        if (free < 0) return false
+        return moveToSlot(uid, targetBox, free)
+    }
+
+    /**
+     * Puts a stored Pokémon on a named spot, which is what a drag across the
+     * grid asks for.
+     *
+     * A spot that is already taken swaps rather than refusing: dropping one
+     * Pokémon onto another is how a player rearranges a full box, and the
+     * alternative is a move that silently does nothing. Nothing leaves the PC
+     * either way — a swap is two placements, and both are written at once.
+     */
+    fun moveToSlot(uid: String, targetBox: Int, targetSlot: Int): Boolean = synchronized(lock) {
+        ensureLoaded()
+        val index = targetBox - 1
+        if (index !in 0 until StorageLayout.BOX_COUNT) return false
+        if (targetSlot !in 0 until StorageLayout.BOX_CAPACITY) return false
+
+        var fromBox = -1
+        var fromSlot = -1
+        outer@ for (b in boxes.indices) {
+            for (slot in boxes[b].indices) {
+                if (boxes[b][slot]?.uid == uid) {
+                    fromBox = b
+                    fromSlot = slot
+                    break@outer
+                }
             }
         }
-        false
+        if (fromBox < 0) return false
+        if (fromBox == index && fromSlot == targetSlot) return true
+
+        val moving = boxes[fromBox][fromSlot]
+        val displaced = boxes[index][targetSlot]
+        boxes[index][targetSlot] = moving
+        boxes[fromBox][fromSlot] = displaced
+        persist()
+        true
     }
 
     fun renameBox(index: Int, name: String): Boolean = synchronized(lock) {
@@ -193,7 +227,7 @@ class StorageRepository(private val directory: File) {
         var skipped = 0
         var unplaced = 0
         val held = HashSet<String>()
-        boxes.forEach { box -> box.forEach { held += it.uid } }
+        boxes.forEach { box -> box.forEach { stored -> stored?.let { held += it.uid } } }
 
         archive.entries.forEach { entry ->
             if (!held.add(entry.stored.uid)) {
@@ -201,14 +235,21 @@ class StorageRepository(private val directory: File) {
                 return@forEach
             }
             val start = (entry.box - 1).coerceIn(0, StorageLayout.BOX_COUNT - 1)
+            // Its own spot first, so a box comes back arranged as it was left.
+            val own = entry.slot - 1
+            if (own in boxes[start].indices && boxes[start][own] == null) {
+                boxes[start][own] = entry.stored
+                added++
+                return@forEach
+            }
             val target = (0 until StorageLayout.BOX_COUNT)
                 .map { offset -> (start + offset) % StorageLayout.BOX_COUNT }
-                .firstOrNull { boxes[it].size < StorageLayout.BOX_CAPACITY }
+                .firstOrNull { boxes[it].any { slot -> slot == null } }
             if (target == null) {
                 held.remove(entry.stored.uid)
                 unplaced++
             } else {
-                boxes[target].add(entry.stored)
+                boxes[target][boxes[target].indexOfFirst { it == null }] = entry.stored
                 added++
             }
         }
@@ -252,13 +293,24 @@ class StorageRepository(private val directory: File) {
         val boxesTable = root["boxes"].asTable()
         if (boxesTable != null) {
             for (index in 1..StorageLayout.BOX_COUNT) {
+                val box = loadedBoxes[index - 1]
                 boxesTable[index].asTable()?.array().orEmpty().forEach { entry ->
-                    val stored = entry.asTable()?.let(StoredPokemon::fromLua)
-                    if (stored == null) notes += "Dropped an unreadable entry in box $index"
-                    else if (loadedBoxes[index - 1].size >= StorageLayout.BOX_CAPACITY) {
+                    val table = entry.asTable()
+                    val stored = table?.let(StoredPokemon::fromLua)
+                    if (stored == null) {
+                        notes += "Dropped an unreadable entry in box $index"
+                        return@forEach
+                    }
+                    // A file written before boxes were a grid has no slot, so
+                    // its entries pack from the top in the order they were
+                    // written — which is exactly the order they were shown in.
+                    val written = table["slot"].asInt()?.minus(1)
+                    val slot = written?.takeIf { it in box.indices && box[it] == null }
+                        ?: box.indexOfFirst { it == null }
+                    if (slot < 0) {
                         notes += "Box $index held more than ${StorageLayout.BOX_CAPACITY}; the overflow was moved"
                         spill(loadedBoxes, stored, notes)
-                    } else loadedBoxes[index - 1].add(stored)
+                    } else box[slot] = stored
                 }
             }
         }
@@ -266,9 +318,11 @@ class StorageRepository(private val directory: File) {
         // holds exactly one authoritative copy.
         val seen = HashSet<String>()
         loadedBoxes.forEach { box ->
-            box.retainAll { stored ->
-                seen.add(stored.uid).also { fresh ->
-                    if (!fresh) notes += "Removed a duplicate entry for ${stored.uid.take(8)}"
+            box.indices.forEach { slot ->
+                val stored = box[slot] ?: return@forEach
+                if (!seen.add(stored.uid)) {
+                    notes += "Removed a duplicate entry for ${stored.uid.take(8)}"
+                    box[slot] = null
                 }
             }
         }
@@ -281,9 +335,19 @@ class StorageRepository(private val directory: File) {
         loadNotes = notes
     }
 
-    private fun spill(target: List<MutableList<StoredPokemon>>, stored: StoredPokemon, notes: MutableList<String>) {
-        val slot = target.firstOrNull { it.size < StorageLayout.BOX_CAPACITY }
-        if (slot != null) slot.add(stored) else notes += "Storage is full; ${stored.uid.take(8)} could not be placed"
+    private fun spill(
+        target: List<MutableList<StoredPokemon?>>,
+        stored: StoredPokemon,
+        notes: MutableList<String>,
+    ) {
+        for (box in target) {
+            val free = box.indexOfFirst { it == null }
+            if (free >= 0) {
+                box[free] = stored
+                return
+            }
+        }
+        notes += "Storage is full; ${stored.uid.take(8)} could not be placed"
     }
 
     private fun readTable(source: File, notes: MutableList<String>, label: String): LuaValue.Table? {
@@ -302,7 +366,13 @@ class StorageRepository(private val directory: File) {
         root["revision"] = luaNum(revision.toDouble())
         val boxesTable = LuaValue.Table()
         for (index in 1..StorageLayout.BOX_COUNT) {
-            boxesTable[index] = LuaValue.Table.ofArray(boxes[index - 1].map { it.toLua() })
+            // Only what is there, each carrying where it sits. An array of
+            // holes would not survive the Lua writer, and would say nothing
+            // the slot number does not.
+            val entries = boxes[index - 1].mapIndexedNotNull { slot, stored ->
+                stored?.toLua()?.apply { this["slot"] = luaNum((slot + 1).toDouble()) }
+            }
+            boxesTable[index] = LuaValue.Table.ofArray(entries)
         }
         root["boxes"] = boxesTable
         if (names.isNotEmpty()) {
@@ -337,8 +407,10 @@ class StorageRepository(private val directory: File) {
         }
     }
 
-    private fun emptyBoxes(): MutableList<MutableList<StoredPokemon>> =
-        MutableList(StorageLayout.BOX_COUNT) { mutableListOf() }
+    private fun emptyBoxes(): MutableList<MutableList<StoredPokemon?>> =
+        MutableList(StorageLayout.BOX_COUNT) {
+            MutableList<StoredPokemon?>(StorageLayout.BOX_CAPACITY) { null }
+        }
 
     companion object {
         const val FILE_NAME = "storage.lua"

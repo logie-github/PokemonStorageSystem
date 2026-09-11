@@ -37,7 +37,13 @@ import com.logie.gen1storage.sync.RemoteSave
  * this sitting, not a preference.
  */
 @Composable
-fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
+fun ChooseCartScreen(
+    state: UiState,
+    model: StorageViewModel,
+    game: String?,
+    sendUids: List<String> = emptyList(),
+) {
+    val sending = sendUids.isNotEmpty()
     val games = listOf(
         GameVersion.RED to R.drawable.title_red,
         GameVersion.BLUE to R.drawable.title_blue,
@@ -60,7 +66,7 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
                     art = art,
                     chosen = game == version.id,
                     modifier = Modifier.weight(1f),
-                    onClick = { model.replace(Screen.ChooseCart(version.id)) },
+                    onClick = { model.replace(Screen.ChooseCart(version.id, sendUids)) },
                 )
             }
         }
@@ -68,7 +74,7 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
         Spacer(Modifier.height(gen1Dp(5)))
 
         if (game == null) {
-            Notice("WHICH GAME?")
+            Notice(if (sending) "Send where?" else "WHICH GAME?")
             return@Column
         }
 
@@ -76,6 +82,11 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
         if (saves.isEmpty()) {
             Notice("NO SAVES FOUND.")
             return@Column
+        }
+
+        if (sending) {
+            Notice("Send where?")
+            Spacer(Modifier.height(gen1Dp(4)))
         }
 
         // Two columns once there is room for two, one otherwise. A save is a
@@ -94,7 +105,11 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
                             slot = saves.indexOf(remote) + 1,
                             state = state,
                             model = model,
-                            selected = state.activeSaveKey == remote.key,
+                            selected = !sending && state.activeSaveKey == remote.key,
+                            onChoose = {
+                                if (sending) model.chooseWithdrawSave(sendUids, remote.key)
+                                else model.chooseCart(remote.key)
+                            },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -149,6 +164,7 @@ private fun SaveRow(
     state: UiState,
     model: StorageViewModel,
     selected: Boolean,
+    onChoose: () -> Unit,
     modifier: Modifier,
 ) {
     val save = state.save(remote.key)?.save
@@ -166,7 +182,7 @@ private fun SaveRow(
             .gen1HoldRegion()
             .pointerInput(remote.key) {
                 detectTapGestures(
-                    onTap = { model.chooseCart(remote.key) },
+                    onTap = { onChoose() },
                     onLongPress = { model.prompt(Prompt.RenameCart(remote.key, fallback)) },
                 )
             }

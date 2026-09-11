@@ -29,8 +29,8 @@ object StorageArchive {
     const val FORMAT = "gen1storage-export"
     const val VERSION = 1
 
-    /** One Pokémon in an archive, and the box it was in. */
-    data class Entry(val box: Int, val stored: StoredPokemon)
+    /** One Pokémon in an archive, and the spot it was on. */
+    data class Entry(val box: Int, val slot: Int, val stored: StoredPokemon)
 
     data class Archive(
         val version: Int,
@@ -52,8 +52,12 @@ object StorageArchive {
         var named = false
         state.boxes.forEach { box ->
             box.name?.takeIf { it.isNotBlank() }?.let { names[box.index] = luaStr(it); named = true }
-            box.contents.forEach { stored ->
-                entries += stored.toLua().apply { this["box"] = luaNum(box.index.toDouble()) }
+            box.slots.forEachIndexed { slot, stored ->
+                if (stored == null) return@forEachIndexed
+                entries += stored.toLua().apply {
+                    this["box"] = luaNum(box.index.toDouble())
+                    this["slot"] = luaNum((slot + 1).toDouble())
+                }
             }
         }
         root["pokemon"] = LuaValue.Table.ofArray(entries)
@@ -95,6 +99,10 @@ object StorageArchive {
             } else {
                 Entry(
                     box = (table["box"].asInt() ?: 1).coerceIn(1, StorageLayout.BOX_COUNT),
+                    // An export from before boxes were a grid has no slot; 0
+                    // is out of range, so it falls through to the first free
+                    // spot rather than landing somewhere arbitrary.
+                    slot = (table["slot"].asInt() ?: 0).coerceIn(0, StorageLayout.BOX_CAPACITY),
                     stored = stored,
                 )
             }

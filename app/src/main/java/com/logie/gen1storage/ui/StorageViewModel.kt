@@ -18,6 +18,7 @@ import com.logie.gen1storage.sync.SaveBackups
 import com.logie.gen1storage.sync.SaveRepository
 import com.logie.gen1storage.sync.SyncAccount
 import com.logie.gen1storage.sync.SyncApi
+import com.logie.gen1storage.sprites.FollowerStore
 import com.logie.gen1storage.sprites.SpriteDownloader
 import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.sprites.SpriteSet
@@ -49,7 +50,15 @@ sealed interface Screen {
      * Choosing a cartridge. A null [game] shows only the three games; once one
      * is picked they stay on screen and its saves are listed underneath.
      */
-    data class ChooseCart(val game: String?) : Screen
+    data class ChooseCart(
+        val game: String?,
+        /**
+         * When this is not empty the screen is the same one under a different
+         * job: it is asking where to send these Pokémon rather than which
+         * cartridge to work with, and picking a save goes on to its boxes.
+         */
+        val sendUids: List<String> = emptyList(),
+    ) : Screen
     /**
      * The status screen. A null [key] means the Pokémon is in this app's PC and
      * [area] is its box; otherwise [area] 0 is the save's party and 1..12 its
@@ -70,6 +79,7 @@ sealed interface Screen {
     /** Everything that is fetched rather than shipped: the sprites and the cries. */
     data object Downloads : Screen
     data object Cries : Screen
+    data object Followers : Screen
     data object Options : Screen
     data object Credits : Screen
     data object SoundEffects : Screen
@@ -94,8 +104,6 @@ sealed interface Prompt {
     data class RenameCart(val key: String, val fallback: String) : Prompt
     /** A newer release exists; saying yes opens it. */
     data class Update(val version: String, val url: String) : Prompt
-    /** Which save to put withdrawn Pokémon into, before asking where in it. */
-    data class ChooseWithdrawSave(val uids: List<String>) : Prompt
     data class ChooseWithdrawTarget(val uids: List<String>, val key: String) : Prompt
     /** Which save to take a deposit from, when the lists are not showing all. */
     data class ChooseDepositSave(val title: String) : Prompt
@@ -140,6 +148,8 @@ data class UiState(
     val spritesInstalled: Int = 0,
     val cryProgress: DownloadProgress? = null,
     val criesInstalled: Int = 0,
+    val followerProgress: DownloadProgress? = null,
+    val followersInstalled: Int = 0,
     /** Bumped whenever sprites change, so drawn sprites re-read the store. */
     val spriteRevision: Int = 0,
 ) {
@@ -163,6 +173,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private var spriteJob: Job? = null
     private val cries = CryStore(application)
     private var cryJob: Job? = null
+    val followers = FollowerStore(application)
+    private var followerJob: Job? = null
     private val credentials = SyncAccount(application)
     private val api = SyncApi(credentials = credentials::credentials)
     private val saves = SaveRepository(api, backups)
@@ -193,6 +205,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 soundsOn = enabledSounds(),
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
                 criesInstalled = cries.count(),
+                followersInstalled = followers.count(),
             )
         }
         if (credentials.isLinked) sync()
@@ -422,10 +435,22 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun chooseCart(key: String) = selectSave(key) { back() }
 
-    /** Picks the save a withdrawal lands in, then asks where inside it. */
+    /**
+     * Picks the save a withdrawal lands in, then asks where inside it.
+     *
+     * The cartridge screen is left behind first: the box question belongs to
+     * the PC the Pokémon is leaving, and a window opening over the cartridges
+     * would read as another question about them.
+     */
     fun chooseWithdrawSave(uids: List<String>, key: String) =
         selectSave(key) { ready ->
-            mutable.update { it.copy(prompt = Prompt.ChooseWithdrawTarget(uids, ready)) }
+            mutable.update { state ->
+                val stack = state.stack.dropLastWhile { it is Screen.ChooseCart }
+                state.copy(
+                    stack = stack.ifEmpty { listOf(Screen.Home) },
+                    prompt = Prompt.ChooseWithdrawTarget(uids, ready),
+                )
+            }
         }
 
     // ------- settings
@@ -468,10 +493,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun applySpriteTint(palette: GbPalette) {
-        sprites.setTint(
-            palette.id,
-            if (palette.tintsSprites) palette.ramp.map { it.toArgb() }.toIntArray() else null,
-        )
+        val ramp =
+            if (palette.tintsSprites) palette.ramp.map { it.toArgb() }.toIntArray() else null
+        sprites.setTint(palette.id, ramp)
+        followers.setTint(palette.id, ramp)
     }
 
     /**
@@ -607,6 +632,52 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun cryBytesOnDisk(): Long = cries.bytesOnDisk()
+
+    // ------- followers
+
+    /** Downloads the overworld follower sheets the box grid draws. */
+    fun downloadFollowers() {
+        if (followerJob?.isActive == true) return
+        followerJob = viewModelScope.launch {
+            mutable.update { it.copy(prompt = null, followerProgress = DownloadProgress(0, 1)) }
+            val result = runCatching {
+                followers.downloadAll { progress ->
+                    mutable.update { it.copy(followerProgress = progress) }
+                }
+            }
+            mutable.update { state ->
+                state.copy(
+                    followersInstalled = followers.count(),
+                    spriteRevision = state.spriteRevision + 1,
+                    followerProgress = result.getOrNull()
+                        ?: DownloadProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
+                )
+            }
+        }
+    }
+
+    fun cancelFollowerDownload() {
+        followerJob?.cancel()
+        followerJob = null
+        mutable.update {
+            it.copy(
+                followerProgress = null,
+                followersInstalled = followers.count(),
+                spriteRevision = it.spriteRevision + 1,
+            )
+        }
+    }
+
+    fun dismissFollowerProgress() = mutable.update { it.copy(followerProgress = null) }
+
+    fun deleteFollowers() {
+        followers.clear()
+        mutable.update {
+            it.copy(followersInstalled = 0, spriteRevision = it.spriteRevision + 1, prompt = null)
+        }
+    }
+
+    fun followerBytesOnDisk(): Long = followers.bytesOnDisk()
 
     // ------- export and import
 
@@ -899,6 +970,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     /** Names a box, or clears the name again when given nothing. */
     fun renameBox(index: Int, name: String) {
         storage.renameBox(index, name)
+        mutable.update { it.copy(storage = storage.state(), prompt = null) }
+    }
+
+    /**
+     * Puts a stored Pokémon on a named spot, which is what a drag across the
+     * grid or a MOVE then a tap comes to. A spot that is taken swaps, so a
+     * full box can still be rearranged.
+     */
+    fun moveStoredToSlot(uid: String, targetBox: Int, targetSlot: Int) {
+        if (!storage.moveToSlot(uid, targetBox, targetSlot)) {
+            message("THAT POKéMON COULD NOT BE MOVED.")
+            return
+        }
         mutable.update { it.copy(storage = storage.state(), prompt = null) }
     }
 

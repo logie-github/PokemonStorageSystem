@@ -103,11 +103,10 @@ fun Gen1StatusScreen(
                 }
             }
             Spacer(Modifier.height(gen1Dp(4)))
+            // No prompt to turn the page. The whole window takes a tap and
+            // there are only two pages: a player finds that in one tap and
+            // never needs telling again.
             if (page == 0) StatusPageOne(pokemon) else StatusPageTwo(pokemon)
-            Spacer(Modifier.height(gen1Dp(4)))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                GbText(if (page == 0) "▼ MORE" else "▲ BACK")
-            }
         }
             Spacer(Modifier.height(gen1Dp(3)))
             underBox()

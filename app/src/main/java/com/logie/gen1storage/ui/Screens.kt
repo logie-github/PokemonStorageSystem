@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Pokemon
@@ -157,9 +158,15 @@ fun StorageSystemScreen(
     // one-at-a-time PC: a tap opens the window on that Pokémon, and SELECT in
     // that window is what turns the list into a set.
     var marked by remember(mode) { mutableStateOf(emptySet<Int>()) }
+    // VIEW is a grid, so what is picked there is a spot in the box rather
+    // than a row in a list, and the two cannot share one number.
+    var gridSlot by remember(mode) { mutableStateOf<Int?>(null) }
+    // Picked up by MOVE and waiting for somewhere to go. A drag does the same
+    // journey in one gesture and never sets this.
+    var heldUid by remember(mode) { mutableStateOf<String?>(null) }
     // Cleared after a transfer, so the ticks do not outlive what they pointed
     // at — every index shifts the moment something leaves a list.
-    LaunchedEffect(state.transfers) { marked = emptySet(); chosen = null }
+    LaunchedEffect(state.transfers) { marked = emptySet(); chosen = null; gridSlot = null }
     fun toggle(index: Int) {
         marked = if (index in marked) marked - index else marked + index
     }
@@ -207,8 +214,10 @@ fun StorageSystemScreen(
 
     // An empty list has nothing to draw a window around, so it speaks through
     // the message window instead — which is what the cartridge does.
+    // VIEW draws the box either way, so an empty one speaks for itself: a
+    // grid of empty spots is already the answer the message would give.
     val emptiness = when (mode) {
-        PcMode.WITHDRAW, PcMode.VIEW -> "What? There are no POKéMON here!".takeIf { stored.isEmpty() }
+        PcMode.WITHDRAW -> "What? There are no POKéMON here!".takeIf { stored.isEmpty() }
         PcMode.DEPOSIT -> "There are no POKéMON here.".takeIf { depositRows.isEmpty() }
         else -> null
     }
@@ -236,18 +245,25 @@ fun StorageSystemScreen(
     fun startWithdraw(uids: List<String>) {
         chosen = null
         val active = state.activeSaveKey
-        model.prompt(
-            if (active != null && state.save(active) != null) Prompt.ChooseWithdrawTarget(uids, active)
-            else Prompt.ChooseWithdrawSave(uids)
-        )
+        if (active != null && state.save(active) != null) {
+            model.prompt(Prompt.ChooseWithdrawTarget(uids, active))
+        } else {
+            // The same cartridge screen the deposit uses, asking a different
+            // question: it already shows the trainer, the lead and the badges,
+            // which is what a player is picking between.
+            model.open(Screen.ChooseCart(null, uids))
+        }
     }
 
     // The list and the window that opens on a chosen Pokémon are separate
     // layers on the screen, so they are built as separate slots here rather
     // than nested — the message window belongs between them.
     val pick: PartyRow? = chosen?.takeIf { mode == PcMode.DEPOSIT }?.let { depositRows.getOrNull(it) }
-    val storedPick = chosen?.takeIf { mode == PcMode.WITHDRAW || mode == PcMode.VIEW }
-        ?.let { stored.getOrNull(it) }
+    val storedPick = when (mode) {
+        PcMode.WITHDRAW -> chosen?.let { stored.getOrNull(it) }
+        PcMode.VIEW -> gridSlot?.let { box?.slots?.getOrNull(it) }
+        else -> null
+    }
 
     StorageSystemScreen(
         boxLabel = box?.label ?: "BOX ${state.currentStorageBox}",
@@ -277,7 +293,59 @@ fun StorageSystemScreen(
         overlay = if (emptiness != null) null else when (mode) {
             PcMode.MENU -> null
 
-            PcMode.WITHDRAW, PcMode.VIEW -> ({
+            PcMode.VIEW -> ({
+                val open = box ?: state.storage.boxes.firstOrNull()
+                if (open != null) {
+                    val held = heldUid?.let { uid ->
+                        state.storage.find(uid)?.second?.pokemon?.displayName?.uppercase()
+                    }
+                    BoxGridOverlay(
+                        box = open,
+                        followers = model.followers,
+                        revision = state.spriteRevision,
+                        selectedSlot = gridSlot,
+                        heldSlot = heldUid?.let { uid ->
+                            open.slots.indexOfFirst { it?.uid == uid }.takeIf { it >= 0 }
+                        },
+                        heldName = held,
+                        onTap = { slot ->
+                            val carrying = heldUid
+                            when {
+                                carrying != null -> {
+                                    model.moveStoredToSlot(carrying, open.index, slot)
+                                    heldUid = null
+                                    gridSlot = null
+                                }
+                                open.slots.getOrNull(slot) != null -> gridSlot = slot
+                                else -> gridSlot = null
+                            }
+                        },
+                        onMove = { from, to ->
+                            open.slots.getOrNull(from)?.let {
+                                model.moveStoredToSlot(it.uid, open.index, to)
+                            }
+                            gridSlot = null
+                        },
+                        onPreviousBox = {
+                            gridSlot = null
+                            model.setStorageBox(
+                                if (open.index <= 1) StorageLayout.BOX_COUNT else open.index - 1
+                            )
+                        },
+                        onNextBox = {
+                            gridSlot = null
+                            model.setStorageBox(
+                                if (open.index >= StorageLayout.BOX_COUNT) 1 else open.index + 1
+                            )
+                        },
+                        onCancel = {
+                            if (heldUid != null) heldUid = null else mode = PcMode.MENU
+                        },
+                    )
+                }
+            })
+
+            PcMode.WITHDRAW -> ({
                 MonListOverlay(
                     entries = stored.map {
                         MonRow(pokemonRowLabel(it.pokemon), pokemonRowLevel(it.pokemon))
@@ -482,7 +550,7 @@ fun StatusScreen(
         store = model.sprites,
         spriteRevision = state.spriteRevision,
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
-        footer = { Gen1Button("BACK", { model.back() }) },
+        footer = { Gen1BoxButton("BACK", { model.back() }) },
         underBox = {
             // Only the transfer this screen was opened from. Looking a
             // Pokémon over is most of why a transfer stalls here, so the way
@@ -495,11 +563,11 @@ fun StatusScreen(
                         Gen1Button("WITHDRAW", {
                             model.back()
                             val active = state.activeSaveKey
-                            model.prompt(
-                                if (active != null && state.save(active) != null)
-                                    Prompt.ChooseWithdrawTarget(listOf(uid), active)
-                                else Prompt.ChooseWithdrawSave(listOf(uid))
-                            )
+                            if (active != null && state.save(active) != null) {
+                                model.prompt(Prompt.ChooseWithdrawTarget(listOf(uid), active))
+                            } else {
+                                model.open(Screen.ChooseCart(null, listOf(uid)))
+                            }
                         }, Modifier.wrapContentWidth())
                     }
                 }
@@ -532,9 +600,10 @@ fun StatusScreen(
 /**
  * Everything that is fetched rather than shipped.
  *
- * The sprites and the cries are both the games' own material, so neither is in
- * the APK and both are the player's to download. One menu for the pair keeps
- * OPTIONS from growing a row per thing that can be fetched.
+ * The front sprites, the cries and the follower sheets are all the games' own
+ * material or the community's, so none of them are in the APK and all three
+ * are the player's to download. One menu for the set keeps OPTIONS from
+ * growing a row per thing that can be fetched.
  */
 @Composable
 fun DownloadsScreen(state: UiState, model: StorageViewModel) {
@@ -542,6 +611,7 @@ fun DownloadsScreen(state: UiState, model: StorageViewModel) {
     val entries = listOf<Pair<String, () -> Unit>>(
         "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
         "DOWNLOAD CRIES" to { model.open(Screen.Cries) },
+        "DOWNLOAD FOLLOWERS" to { model.open(Screen.Followers) },
     )
 
     ScreenColumn {
@@ -559,26 +629,40 @@ fun DownloadsScreen(state: UiState, model: StorageViewModel) {
             Gen1Frame(Modifier.wrapContentWidth()) {
                 Gen1Field("SPRITES", "${state.spritesInstalled}")
                 Gen1Field("CRIES", "${state.criesInstalled} OF 151")
+                Gen1Field("FOLLOWERS", "${state.followersInstalled} OF 151")
             }
         }
     }
 }
 
 /**
- * The cry download, drawn the same way as the sprites.
+ * One downloadable set's screen: a question, then a percentage and a bar.
  *
- * A cry is still fetched on its own the first time a Pokémon is opened, so
- * this only saves the wait; nothing here is needed for the app to work.
+ * Shared by all three because they differ only in what they are counting.
+ * The player never has to think about where any of it comes from or which
+ * file is which.
  */
 @Composable
-fun CriesScreen(state: UiState, model: StorageViewModel) {
-    val progress = state.cryProgress
+private fun DownloadPage(
+    heading: String,
+    progress: DownloadProgress?,
+    installed: String,
+    spaceUsed: String,
+    hasSome: Boolean,
+    confirmLine: String,
+    deleteLine: String,
+    model: StorageViewModel,
+    onDownload: () -> Unit,
+    onStop: () -> Unit,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val running = progress != null && !progress.finished
 
     ScreenColumn {
         item {
             Gen1Frame {
-                GbText("POKéMON CRIES")
+                GbText(heading)
                 Spacer(Modifier.height(6.dp))
             }
         }
@@ -596,11 +680,11 @@ fun CriesScreen(state: UiState, model: StorageViewModel) {
                             style = Gen1TextSmall,
                         )
                         Spacer(Modifier.height(8.dp))
-                        Gen1Button("OK", model::dismissCryProgress)
+                        Gen1Button("OK", onDismiss)
                     } else {
                         GbText("${progress.done} OF ${progress.total}", style = Gen1TextSmall)
                         Spacer(Modifier.height(8.dp))
-                        Gen1Button("STOP", model::cancelCryDownload)
+                        Gen1Button("STOP", onStop)
                     }
                 }
             }
@@ -610,137 +694,41 @@ fun CriesScreen(state: UiState, model: StorageViewModel) {
             item {
                 Gen1Frame(Modifier.wrapContentWidth()) {
                     GbText("ON THIS DEVICE")
-                    GbText("${state.criesInstalled} OF 151 CRIES", style = Gen1TextSmall)
+                    GbText(installed, style = Gen1TextSmall)
                     Spacer(Modifier.height(gen1Dp(2)))
                     GbText("SPACE USED")
-                    GbText(
-                        if (state.criesInstalled > 0) "${model.cryBytesOnDisk() / 1024} KB"
-                        else "ABOUT 2 MB TO DOWNLOAD",
-                        style = Gen1TextSmall,
-                    )
-                }
-            }
-            item {
-                Gen1Button(
-                    if (state.criesInstalled > 0) "DOWNLOAD MISSING" else "DOWNLOAD",
-                    {
-                        model.prompt(
-                            Prompt.Confirm(
-                                lines = listOf("Download Pokémon cries from repo?"),
-                                confirmLabel = "YES",
-                                cancelLabel = "NO",
-                                onConfirm = { model.downloadCries() },
-                            )
-                        )
-                    },
-                    Modifier.wrapContentWidth(),
-                )
-            }
-            if (state.criesInstalled > 0) {
-                item {
-                    Gen1Button(
-                        "DELETE",
-                        {
-                            model.prompt(
-                                Prompt.Confirm(
-                                    lines = listOf("DELETE EVERY DOWNLOADED CRY?"),
-                                    confirmLabel = "YES",
-                                    cancelLabel = "NO",
-                                    onConfirm = { model.deleteCries() },
-                                )
-                            )
-                        },
-                        Modifier.wrapContentWidth(),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * The sprite download. One question, then a percentage and a bar; the player
- * never has to think about where the art comes from or which file is which.
- */
-@Composable
-fun SpritesScreen(state: UiState, model: StorageViewModel) {
-    val progress = state.spriteProgress
-    val running = progress != null && !progress.finished
-
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("POKéMON SPRITES")
-                Spacer(Modifier.height(6.dp))
-            }
-        }
-
-        if (progress != null) {
-            item {
-                Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
-                    DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(10.dp))
-                    if (progress.finished) {
-                        GbText(
-                            if (progress.error != null) "STOPPED: ${progress.error.uppercase()}"
-                            else if (progress.failed > 0) "DONE. ${progress.failed} COULD NOT BE FETCHED."
-                            else "DONE.",
-                            style = Gen1TextSmall,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Gen1Button("OK", model::dismissSpriteProgress)
-                    } else {
-                        GbText("${progress.done} OF ${progress.total}", style = Gen1TextSmall)
-                        Spacer(Modifier.height(8.dp))
-                        Gen1Button("STOP", model::cancelSpriteDownload)
-                    }
-                }
-            }
-        }
-
-        if (!running) {
-            item {
-                Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText("ON THIS DEVICE")
-                    GbText("${state.spritesInstalled} SPRITES", style = Gen1TextSmall)
-                    Spacer(Modifier.height(gen1Dp(2)))
-                    GbText("SPACE USED")
-                    GbText(
-                        if (state.spritesInstalled > 0) "${model.spriteBytesOnDisk() / (1024 * 1024)} MB"
-                        else "ABOUT 25 MB TO DOWNLOAD",
-                        style = Gen1TextSmall,
-                    )
+                    GbText(spaceUsed, style = Gen1TextSmall)
                 }
             }
             // Their own buttons rather than a row crammed inside the window,
             // which is what was breaking DELETE across two lines.
             item {
                 Gen1Button(
-                    if (state.spritesInstalled > 0) "DOWNLOAD MISSING" else "DOWNLOAD",
+                    if (hasSome) "DOWNLOAD MISSING" else "DOWNLOAD",
                     {
                         model.prompt(
                             Prompt.Confirm(
-                                lines = listOf("Download Pokémon sprites from repo?"),
+                                lines = listOf(confirmLine),
                                 confirmLabel = "YES",
                                 cancelLabel = "NO",
-                                onConfirm = { model.downloadSprites() },
+                                onConfirm = onDownload,
                             )
                         )
                     },
                     Modifier.wrapContentWidth(),
                 )
             }
-            if (state.spritesInstalled > 0) {
+            if (hasSome) {
                 item {
                     Gen1Button(
                         "DELETE",
                         {
                             model.prompt(
                                 Prompt.Confirm(
-                                    lines = listOf("DELETE EVERY DOWNLOADED SPRITE?"),
+                                    lines = listOf(deleteLine),
                                     confirmLabel = "YES",
                                     cancelLabel = "NO",
-                                    onConfirm = { model.deleteSprites() },
+                                    onConfirm = onDelete,
                                 )
                             )
                         },
@@ -751,6 +739,57 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
         }
     }
 }
+
+@Composable
+fun CriesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
+    heading = "POKéMON CRIES",
+    progress = state.cryProgress,
+    installed = "${state.criesInstalled} OF 151 CRIES",
+    spaceUsed = if (state.criesInstalled > 0) "${model.cryBytesOnDisk() / 1024} KB"
+    else "ABOUT 2 MB TO DOWNLOAD",
+    hasSome = state.criesInstalled > 0,
+    confirmLine = "Download Pokémon cries from repo?",
+    deleteLine = "DELETE EVERY DOWNLOADED CRY?",
+    model = model,
+    onDownload = model::downloadCries,
+    onStop = model::cancelCryDownload,
+    onDismiss = model::dismissCryProgress,
+    onDelete = model::deleteCries,
+)
+
+@Composable
+fun FollowersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
+    heading = "OVERWORLD FOLLOWERS",
+    progress = state.followerProgress,
+    installed = "${state.followersInstalled} OF 151 SHEETS",
+    spaceUsed = if (state.followersInstalled > 0) "${model.followerBytesOnDisk() / 1024} KB"
+    else "UNDER 1 MB TO DOWNLOAD",
+    hasSome = state.followersInstalled > 0,
+    confirmLine = "Download follower sprites from repo?",
+    deleteLine = "DELETE EVERY FOLLOWER SHEET?",
+    model = model,
+    onDownload = model::downloadFollowers,
+    onStop = model::cancelFollowerDownload,
+    onDismiss = model::dismissFollowerProgress,
+    onDelete = model::deleteFollowers,
+)
+
+@Composable
+fun SpritesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
+    heading = "POKéMON SPRITES",
+    progress = state.spriteProgress,
+    installed = "${state.spritesInstalled} SPRITES",
+    spaceUsed = if (state.spritesInstalled > 0) "${model.spriteBytesOnDisk() / (1024 * 1024)} MB"
+    else "ABOUT 25 MB TO DOWNLOAD",
+    hasSome = state.spritesInstalled > 0,
+    confirmLine = "Download Pokémon sprites from repo?",
+    deleteLine = "DELETE EVERY DOWNLOADED SPRITE?",
+    model = model,
+    onDownload = model::downloadSprites,
+    onStop = model::cancelSpriteDownload,
+    onDismiss = model::dismissSpriteProgress,
+    onDelete = model::deleteSprites,
+)
 
 /**
  * Everything the cartridge's PC menu does not have.
@@ -956,6 +995,31 @@ fun CreditsScreen() {
                         "CRIES",
                         "POKEAPI/CRIES",
                         "github.com/PokeAPI/cries",
+                    )
+                }
+                item {
+                    Credit(
+                        "FOLLOWERS",
+                        "POKEPCFOLLOWERS",
+                        "FORK BY BURGERSLAYER7",
+                        "github.com/burgerslayer7/",
+                        "PokePCFollowers",
+                    )
+                }
+                item {
+                    Credit(
+                        "FOLLOWERS, ORIGINAL",
+                        "POKEPCFOLLOWERS",
+                        "BY GAMECORNER-033",
+                        "github.com/gamecorner-033/",
+                        "PokePCFollowers",
+                    )
+                }
+                item {
+                    Credit(
+                        "FOLLOWER ART",
+                        "SHOCKSLAYER AND THE",
+                        "FOLLOWERS EX / POKEPC LINEAGE",
                     )
                 }
                 item {
@@ -1166,12 +1230,12 @@ fun ScreenColumn(content: LazyListScope.() -> Unit) {
 @Composable
 fun PromptWindow(state: UiState, model: StorageViewModel) {
     val prompt = state.prompt ?: return
+    // No scrim and no centring: a prompt is a window like every other
+    // window here, so it opens in the same corner the action windows do and
+    // leaves what it came from readable behind it.
     Box(
-        Modifier
-            .fillMaxSize()
-            .background(Gen1Palette.Surround.copy(alpha = 0.85f))
-            .padding(gen1Dp(4)),
-        contentAlignment = Alignment.Center,
+        Modifier.fillMaxSize().padding(gen1Dp(4)),
+        contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
     ) {
         when (prompt) {
             is Prompt.Message -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
@@ -1239,14 +1303,6 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     }
                 }
             }
-
-            is Prompt.ChooseWithdrawSave -> SavePicker(
-                title = if (prompt.uids.size == 1) "PUT IT IN WHICH SAVE?"
-                else "PUT THEM IN WHICH SAVE?",
-                state = state,
-                onChoose = { key -> model.chooseWithdrawSave(prompt.uids, key) },
-                onCancel = model::dismissPrompt,
-            )
 
             is Prompt.ChooseDepositSave -> SavePicker(
                 title = prompt.title,

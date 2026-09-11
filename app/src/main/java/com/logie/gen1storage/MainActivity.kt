@@ -62,6 +62,7 @@ import com.logie.gen1storage.ui.isUnfolded
 import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.CriesScreen
+import com.logie.gen1storage.ui.FollowersScreen
 import com.logie.gen1storage.ui.DownloadsScreen
 import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
@@ -243,12 +244,13 @@ private fun ScreenContent(
     when (screen) {
         Screen.Home -> HomeScreen(state, model)
         Screen.Link -> LinkScreen(state, model)
-        is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game)
+        is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game, screen.sendUids)
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
         Screen.Downloads -> DownloadsScreen(state, model)
         Screen.Sprites -> SpritesScreen(state, model)
         Screen.Cries -> CriesScreen(state, model)
+        Screen.Followers -> FollowersScreen(state, model)
         Screen.Credits -> CreditsScreen()
         Screen.SoundEffects -> SoundEffectsScreen(state, model)
         Screen.Options -> OptionsScreen(

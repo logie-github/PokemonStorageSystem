@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -408,6 +409,29 @@ fun Gen1Button(
         // A flat two-tone plate: outer rule, inner fill, no rounding.
         contentAlignment = Alignment.Center,
     ) {
+        GbText(
+            label.uppercase(),
+            style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
+        )
+    }
+}
+
+/**
+ * A button that is a window rather than a plate.
+ *
+ * The Generation I screens have no button widget: what a player takes is
+ * always a window with a word in it. So this is the window itself, named by
+ * what it does and clickable across its whole face — no plate inside a box,
+ * which is two outlines saying one thing.
+ */
+@Composable
+fun Gen1BoxButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Gen1FrameBox(modifier.wrapContentWidth().gen1Clickable(enabled, onClick)) {
         GbText(
             label.uppercase(),
             style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),

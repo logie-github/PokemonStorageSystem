@@ -89,7 +89,9 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
                 GbText("Sending ${scene.name} to")
                 GbText("${scene.destination}.")
                 Spacer(Modifier.height(gen1Dp(2)))
-                GbText("Goodbye, ${scene.name}!")
+                // One is arriving and the other is leaving, and the same
+                // word cannot be right for both.
+                GbText(if (scene.arriving) "Hello, ${scene.name}!" else "Goodbye, ${scene.name}!")
             }
         }
     }

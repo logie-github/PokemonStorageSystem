@@ -99,6 +99,8 @@ data class TransferScene(
     val gameVersionId: String?,
     val name: String,
     val destination: String,
+    /** Coming into this PC rather than leaving it, which is a different word. */
+    val arriving: Boolean,
 )
 
 /** The transfer a status screen was opened from, and can finish. */
@@ -802,6 +804,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                             gameVersionId = loaded.remote.version.id,
                             name = mon.displayName.uppercase(),
                             destination = boxLabel(targetBox),
+                            arriving = true,
                         )
                     },
                 )
@@ -843,6 +846,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                             gameVersionId = stored.provenance.gameVersion,
                             name = stored.pokemon.displayName.uppercase(),
                             destination = loaded.save?.trainerName?.uppercase() ?: "THE SAVE",
+                            arriving = false,
                         )
                     },
                 )

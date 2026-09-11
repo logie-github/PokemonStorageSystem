@@ -55,13 +55,13 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
             // The ball is there to be looked at before it opens.
             delay(BALL_HOLD_MILLIS)
             puff = 1f
-            delay(PUFF_MILLIS.toLong())
+            delay(PUFF_MILLIS)
             puff = 2f
-            shown.animateTo(1f, tween(GROW_MILLIS, easing = LinearEasing))
+            shown.animateTo(1f, tween(GROW_MILLIS.toInt(), easing = LinearEasing))
         } else {
-            shown.animateTo(0f, tween(GROW_MILLIS, easing = LinearEasing))
+            shown.animateTo(0f, tween(GROW_MILLIS.toInt(), easing = LinearEasing))
             puff = 1f
-            delay(PUFF_MILLIS.toLong())
+            delay(PUFF_MILLIS)
             puff = 2f
         }
     }
@@ -157,15 +157,33 @@ private fun Puff(modifier: Modifier = Modifier) {
     )
 }
 
+/**
+ * How long each direction takes to play out.
+ *
+ * The transfer itself is a round trip to a server and can answer sooner than
+ * this, so the result waits for these rather than cutting in. It matters most
+ * coming in, where the Pokémon is the last thing to appear: answering early
+ * used to clear the scene before it was ever drawn.
+ */
+object Gen1TransferTiming {
+    const val OUT_MILLIS = GROW_MILLIS + PUFF_MILLIS + HOLD_MILLIS
+    const val IN_MILLIS = BALL_HOLD_MILLIS + PUFF_MILLIS + GROW_MILLIS + HOLD_MILLIS
+
+    fun forScene(arriving: Boolean): Long = if (arriving) IN_MILLIS else OUT_MILLIS
+}
+
 /** The front sprite's size, and the ball's, in game pixels. */
 private const val SPRITE_PIXELS = 56
 private const val BALL_PIXELS = 16
 /** How long the Pokémon takes to go into the ball, or to come out of it. */
-private const val GROW_MILLIS = 320
+private const val GROW_MILLIS = 320L
 
 /** How long a ball is on screen before it opens, on the way in. */
 private const val BALL_HOLD_MILLIS = 260L
-private const val PUFF_MILLIS = 180
+
+/** A beat on whatever the scene ends on, so it is seen rather than glimpsed. */
+private const val HOLD_MILLIS = 320L
+private const val PUFF_MILLIS = 180L
 private const val PUFF_MOTES = 8
 
 private val BALL_TILE = listOf(

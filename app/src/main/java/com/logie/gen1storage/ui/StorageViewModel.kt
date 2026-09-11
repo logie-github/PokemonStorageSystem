@@ -36,6 +36,7 @@ import com.logie.gen1storage.transfer.TransferJournal
 import com.logie.gen1storage.transfer.TransferResult
 import com.logie.gen1storage.transfer.WithdrawTarget
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -220,6 +221,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val engine = TransferEngine(saves, storage, journal)
     private val itemStorage = ItemRepository(storageDir)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
+
+    /** When the ball went up, so the result can wait for it to finish. */
+    private var sceneStartedAt = 0L
 
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
@@ -806,6 +810,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun depositFromSave(key: String, location: SaveLocation, targetBox: Int) {
         val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
         val moving = loaded.save?.let { pokemonAt(it, location) }
+        sceneStartedAt = System.currentTimeMillis()
         viewModelScope.launch {
             mutable.update {
                 it.copy(
@@ -848,6 +853,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         if (uids.isEmpty()) return
         val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
         val moving = uids.singleOrNull()?.let { storage.get(it) }
+        sceneStartedAt = System.currentTimeMillis()
         viewModelScope.launch {
             mutable.update {
                 it.copy(
@@ -911,6 +917,20 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Lets the ball finish before the result lands on top of it.
+     *
+     * A save answers when it answers, and often sooner than the animation
+     * runs. Coming in, the Pokémon is the last thing drawn, so an early
+     * answer used to clear the scene before it was ever on screen.
+     */
+    private suspend fun awaitScene() {
+        val scene = mutable.value.transferScene ?: return
+        val left = Gen1TransferTiming.forScene(scene.arriving) -
+            (System.currentTimeMillis() - sceneStartedAt)
+        if (left > 0) delay(left)
+    }
+
     private fun boxLabel(index: Int): String =
         storage.state().boxes.getOrNull(index - 1)?.label ?: "BOX $index"
 
@@ -949,6 +969,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * read as though nothing had happened.
      */
     private suspend fun finishMany(done: Int, stopped: TransferResult?, verb: String) {
+        awaitScene()
         mutable.update { it.copy(loaded = emptyMap()) }
         val refreshed = withContext(Dispatchers.IO) { saves.listSaves() }
         if (refreshed is SyncResult.Ok) {
@@ -978,6 +999,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * transfer would be checked against a revision the server has moved past.
      */
     private suspend fun finish(result: TransferResult) {
+        awaitScene()
         mutable.update { it.copy(loaded = emptyMap()) }
         val refreshed = withContext(Dispatchers.IO) { saves.listSaves() }
         if (refreshed is SyncResult.Ok) {

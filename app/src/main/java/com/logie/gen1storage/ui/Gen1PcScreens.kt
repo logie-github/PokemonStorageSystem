@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -333,10 +334,17 @@ fun MonActionOverlay(
         val action = actions.getOrNull(index)
         if (action == null) onCancel() else if (action.enabled) action.onAction()
     }
-    Box(
-        Modifier.fillMaxSize(),
-        contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
-    ) {
+    // Against the far edge, so it does not sit on top of the list it was
+    // opened from, and raised off the floor so it overlaps that list's lower
+    // corner the way the cartridge's submenus do rather than stranding itself
+    // at the bottom of the screen.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(top = maxHeight * LIST_OVERLAP),
+            contentAlignment = Gen1Layout.corner(top = true, menuSide = false),
+        ) {
         Gen1Frame(Modifier.wrapContentWidth(), opening = true) {
             actions.forEachIndexed { index, entry ->
                 Gen1MenuRow(
@@ -350,8 +358,12 @@ fun MonActionOverlay(
             Gen1MenuRow("CANCEL", selected == actions.size, {}, onCancel)
             if (note != null) GbText(note, style = Gen1TextSmall)
         }
+        }
     }
 }
+
+/** How far down the screen the window on a chosen Pokémon starts. */
+private const val LIST_OVERLAP = 0.34f
 
 /** The CHANGE BOX list. */
 @Composable

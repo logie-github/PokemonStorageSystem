@@ -172,6 +172,7 @@ fun StorageSystemScreen(
     }
 
     val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
+    val thisBoxLabel = box?.label ?: "BOX ${state.currentStorageBox}"
     val boxContents = box?.contents.orEmpty()
     // WITHDRAW offers everything the app holds; VIEW is about the box that is
     // open, because that is the one being rearranged.
@@ -238,6 +239,24 @@ fun StorageSystemScreen(
     }
 
     /**
+     * "SEND PIKACHU TO RED?" — the one question a transfer asks.
+     *
+     * Nothing moves and nothing is written until it is answered, so the ball
+     * going up is the player's own doing rather than the first they hear of
+     * it. Where it is going was never in question; whether to send it is.
+     */
+    fun confirmSend(what: String, where: String, send: () -> Unit) {
+        model.prompt(
+            Prompt.Confirm(
+                lines = listOf("SEND $what TO $where?"),
+                confirmLabel = "YES",
+                cancelLabel = "NO",
+                onConfirm = send,
+            )
+        )
+    }
+
+    /**
      * Takes them out, the way the cartridge does: no question about where.
      *
      * A withdrawal goes to the box the save has open, exactly as a deposit
@@ -248,10 +267,15 @@ fun StorageSystemScreen(
         chosen = null
         val active = state.activeSaveKey
         val loaded = state.save(active)?.save
-        if (active != null && loaded != null) {
-            model.withdrawToSave(uids, active, WithdrawTarget.Box(loaded.currentBox))
-        } else {
+        if (active == null || loaded == null) {
             model.open(Screen.ChooseCart(null, uids))
+            return
+        }
+        val what = uids.singleOrNull()
+            ?.let { state.storage.find(it)?.second?.pokemon?.displayName?.uppercase() }
+            ?: "${uids.size} POKéMON"
+        confirmSend(what, loaded.trainerName.uppercase()) {
+            model.withdrawToSave(uids, active, WithdrawTarget.Box(loaded.currentBox))
         }
     }
 
@@ -409,7 +433,9 @@ fun StorageSystemScreen(
                             depositRows.getOrNull(index)?.let { it.key to it.location }
                         }
                         chosen = null
-                        model.depositFromSave(picks, state.currentStorageBox)
+                        confirmSend("${picks.size} POKéMON", thisBoxLabel) {
+                            model.depositFromSave(picks, state.currentStorageBox)
+                        }
                     },
                 )
             })
@@ -514,11 +540,14 @@ fun StorageSystemScreen(
                             state.inLabel,
                             {
                                 chosen = null
-                                model.depositFromSave(
-                                    pick.key,
-                                    pick.location,
-                                    state.currentStorageBox,
-                                )
+                                val name = pick.mon.displayName.uppercase()
+                                confirmSend(name, thisBoxLabel) {
+                                    model.depositFromSave(
+                                        pick.key,
+                                        pick.location,
+                                        state.currentStorageBox,
+                                    )
+                                }
                             },
                         ),
                         MonAction("STATS", {

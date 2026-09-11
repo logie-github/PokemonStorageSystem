@@ -58,12 +58,6 @@ fun MainMenuScreen(state: UiState, model: StorageViewModel) {
                 }
             }
         }
-        item {
-            Gen1Frame(Modifier.wrapContentWidth()) {
-                Gen1Field("POKéMON", "${state.storage.total}")
-                Gen1Field("ITEMS", "${state.items.sumOf { it.count }}")
-            }
-        }
     }
 }
 

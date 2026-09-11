@@ -38,6 +38,8 @@ import com.logie.gen1storage.transfer.WithdrawTarget
 import com.logie.gen1storage.download.DownloadService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -419,10 +421,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         account = account,
                         // Every cached blob is stale the moment the account
                         // moves; drop any whose revision changed.
-                        loaded = it.loaded.filterKeys { key ->
-                            account.saves.firstOrNull { row -> row.key == key }
-                                ?.rev == it.loaded[key]?.rev
-                        },
+                        loaded = it.loaded.stillCurrentIn(account),
                         storage = storage.state(),
                         lastSyncedAtMillis = System.currentTimeMillis(),
                         diagnostics = diagnosticsFor(account) + storage.loadNotes,
@@ -450,6 +449,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 if (!silent) message(result.message.uppercase())
             }
         }
+    }
+
+    /**
+     * The cached saves the account still agrees with.
+     *
+     * A transfer only ever rewrites the save it touched, so throwing every
+     * blob away afterwards cost a fresh download of each cartridge the next
+     * time one was picked up — the whole of the wait people were sitting
+     * through when switching carts. The revision is what says whether a blob
+     * is still the current one, so that is what decides, and the engine
+     * re-reads and fingerprints the save again before every transfer
+     * regardless: a stale blob can never be the thing that gets written.
+     */
+    private fun Map<String, LoadedSave>.stillCurrentIn(
+        account: AccountState,
+    ): Map<String, LoadedSave> = filterKeys { key ->
+        account.saves.firstOrNull { it.key == key }?.rev == this[key]?.rev
     }
 
     private fun missingLoadedSaves(): Boolean {
@@ -633,13 +649,20 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadAllSaves() = viewModelScope.launch {
         if (mutable.value.loadingAll) return@launch
-        val remotes = mutable.value.saves
+        val held = mutable.value.loaded
+        // Only the ones this app is not already holding at the revision the
+        // account reports. Re-downloading a cartridge that has not moved is
+        // the whole of the wait, and there is nothing in it to learn.
+        val remotes = mutable.value.saves.filter { held[it.key]?.rev != it.rev }
         if (remotes.isEmpty()) return@launch
         mutable.update { it.copy(loadingAll = true) }
+        // Side by side rather than one after another: each is its own request
+        // and they do not depend on each other, so a shelf of six carts takes
+        // about as long as the slowest one instead of all six added up.
         val fetched = withContext(Dispatchers.IO) {
-            remotes.mapNotNull { remote ->
-                (saves.load(remote) as? SyncResult.Ok)?.value?.takeIf { it.isUsable }
-            }
+            remotes.map { remote ->
+                async { (saves.load(remote) as? SyncResult.Ok)?.value?.takeIf { it.isUsable } }
+            }.awaitAll().filterNotNull()
         }
         mutable.update { state ->
             state.copy(
@@ -912,7 +935,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             val result = try {
                 withContext(Dispatchers.IO) { engine.deposit(loaded, location, targetBox) }
             } catch (e: Exception) {
-                mutable.update { it.copy(busy = false) }
+                // The ball goes with it. Nothing is in the air any more, and
+                // a scene left standing here would hold the controls shut on
+                // a transfer that never started.
+                mutable.update { it.copy(busy = false, transferScene = null) }
                 return@launch message("THE TRANSFER COULD NOT START.", e.message.orEmpty().uppercase())
             }
             finish(result)
@@ -1081,10 +1107,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     private suspend fun finishMany(done: Int, stopped: TransferResult?, verb: String) {
         awaitScene()
-        mutable.update { it.copy(loaded = emptyMap()) }
         val refreshed = withContext(Dispatchers.IO) { saves.listSaves() }
         if (refreshed is SyncResult.Ok) {
-            mutable.update { it.copy(account = refreshed.value) }
+            mutable.update {
+                it.copy(
+                    account = refreshed.value,
+                    loaded = it.loaded.stillCurrentIn(refreshed.value),
+                )
+            }
+        } else {
+            // Nothing can vouch for a cached blob if the account would not
+            // answer, so they all go rather than be worked against.
+            mutable.update { it.copy(loaded = emptyMap()) }
         }
         mutable.update { it.copy(storage = storage.state(), busy = false, transferScene = null) }
         if (done > 0) mutable.update { it.copy(transfers = it.transfers + done) }
@@ -1111,10 +1145,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     private suspend fun finish(result: TransferResult) {
         awaitScene()
-        mutable.update { it.copy(loaded = emptyMap()) }
         val refreshed = withContext(Dispatchers.IO) { saves.listSaves() }
         if (refreshed is SyncResult.Ok) {
-            mutable.update { it.copy(account = refreshed.value) }
+            mutable.update {
+                it.copy(
+                    account = refreshed.value,
+                    loaded = it.loaded.stillCurrentIn(refreshed.value),
+                )
+            }
+        } else {
+            // Nothing can vouch for a cached blob if the account would not
+            // answer, so they all go rather than be worked against.
+            mutable.update { it.copy(loaded = emptyMap()) }
         }
         mutable.update { it.copy(storage = storage.state(), busy = false, transferScene = null) }
         when (result) {

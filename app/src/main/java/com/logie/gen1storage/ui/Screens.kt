@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldDefaults
@@ -89,6 +90,9 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
     val ready = SyncApi.normalizeCode(first) != null && SyncApi.normalizeCode(second) != null
+    // One thing to take on this screen once both codes are in. The fields are
+    // the keyboard's; the button is the cursor's, as it is everywhere else.
+    val at = rememberCursorLayer(1) { if (ready && !state.linking) model.link(first, second) }
 
     ScreenColumn {
         item {
@@ -106,6 +110,7 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
                     if (state.linking) "LINKING..." else "LINK THIS DEVICE",
                     { model.link(first, second) },
                     enabled = ready && !state.linking,
+                    selected = at == 0,
                 )
                 if (!ready) {
                     Spacer(Modifier.height(6.dp))
@@ -167,7 +172,18 @@ fun StorageSystemScreen(
     var heldUid by remember(mode) { mutableStateOf<String?>(null) }
     // Cleared after a transfer, so the ticks do not outlive what they pointed
     // at — every index shifts the moment something leaves a list.
-    LaunchedEffect(state.transfers) { marked = emptySet(); chosen = null; gridSlot = null }
+    //
+    // The list itself closes here too, and only here: the count is raised in
+    // the same breath as the result is said, which is after the ball has
+    // finished. So the order the player sees is the animation, then what it
+    // did, then the PC's own menu waiting underneath — rather than the menu
+    // reappearing behind a Pokémon still on its way out.
+    LaunchedEffect(state.transfers) {
+        marked = emptySet()
+        chosen = null
+        gridSlot = null
+        mode = PcMode.MENU
+    }
     fun toggle(index: Int) {
         marked = if (index in marked) marked - index else marked + index
     }
@@ -371,8 +387,10 @@ fun StorageSystemScreen(
                     BoxGridOverlay(
                         box = open,
                         followers = model.followers,
+                        sprites = model.sprites,
                         revision = state.spriteRevision,
                         heldName = held,
+                        startSlot = gridSlot,
                         // Tapping a Pokémon opens its stats, because that
                         // is what tapping one is asking for nine times in ten.
                         // Tapping the same one again — after coming back from
@@ -637,48 +655,95 @@ fun StatusScreen(
     } else {
         state.remote(key)?.version?.id
     }
+    // How many there are to walk through where this one lives, so the ends of
+    // the box are ends rather than somewhere that looks the same but does
+    // nothing.
+    val siblings = if (key == null) {
+        state.storage.boxes.getOrNull(area - 1)?.contents?.size ?: 0
+    } else {
+        val save = state.save(key)?.save
+        if (area == 0) save?.party?.size ?: 0
+        else save?.boxes?.getOrNull(area - 1)?.size ?: 0
+    }
+
+    // Every way off this screen, in the order a swipe walks them, and only the
+    // ones that are actually there: at the first of a box there is no PREV, and
+    // the cursor should not have to step over a word that does nothing. The
+    // buttons then look their position up rather than counting for themselves,
+    // so the arrow is always on the one a tap would take.
+    val actions = buildList<Pair<String, () -> Unit>> {
+        if (slot > 0) {
+            add(PREV_LABEL to { model.replace(Screen.Status(key, area, slot - 1, transfer)) })
+        }
+        transferAction(state, model, key, area, slot, transfer, pokemon)?.let(::add)
+        if (slot < siblings - 1) {
+            add(NEXT_LABEL to { model.replace(Screen.Status(key, area, slot + 1, transfer)) })
+        }
+        add(BACK_LABEL to { model.back() })
+    }
+    val at = rememberCursorLayer(actions.size) { index ->
+        actions.getOrNull(index)?.second?.invoke()
+    }
+    fun isOn(label: String) = actions.getOrNull(at)?.first == label
+
     Gen1StatusScreen(
         pokemon = pokemon,
         gameVersionId = gameVersionId,
         store = model.sprites,
         spriteRevision = state.spriteRevision,
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
-        footer = { Gen1BoxButton("BACK", { model.back() }) },
+        footer = {
+            Gen1BoxButton(BACK_LABEL, { model.back() }, selected = isOn(BACK_LABEL))
+        },
         underBox = {
-            // How many there are to walk through where this one lives, so the
-            // ends of the box are ends rather than somewhere that looks the
-            // same but does nothing.
-            val siblings = if (key == null) {
-                state.storage.boxes.getOrNull(area - 1)?.contents?.size ?: 0
-            } else {
-                val save = state.save(key)?.save
-                if (area == 0) save?.party?.size ?: 0
-                else save?.boxes?.getOrNull(area - 1)?.size ?: 0
-            }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Gen1BoxButton(
-                    "PREV",
+                    PREV_LABEL,
                     { model.replace(Screen.Status(key, area, slot - 1, transfer)) },
                     enabled = slot > 0,
+                    selected = isOn(PREV_LABEL),
                 )
-                TransferButton(state, model, key, area, slot, transfer, pokemon)
+                // Only the transfer this screen was opened from. Looking a
+                // Pokémon over is most of why a transfer stalls here, so the
+                // way on is under it rather than back through the list.
+                actions.firstOrNull { it.first !in WALKING_LABELS }?.let { (label, act) ->
+                    Gen1Button(
+                        label,
+                        act,
+                        Modifier.wrapContentWidth(),
+                        selected = isOn(label),
+                    )
+                }
                 Gen1BoxButton(
-                    "NEXT",
+                    NEXT_LABEL,
                     { model.replace(Screen.Status(key, area, slot + 1, transfer)) },
                     enabled = slot < siblings - 1,
+                    selected = isOn(NEXT_LABEL),
                 )
             }
         },
     )
 }
 
-/** The transfer this status screen was opened from, if it was opened from one. */
-@Composable
-private fun TransferButton(
+private const val PREV_LABEL = "PREV"
+private const val NEXT_LABEL = "NEXT"
+private const val BACK_LABEL = "BACK"
+
+/** The three that are always the same, so the transfer is whatever is left. */
+private val WALKING_LABELS = setOf(PREV_LABEL, NEXT_LABEL, BACK_LABEL)
+
+/**
+ * The transfer this status screen was opened from, if it was opened from one,
+ * as a label and the thing pressing it does.
+ *
+ * Not a composable: the same action has to be both a button and a row on the
+ * cursor, and handing back what it does lets the one description serve both.
+ */
+private fun transferAction(
     state: UiState,
     model: StorageViewModel,
     key: String?,
@@ -686,73 +751,67 @@ private fun TransferButton(
     slot: Int,
     transfer: StatusTransfer?,
     pokemon: Gen1Pokemon,
-) {
-            // Only the transfer this screen was opened from. Looking a
-            // Pokémon over is most of why a transfer stalls here, so the way
-            // on is under it rather than back through the list.
-            when (transfer) {
-                StatusTransfer.WITHDRAW -> if (key == null) {
-                    val uid = state.storage.boxes.getOrNull(area - 1)
-                        ?.contents?.getOrNull(slot)?.uid
-                    if (uid != null) {
-                        Gen1Button(state.outLabel, {
-                            model.back()
-                            val active = state.activeSaveKey
-                            val loaded = state.save(active)?.save
-                            if (active != null && loaded != null) {
-                                model.askToSend(
-                                    TransferScene(
-                                        speciesId = pokemon.speciesId,
-                                        gameVersionId = null,
-                                        name = pokemon.displayName.uppercase(),
-                                        destination = loaded.trainerName.uppercase(),
-                                        motion = TransferMotion.OUT,
-                                    ),
-                                    "${TransferMotion.OUT.verb} " +
-                                        "${pokemon.displayName.uppercase()} TO " +
-                                        "${loaded.trainerName.uppercase()}?",
-                                ) {
-                                    model.withdrawToSave(
-                                        listOf(uid),
-                                        active,
-                                        WithdrawTarget.Box(loaded.currentBox),
-                                    )
-                                }
-                            } else {
-                                model.open(Screen.ChooseCart(null, listOf(uid)))
-                            }
-                        }, Modifier.wrapContentWidth())
-                    }
+): Pair<String, () -> Unit>? = when (transfer) {
+    StatusTransfer.WITHDRAW -> {
+        val uid = if (key == null) {
+            state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.uid
+        } else null
+        if (uid == null) null else state.outLabel to {
+            model.back()
+            val active = state.activeSaveKey
+            val loaded = state.save(active)?.save
+            if (active != null && loaded != null) {
+                model.askToSend(
+                    TransferScene(
+                        speciesId = pokemon.speciesId,
+                        gameVersionId = null,
+                        name = pokemon.displayName.uppercase(),
+                        destination = loaded.trainerName.uppercase(),
+                        motion = TransferMotion.OUT,
+                    ),
+                    "${TransferMotion.OUT.verb} " +
+                        "${pokemon.displayName.uppercase()} TO " +
+                        "${loaded.trainerName.uppercase()}?",
+                ) {
+                    model.withdrawToSave(
+                        listOf(uid),
+                        active,
+                        WithdrawTarget.Box(loaded.currentBox),
+                    )
                 }
-
-                StatusTransfer.DEPOSIT -> if (key != null && area > 0) {
-                    Gen1Button(state.inLabel, {
-                        model.back()
-                        val where = state.storage.boxes
-                            .getOrNull(state.currentStorageBox - 1)?.label
-                            ?: "BOX ${state.currentStorageBox}"
-                        model.askToSend(
-                            TransferScene(
-                                speciesId = pokemon.speciesId,
-                                gameVersionId = state.remote(key)?.version?.id,
-                                name = pokemon.displayName.uppercase(),
-                                destination = where,
-                                motion = TransferMotion.IN,
-                            ),
-                            "${TransferMotion.IN.verb} " +
-                                "${pokemon.displayName.uppercase()} TO $where?",
-                        ) {
-                            model.depositFromSave(
-                                key,
-                                SaveLocation.Box(area, slot + 1),
-                                state.currentStorageBox,
-                            )
-                        }
-                    }, Modifier.wrapContentWidth())
-                }
-
-                null -> Unit
+            } else {
+                model.open(Screen.ChooseCart(null, listOf(uid)))
             }
+        }
+    }
+
+    StatusTransfer.DEPOSIT -> {
+        if (key == null || area <= 0) null else state.inLabel to {
+            model.back()
+            val where = state.storage.boxes
+                .getOrNull(state.currentStorageBox - 1)?.label
+                ?: "BOX ${state.currentStorageBox}"
+            model.askToSend(
+                TransferScene(
+                    speciesId = pokemon.speciesId,
+                    gameVersionId = state.remote(key)?.version?.id,
+                    name = pokemon.displayName.uppercase(),
+                    destination = where,
+                    motion = TransferMotion.IN,
+                ),
+                "${TransferMotion.IN.verb} " +
+                    "${pokemon.displayName.uppercase()} TO $where?",
+            ) {
+                model.depositFromSave(
+                    key,
+                    SaveLocation.Box(area, slot + 1),
+                    state.currentStorageBox,
+                )
+            }
+        }
+    }
+
+    null -> null
 }
 
 /** Every sprite the normal download fetches: each set, every species. */
@@ -1346,6 +1405,15 @@ private fun NamePrompt(
     onCancel: () -> Unit,
 ) {
     var name by remember(heading) { mutableStateOf(initial) }
+    // The field itself belongs to the keyboard; the three choices under it are
+    // ordinary rows on the cursor, so the window can be finished without one.
+    val at = rememberCursorLayer(3, columns = 3) { index ->
+        when (index) {
+            0 -> onDone(name)
+            1 -> onDone("")
+            else -> onCancel()
+        }
+    }
     Gen1Frame(Modifier.wrapContentWidth()) {
         GbText(heading)
         Spacer(Modifier.height(gen1Dp(2)))
@@ -1369,9 +1437,9 @@ private fun NamePrompt(
         )
         Spacer(Modifier.height(gen1Dp(3)))
         Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
-            Gen1Button("OK", { onDone(name) })
-            Gen1Button("CLEAR", { onDone("") })
-            Gen1Button("CANCEL", onCancel)
+            Gen1Button("OK", { onDone(name) }, selected = at == 0)
+            Gen1Button("CLEAR", { onDone("") }, selected = at == 1)
+            Gen1Button("CANCEL", onCancel, selected = at == 2)
         }
     }
 }
@@ -1477,14 +1545,27 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
             }
 
             is Prompt.ChooseBox -> Gen1Frame(opening = true) {
+                // The twelve boxes and the way out, all on the one cursor,
+                // with the list scrolling to keep up with it.
+                val boxes = (1..StorageLayout.BOX_COUNT).toList()
+                val at = rememberCursorLayer(boxes.size + 1) { index ->
+                    if (index >= boxes.size) model.dismissPrompt()
+                    else if ((state.storage.boxes.getOrNull(index)?.freeSlots ?: 0) > 0) {
+                        prompt.onChoose(boxes[index])
+                    }
+                }
                 GbText(prompt.title)
-                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    itemsIndexed((1..StorageLayout.BOX_COUNT).toList()) { _, index ->
+                val scroll = rememberLazyListState()
+                LaunchedEffect(at) {
+                    if (at < boxes.size) scroll.animateScrollToItem(at)
+                }
+                LazyColumn(Modifier.heightIn(max = 320.dp), state = scroll) {
+                    itemsIndexed(boxes) { position, index ->
                         val box = state.storage.boxes.getOrNull(index - 1)
                         Gen1MenuRow(
                             box?.label ?: "BOX $index",
-                            selected = false,
-                            onSelect = { prompt.onChoose(index) },
+                            selected = at == position,
+                            onSelect = {},
                             onConfirm = { prompt.onChoose(index) },
                             trailing = "${box?.contents?.size ?: 0}/${StorageLayout.BOX_CAPACITY}",
                             enabled = (box?.freeSlots ?: 0) > 0,
@@ -1492,7 +1573,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Gen1Button("CANCEL", model::dismissPrompt)
+                Gen1Button("CANCEL", model::dismissPrompt, selected = at == boxes.size)
             }
 
             is Prompt.RenameBox -> NamePrompt(
@@ -1515,16 +1596,19 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     GbText("VERSION ${prompt.version} IS OUT.")
                     GbText("UPDATE?", style = Gen1TextSmall)
                     Spacer(Modifier.height(gen1Dp(3)))
+                    val update = {
+                        model.dismissPrompt()
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(prompt.url))
+                            )
+                        }
+                        Unit
+                    }
+                    val at = rememberCursorLayer(2) { if (it == 0) update() else model.dismissPrompt() }
                     Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
-                        Gen1Button("YES", {
-                            model.dismissPrompt()
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(prompt.url))
-                                )
-                            }
-                        })
-                        Gen1Button("NO", model::dismissPrompt)
+                        Gen1Button("YES", update, selected = at == 0)
+                        Gen1Button("NO", model::dismissPrompt, selected = at == 1)
                     }
                 }
             }

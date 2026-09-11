@@ -30,6 +30,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -141,17 +143,32 @@ private fun StorageApp(model: StorageViewModel) {
         }
     }
 
+    // Nothing is live while a transfer is in the air or a save is being read:
+    // not the cursor, not a button, not Back. A question is the exception —
+    // being asked something is the app waiting on the player, not the other
+    // way round — so the scene's own YES and NO stay live.
+    val locked = state.busy ||
+        (state.transferScene != null && state.transferScene?.question == null)
+
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(
-        enabled = state.transferScene?.question != null ||
+        enabled = locked ||
+            state.transferScene?.question != null ||
             state.prompt != null ||
             state.stack.size > 1,
     ) {
+        // Enabled but deliberately deaf while locked: swallowing Back is what
+        // stops it walking out of a screen the transfer is still working on,
+        // and it must not fall through to closing the app either.
+        if (locked) return@BackHandler
         // Backing out of the question is saying no to it.
         if (state.transferScene?.question != null) model.cancelSend() else model.back()
     }
 
     val cursor = remember { Gen1Cursor() }
+    // Read by the gesture layer, which was built once and holds the cursor
+    // object rather than this composition's state.
+    SideEffect { cursor.locked = locked }
     val windows = remember { Gen1WindowBounds() }
     val audio = rememberGen1Audio()
 
@@ -194,6 +211,10 @@ private fun StorageApp(model: StorageViewModel) {
             // Always on. Everything but the hold is read only in empty space,
             // so this never takes a gesture a window wanted.
             .gen1Gestures(windows::isFreeSpace, windows::isHoldClaimed) { button ->
+                // The cursor turns its own moves and confirms away, but B and
+                // START are the gesture layer's alone — a hold or a double tap
+                // mid-transfer would otherwise still navigate.
+                if (cursor.locked) return@gen1Gestures
                 when (button) {
                     // Back, from anywhere. At the top of the stack this does
                     // nothing rather than closing the app — a hold should never
@@ -231,6 +252,23 @@ private fun StorageApp(model: StorageViewModel) {
                 }
                 ScreenContent(state.screen, state, model, context)
             }
+        }
+        // The pane that makes the lock real for tapping: everything below it
+        // stops seeing touches, everything after it — the scene and the result
+        // window — still gets them. It draws nothing.
+        if (locked) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent(PointerEventPass.Initial)
+                                    .changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+            )
         }
         // Over the screen it came from and under the result, so the ball is
         // what is on screen for the whole of the wait and the message lands

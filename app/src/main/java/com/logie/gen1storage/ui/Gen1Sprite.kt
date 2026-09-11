@@ -137,6 +137,18 @@ fun SpriteSetPicker(
     val installed = store.installedSets().filter { store.has(it, speciesId) }
     val current = store.overrideFor(speciesId)
 
+    // Every choice in the window on one cursor, CANCEL included, so a swipe
+    // reaches the way out as readily as the sets. The arrow is where the
+    // cursor is; which set is already pinned is said by the tick beside it,
+    // because those are two different questions and one arrow cannot answer
+    // both.
+    val rows = buildList<Pair<String, () -> Unit>> {
+        add("MATCH THE GAME" to { onChoose(null) })
+        installed.forEach { set -> add(set.label to { onChoose(set) }) }
+        add("CANCEL" to onCancel)
+    }
+    val at = rememberCursorLayer(rows.size) { index -> rows[index].second() }
+
     // Width only: a fixed height here collapsed the window to a rule, which is
     // all a long press used to put on screen.
     Gen1Frame(Modifier.width(260.dp)) {
@@ -148,21 +160,23 @@ fun SpriteSetPicker(
             Spacer(Modifier.height(4.dp))
         }
         Gen1MenuRow(
-            "MATCH THE GAME",
-            selected = current == null,
-            onSelect = { onChoose(null) },
-            onConfirm = { onChoose(null) },
+            rows[0].first,
+            selected = at == 0,
+            onSelect = {},
+            onConfirm = rows[0].second,
+            mark = current == null,
         )
-        installed.forEach { set ->
+        installed.forEachIndexed { index, set ->
             Gen1MenuRow(
                 set.label,
-                selected = current == set,
-                onSelect = { onChoose(set) },
+                selected = at == index + 1,
+                onSelect = {},
                 onConfirm = { onChoose(set) },
+                mark = current == set,
             )
         }
         Spacer(Modifier.height(6.dp))
-        Gen1Button("CANCEL", onCancel)
+        Gen1Button("CANCEL", onCancel, selected = at == rows.lastIndex)
     }
 }
 

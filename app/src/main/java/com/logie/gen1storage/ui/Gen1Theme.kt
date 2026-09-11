@@ -397,6 +397,8 @@ fun Gen1Button(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** Whether the cursor is on it, so a swipe can reach it like any row. */
+    selected: Boolean = false,
 ) {
     // No plate. These sit inside windows, and a bordered button inside a
     // bordered window is two rules saying one thing — which is what made the
@@ -411,7 +413,7 @@ fun Gen1Button(
         contentAlignment = Alignment.Center,
     ) {
         GbText(
-            label.uppercase(),
+            (if (selected && enabled) "▶" else "") + label.uppercase(),
             style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
         )
     }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,22 +33,24 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import com.logie.gen1storage.sprites.FollowerStore
+import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.storage.StorageBox
 import com.logie.gen1storage.storage.StorageLayout
+import com.logie.gen1storage.storage.StoredPokemon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlin.random.Random
 
 /**
- * One Pokémon as its overworld follower, standing still and shifting now and
- * then without ever turning away.
+ * One Pokémon as its overworld follower.
  *
- * Both frames face the player: the first standing, the other mid-step. A
- * boxful of them moving at once would be noise, so each waits its own random
- * while first.
+ * Standing still by default and walking on the spot while the cursor is on it,
+ * which is the later games' box exactly: thirty of them moving at once is
+ * noise, one of them moving is what tells you which one you are looking at.
+ * Both frames face the player — the first standing, the other mid-step.
  */
 @Composable
 fun FollowerSprite(
@@ -55,10 +59,12 @@ fun FollowerSprite(
     revision: Int,
     modifier: Modifier = Modifier,
     sizeInPixels: Int = FollowerStore.SIZE,
+    /** Whether this is the one the cursor is on. */
+    animating: Boolean = false,
 ) {
     var idle by remember(dexNumber, revision) { mutableStateOf<ImageBitmap?>(null) }
     var stepping by remember(dexNumber, revision) { mutableStateOf<ImageBitmap?>(null) }
-    var frame by remember(dexNumber, revision) { mutableIntStateOf(FollowerStore.FRAME_IDLE) }
+    var stepped by remember(dexNumber, revision) { mutableStateOf(false) }
 
     LaunchedEffect(dexNumber, revision) {
         if (dexNumber == null) return@LaunchedEffect
@@ -68,22 +74,18 @@ fun FollowerSprite(
         }
     }
 
-    LaunchedEffect(dexNumber, revision) {
-        if (dexNumber == null) return@LaunchedEffect
+    LaunchedEffect(dexNumber, revision, animating) {
+        // Standing is the resting state, so a Pokémon the cursor leaves is
+        // back on its feet the same frame rather than frozen mid-step.
+        stepped = false
+        if (dexNumber == null || !animating) return@LaunchedEffect
         while (true) {
-            // Its own wait, drawn fresh each time, so two of the same species
-            // side by side never fall into step.
-            delay(Random.nextLong(QUIET_MIN_MILLIS, QUIET_MAX_MILLIS + 1))
-            frame = FollowerStore.FRAME_IDLE
             delay(FRAME_MILLIS)
-            frame = FollowerStore.FRAME_STEP
-            delay(FRAME_MILLIS)
-            frame = FollowerStore.FRAME_IDLE
-            delay(FRAME_MILLIS)
+            stepped = !stepped
         }
     }
 
-    val shown = if (frame == FollowerStore.FRAME_STEP) stepping ?: idle else idle
+    val shown = if (stepped) stepping ?: idle else idle
     Box(modifier.size(gen1Dp(sizeInPixels)), contentAlignment = Alignment.Center) {
         if (shown != null) {
             Image(
@@ -121,6 +123,35 @@ private fun OccupiedMark() {
 }
 
 /**
+ * The four corner brackets that mark the spot the cursor is on.
+ *
+ * Brackets rather than a box: a Pokémon is drawn right out to the edge of its
+ * spot, and an outline around one reads as a cage rather than a selection.
+ * Corners leave the sprite's own silhouette alone.
+ */
+@Composable
+private fun CursorBrackets(modifier: Modifier = Modifier) {
+    val pixel = gen1PixelPx().toFloat()
+    Box(
+        modifier.fillMaxSize().drawBehind {
+            val arm = pixel * BRACKET_ARM_PIXELS
+            val thick = pixel
+            val right = size.width - thick
+            val bottom = size.height - thick
+            // Each corner is two strokes: one across, one down.
+            drawRect(Gen1Palette.Ink, Offset(0f, 0f), Size(arm, thick))
+            drawRect(Gen1Palette.Ink, Offset(0f, 0f), Size(thick, arm))
+            drawRect(Gen1Palette.Ink, Offset(size.width - arm, 0f), Size(arm, thick))
+            drawRect(Gen1Palette.Ink, Offset(right, 0f), Size(thick, arm))
+            drawRect(Gen1Palette.Ink, Offset(0f, bottom), Size(arm, thick))
+            drawRect(Gen1Palette.Ink, Offset(0f, size.height - arm), Size(thick, arm))
+            drawRect(Gen1Palette.Ink, Offset(size.width - arm, bottom), Size(arm, thick))
+            drawRect(Gen1Palette.Ink, Offset(right, size.height - arm), Size(thick, arm))
+        }
+    )
+}
+
+/**
  * A box as the games draw one: six across, five down, every Pokémon on its own
  * spot.
  *
@@ -134,6 +165,8 @@ fun Gen1BoxGrid(
     box: StorageBox,
     followers: FollowerStore,
     revision: Int,
+    /** Where the cursor is sitting, bracketed and walking on the spot. */
+    cursorSlot: Int?,
     onTap: (Int) -> Unit,
     onMove: (from: Int, to: Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -205,8 +238,9 @@ fun Gen1BoxGrid(
                         val stored = box.slots.getOrNull(slot)
                         // Nothing drawn around a Pokémon: thirty ruled-off
                         // cells stop reading as a boxful and start reading as
-                        // a table. What is picked is named in the caption.
+                        // a table. Only the one under the cursor is marked.
                         Box(Modifier.size(cell), contentAlignment = Alignment.Center) {
+                            if (slot == cursorSlot) CursorBrackets()
                             // The one being carried is not drawn in its old
                             // spot: it is under the finger.
                             if (stored != null && slot != dragFrom && column < revealed) {
@@ -215,6 +249,7 @@ fun Gen1BoxGrid(
                                     followers,
                                     revision,
                                     sizeInPixels = SPRITE_PIXELS,
+                                    animating = slot == cursorSlot,
                                 )
                             }
                         }
@@ -237,6 +272,7 @@ fun Gen1BoxGrid(
                     followers,
                     revision,
                     sizeInPixels = SPRITE_PIXELS,
+                    animating = true,
                 )
             }
         }
@@ -244,52 +280,155 @@ fun Gen1BoxGrid(
 }
 
 /**
- * The window VIEW BOXES opens: the box, its grid, and the way between boxes.
+ * What the cursor is standing on, read off the way the status screen reads a
+ * Pokémon: the front sprite, the name, the level, the types, the number.
  *
- * Laid out the way the later games lay a PC out — the box across the top, the
- * grid under it — but drawn as one Generation I window, so it sits on the
- * same screen as the menu it came from rather than replacing it.
+ * No HP, no status. Those are facts about a Pokémon in play; a box is where
+ * they are not in play, and putting a health bar over thirty resting Pokémon
+ * only invited the question of why it never moves.
+ *
+ * Every line is drawn whether or not there is anything to put in it, so the
+ * block is the same height on an empty spot as on a full one and the grid
+ * underneath never shifts as the cursor walks.
+ */
+@Composable
+private fun BoxHead(
+    stored: StoredPokemon?,
+    sprites: SpriteStore,
+    spriteRevision: Int,
+    modifier: Modifier = Modifier,
+) {
+    val pokemon = stored?.pokemon
+    val types = pokemon?.species?.types.orEmpty()
+    val end = Gen1Text.copy(textAlign = TextAlign.End)
+    Row(modifier) {
+        Column(Modifier.width(gen1Dp(HEAD_SPRITE_PIXELS))) {
+            // Keyed on the revision so a download or a set change redraws it.
+            key(spriteRevision) {
+                Gen1Sprite(
+                    pokemon?.speciesId,
+                    stored?.provenance?.gameVersion,
+                    sprites,
+                    sizeInPixels = HEAD_SPRITE_PIXELS,
+                )
+            }
+            Spacer(Modifier.height(gen1Dp(2)))
+            GbText(
+                pokemon?.species?.let { "No.%03d".format(it.dexNumber) } ?: " ",
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(gen1Dp(4)))
+        Gen1CornerRule(Modifier.weight(1f)) {
+            GbText(
+                pokemon?.displayName?.uppercase() ?: " ",
+                modifier = Modifier.fillMaxWidth(),
+                style = end,
+                maxLines = 1,
+            )
+            GbText(
+                pokemon?.let { ":L${it.level}" } ?: " ",
+                modifier = Modifier.fillMaxWidth(),
+                style = end,
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(gen1Dp(2)))
+            GbText(if (pokemon == null) " " else "TYPE1/", maxLines = 1)
+            GbText(if (pokemon == null) " " else " ${types.getOrNull(0) ?: "---"}", maxLines = 1)
+            GbText(if (pokemon == null) " " else "TYPE2/", maxLines = 1)
+            GbText(if (pokemon == null) " " else " ${types.getOrNull(1) ?: "---"}", maxLines = 1)
+        }
+    }
+}
+
+/**
+ * The window VIEW BOXES opens: what the cursor is on, the box, and the way
+ * between boxes.
+ *
+ * Laid out the way the later games lay a PC out — the one being looked at
+ * across the top, the grid under it — but drawn as one Generation I window, so
+ * it sits on the same screen as the menu it came from rather than replacing it.
+ *
+ * The arrows either side of the box's name are the only way between boxes. The
+ * cursor deliberately stops at the edges of the grid instead: walking off the
+ * right-hand side into the next box is a surprise, and a box is a place rather
+ * than a list.
  */
 @Composable
 fun BoxGridOverlay(
     box: StorageBox,
     followers: FollowerStore,
+    sprites: SpriteStore,
     revision: Int,
     /** What the caption says while a Pokémon is waiting to be put down. */
     heldName: String?,
+    /**
+     * Where the cursor starts. Coming back from a Pokémon's stats, that is the
+     * one just looked at — otherwise the cursor would be back at the first
+     * spot and the second press would ask about the wrong Pokémon.
+     */
+    startSlot: Int?,
     onTap: (Int) -> Unit,
     onMove: (from: Int, to: Int) -> Unit,
     onPreviousBox: () -> Unit,
     onNextBox: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    // The grid owns the cursor while this window is open, and a tap puts the
+    // cursor where the finger went so both ways of driving it agree about
+    // what is picked.
+    val slots = StorageLayout.BOX_CAPACITY
+    val layer = rememberCursorLayerHandle(
+        count = slots,
+        columns = StorageLayout.BOX_COLUMNS,
+        wraps = false,
+    ) { slot -> onTap(slot) }
+    // Once, on the way in: after that the cursor is the player's.
+    LaunchedEffect(Unit) { startSlot?.let { layer.index = it.coerceIn(0, slots - 1) } }
+    val cursorSlot = layer.index
+
     Box(
         Modifier.fillMaxSize(),
         contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
     ) {
         Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5))) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            BoxHead(
+                stored = box.slots.getOrNull(cursorSlot),
+                sprites = sprites,
+                spriteRevision = revision,
+                modifier = Modifier.width(gen1Dp(HEAD_PIXELS)),
+            )
+            Spacer(Modifier.height(gen1Dp(3)))
+            Row(
+                Modifier.width(gen1Dp(HEAD_PIXELS)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Box(Modifier.gen1Clickable(onClick = onPreviousBox)) { GbText("◀") }
                 Spacer(Modifier.width(gen1Dp(3)))
-                GbText(box.label, modifier = Modifier.weight(1f))
+                GbText(box.label, modifier = Modifier.weight(1f), maxLines = 1)
                 Spacer(Modifier.width(gen1Dp(3)))
                 Box(Modifier.gen1Clickable(onClick = onNextBox)) { GbText("▶") }
             }
-            Spacer(Modifier.height(gen1Dp(2)))
             GbText(
                 when {
                     heldName != null -> "PUT $heldName WHERE?"
                     else -> "${box.contents.size}/${StorageLayout.BOX_CAPACITY}"
                 },
                 style = Gen1TextSmall,
+                maxLines = 1,
             )
             Spacer(Modifier.height(gen1Dp(2)))
             Gen1BoxGrid(
                 box = box,
                 followers = followers,
                 revision = revision,
-                onTap = onTap,
+                cursorSlot = cursorSlot,
+                onTap = { slot ->
+                    layer.index = slot
+                    onTap(slot)
+                },
                 onMove = onMove,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
             Spacer(Modifier.height(gen1Dp(2)))
             Gen1MenuRow("CANCEL", selected = false, onSelect = {}, onConfirm = onCancel)
@@ -301,10 +440,21 @@ fun BoxGridOverlay(
 private const val COLUMN_MILLIS = 26L
 
 /** A spot's side, in game pixels: the sprite with a little air around it. */
-private const val CELL_PIXELS = 18
+private const val CELL_PIXELS = 24
 private const val SPRITE_PIXELS = 16
 
-/** How long a follower stands still before glancing about. */
-private const val QUIET_MIN_MILLIS = 5_000L
-private const val QUIET_MAX_MILLIS = 30_000L
+/** How far each arm of a cursor bracket reaches along its edges. */
+private const val BRACKET_ARM_PIXELS = 4
+
+/** The front sprite over the box, at the size the games draw one. */
+private const val HEAD_SPRITE_PIXELS = 56
+
+/**
+ * The window's width, which is the grid's: six spots across. Everything above
+ * the grid is measured to the same line so the window is one column rather
+ * than a stack of differently sized blocks.
+ */
+private const val HEAD_PIXELS = CELL_PIXELS * StorageLayout.BOX_COLUMNS
+
+/** How long a follower holds each frame while the cursor is on it. */
 private const val FRAME_MILLIS = 500L

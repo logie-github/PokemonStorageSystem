@@ -234,25 +234,56 @@ private fun ItemListOverlay(
 @Composable
 fun QuantityPrompt(title: String, max: Int, onChoose: (Int) -> Unit, onCancel: () -> Unit) {
     var count by remember(title, max) { mutableIntStateOf(1) }
+
+    fun wind(by: Int) {
+        count = ((count - 1 + by + max) % max) + 1
+    }
+
+    // The count is the first row on the cursor, and the only one that does
+    // something with left and right: sitting on it, a swipe either way winds
+    // the number rather than walking off it. The three below it are ordinary
+    // rows, so the whole window is one swipe-and-tap like every other.
+    val at = rememberCursorLayer(
+        count = QUANTITY_ROWS,
+        onSide = { row, button ->
+            if (row != QUANTITY_ROW_COUNT) false
+            else {
+                wind(if (button == GbButton.RIGHT) 1 else -1)
+                true
+            }
+        },
+    ) { row ->
+        when (row) {
+            QUANTITY_ROW_OK -> onChoose(count)
+            QUANTITY_ROW_ALL -> onChoose(max)
+            QUANTITY_ROW_CANCEL -> onCancel()
+        }
+    }
+
     Gen1Frame(Modifier.wrapContentWidth()) {
         GbText(title)
         Spacer(Modifier.height(gen1Dp(2)))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.gen1Clickable { count = if (count <= 1) max else count - 1 }) {
-                GbText("◀")
+            Box(Modifier.width(gen1Dp(6))) {
+                if (at == QUANTITY_ROW_COUNT) GbText("▶")
             }
+            Box(Modifier.gen1Clickable { wind(-1) }) { GbText("◀") }
             Spacer(Modifier.width(gen1Dp(4)))
             GbText("x$count", style = Gen1TextLarge)
             Spacer(Modifier.width(gen1Dp(4)))
-            Box(Modifier.gen1Clickable { count = if (count >= max) 1 else count + 1 }) {
-                GbText("▶")
-            }
+            Box(Modifier.gen1Clickable { wind(1) }) { GbText("▶") }
         }
         Spacer(Modifier.height(gen1Dp(3)))
         Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
-            Gen1Button("OK", { onChoose(count) })
-            Gen1Button("ALL", { onChoose(max) })
-            Gen1Button("CANCEL", onCancel)
+            Gen1Button("OK", { onChoose(count) }, selected = at == QUANTITY_ROW_OK)
+            Gen1Button("ALL", { onChoose(max) }, selected = at == QUANTITY_ROW_ALL)
+            Gen1Button("CANCEL", onCancel, selected = at == QUANTITY_ROW_CANCEL)
         }
     }
 }
+
+private const val QUANTITY_ROW_COUNT = 0
+private const val QUANTITY_ROW_OK = 1
+private const val QUANTITY_ROW_ALL = 2
+private const val QUANTITY_ROW_CANCEL = 3
+private const val QUANTITY_ROWS = 4

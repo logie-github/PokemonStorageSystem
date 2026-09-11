@@ -28,13 +28,47 @@ import androidx.compose.ui.Modifier
  */
 class Gen1Cursor {
 
-    class Layer(var count: Int, var columns: Int, var onConfirm: (Int) -> Unit) {
+    class Layer(
+        var count: Int,
+        var columns: Int,
+        /**
+         * Whether running off one end comes back on the other.
+         *
+         * A menu wraps, as the games' menus do. A box does not: a grid is a
+         * place rather than a list, and walking off its right-hand edge into
+         * the row below — or out of the box entirely — is not what anyone
+         * reaching for the next column means.
+         */
+        var wraps: Boolean,
+        var onConfirm: (Int) -> Unit,
+    ) {
         var index by mutableIntStateOf(0)
+
+        /**
+         * A row that does something of its own with left and right — a count
+         * to wind up and down, say. Given the row and the direction, and
+         * returning whether it took it; anything it leaves alone moves the
+         * cursor as usual.
+         */
+        var onSide: ((Int, GbButton) -> Boolean)? = null
     }
 
     private val layers = mutableStateListOf<Layer>()
 
     private val top: Layer? get() = layers.lastOrNull()
+
+    /**
+     * Set while something is running that must not be interrupted — a transfer
+     * in flight, a save being read.
+     *
+     * A Pokémon halfway between a cartridge and this PC is the one moment in
+     * the app where a second button press could ask for something the first
+     * one has not finished answering, so for as long as that lasts the cursor
+     * neither moves nor takes anything. It lives here rather than in a screen
+     * because the gesture layer reads it from the one object every screen
+     * already shares.
+     */
+    var locked by mutableStateOf(false)
 
     fun push(layer: Layer) {
         layers.add(layer)
@@ -46,8 +80,12 @@ class Gen1Cursor {
 
     /** Up and down move by a row; left and right only where there are columns. */
     fun move(direction: GbButton) {
+        if (locked) return
         val layer = top ?: return
         if (layer.count <= 0) return
+        if (direction == GbButton.LEFT || direction == GbButton.RIGHT) {
+            if (layer.onSide?.invoke(layer.index, direction) == true) return
+        }
         val step = when (direction) {
             GbButton.UP -> -layer.columns
             GbButton.DOWN -> layer.columns
@@ -56,11 +94,22 @@ class Gen1Cursor {
             else -> 0
         }
         if (step == 0) return
-        // Wraps, as the games' menus do.
-        layer.index = ((layer.index + step) % layer.count + layer.count) % layer.count
+        if (layer.wraps) {
+            layer.index = ((layer.index + step) % layer.count + layer.count) % layer.count
+            return
+        }
+        val target = layer.index + step
+        if (target !in 0 until layer.count) return
+        // Sideways has to stay on its own row as well as inside the grid:
+        // index + 1 off the right-hand edge is a real index, just the wrong
+        // one — the first spot of the next row down.
+        val sideways = layer.columns > 1 && (direction == GbButton.LEFT || direction == GbButton.RIGHT)
+        if (sideways && target / layer.columns != layer.index / layer.columns) return
+        layer.index = target
     }
 
     fun confirm() {
+        if (locked) return
         val layer = top ?: return
         if (layer.index in 0 until layer.count) layer.onConfirm(layer.index)
     }
@@ -81,12 +130,32 @@ val LocalGen1Cursor = staticCompositionLocalOf { Gen1Cursor() }
 fun rememberCursorLayer(
     count: Int,
     columns: Int = 1,
+    wraps: Boolean = true,
+    onSide: ((Int, GbButton) -> Boolean)? = null,
     onConfirm: (Int) -> Unit,
-): Int {
+): Int = rememberCursorLayerHandle(count, columns, wraps, onSide, onConfirm).index
+
+/**
+ * The same layer, handed back whole.
+ *
+ * A screen that can also be tapped needs to put the cursor where the finger
+ * went, so the two ways of driving it agree about what is picked. Only the box
+ * grid needs that much; everywhere else the index is the whole story.
+ */
+@Composable
+fun rememberCursorLayerHandle(
+    count: Int,
+    columns: Int = 1,
+    wraps: Boolean = true,
+    onSide: ((Int, GbButton) -> Boolean)? = null,
+    onConfirm: (Int) -> Unit,
+): Gen1Cursor.Layer {
     val cursor = LocalGen1Cursor.current
-    val layer = remember { Gen1Cursor.Layer(count, columns) { } }
+    val layer = remember { Gen1Cursor.Layer(count, columns, wraps) { } }
     layer.count = count
     layer.columns = columns
+    layer.wraps = wraps
+    layer.onSide = onSide
     layer.onConfirm = onConfirm
     DisposableEffect(cursor, layer) {
         cursor.push(layer)
@@ -95,7 +164,7 @@ fun rememberCursorLayer(
     // A list that shrinks under the cursor should not leave it pointing past
     // the end; clamping here keeps the confirm honest.
     if (layer.index >= count) layer.index = (count - 1).coerceAtLeast(0)
-    return layer.index
+    return layer
 }
 
 /**

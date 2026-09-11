@@ -251,6 +251,7 @@ fun StorageSystemScreen(
         speciesId: String?,
         gameVersionId: String?,
         motion: TransferMotion,
+        alsoSpeciesIds: List<String?> = emptyList(),
         send: () -> Unit,
     ) {
         model.askToSend(
@@ -259,6 +260,7 @@ fun StorageSystemScreen(
                 gameVersionId = gameVersionId,
                 name = what,
                 destination = where,
+                alsoSpeciesIds = alsoSpeciesIds,
                 motion = motion,
             ),
             "SEND $what TO $where?",
@@ -292,6 +294,9 @@ fun StorageSystemScreen(
             speciesId = first?.pokemon?.speciesId,
             gameVersionId = first?.provenance?.gameVersion,
             motion = TransferMotion.OUT,
+            alsoSpeciesIds = uids.drop(1).mapNotNull {
+                state.storage.find(it)?.second?.pokemon?.speciesId
+            },
         ) {
             model.withdrawToSave(uids, active, WithdrawTarget.Box(loaded.currentBox))
         }
@@ -452,12 +457,15 @@ fun StorageSystemScreen(
                         }
                         chosen = null
                         val lead = marked.minOrNull()?.let { depositRows.getOrNull(it) }
+                        val rest = marked.sorted().drop(1)
+                            .mapNotNull { depositRows.getOrNull(it)?.mon?.speciesId }
                         confirmSend(
                             what = "${picks.size} POKéMON",
                             where = thisBoxLabel,
                             speciesId = lead?.mon?.speciesId,
                             gameVersionId = state.remote(lead?.key)?.version?.id,
                             motion = TransferMotion.IN,
+                            alsoSpeciesIds = rest,
                         ) {
                             model.depositFromSave(picks, state.currentStorageBox)
                         }
@@ -939,14 +947,224 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
 )
 
 /**
- * Everything the cartridge's PC menu does not have.
+ * Everything the cartridge's PC menu does not have, sorted into its own
+ * drawers.
  *
- * The main menu is the PC's own, so this screen carries the rest: the saves on
- * the account, transfers, the sprite download, the save files, and the app's
- * own settings.
+ * It had grown into one column of seven windows, each with its own buttons
+ * and its own explaining, which is a lot of screen for a handful of switches.
+ * The switches have not changed; only where they live has. Folded, a drawer
+ * replaces this list rather than opening over it, so there is only ever one
+ * menu on screen; opened up, the list keeps its half and the drawer takes
+ * the other.
  */
 @Composable
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
+    var drawer by remember { mutableStateOf<OptionsDrawer?>(null) }
+
+    if (drawer != null && !isUnfolded()) {
+        OptionsDrawerContent(drawer!!, state, model, onShareReport) { drawer = null }
+        return
+    }
+
+    if (isUnfolded()) {
+        Row(Modifier.fillMaxSize()) {
+            // The list keeps the edge the menus use; the drawer opens into
+            // the space beside it rather than over the top of it.
+            if (!Gen1Layout.windowsOnRight) {
+                Box(Modifier.weight(1f)) { OptionsList(state, model, drawer) { drawer = it } }
+                Box(Modifier.weight(1f)) {
+                    drawer?.let {
+                        OptionsDrawerContent(it, state, model, onShareReport) { drawer = null }
+                    }
+                }
+            } else {
+                Box(Modifier.weight(1f)) {
+                    drawer?.let {
+                        OptionsDrawerContent(it, state, model, onShareReport) { drawer = null }
+                    }
+                }
+                Box(Modifier.weight(1f)) { OptionsList(state, model, drawer) { drawer = it } }
+            }
+        }
+        return
+    }
+
+    OptionsList(state, model, drawer) { drawer = it }
+}
+
+/** The drawers, in the order they are offered. */
+enum class OptionsDrawer(val label: String) {
+    VISUAL("VISUAL"),
+    AUDIO("AUDIO"),
+    LAYOUT("LAYOUT"),
+    SAVES("SAVES"),
+    THE_PC("THE PC"),
+    ABOUT("ABOUT"),
+}
+
+@Composable
+private fun OptionsList(
+    state: UiState,
+    model: StorageViewModel,
+    open: OptionsDrawer?,
+    onOpen: (OptionsDrawer) -> Unit,
+) {
+    val drawers = OptionsDrawer.entries
+    val cursor = rememberCursorLayer(drawers.size) { onOpen(drawers[it]) }
+    ScreenColumn {
+        item {
+            Gen1Frame(
+                Modifier.wrapContentWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                drawers.forEachIndexed { index, entry ->
+                    Gen1MenuRow(
+                        entry.label,
+                        selected = cursor == index,
+                        onSelect = {},
+                        onConfirm = { onOpen(entry) },
+                        trailing = if (open == entry) "◀" else null,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionsDrawerContent(
+    drawer: OptionsDrawer,
+    state: UiState,
+    model: StorageViewModel,
+    onShareReport: () -> Unit,
+    onBack: () -> Unit,
+) {
+    ScreenColumn {
+        item { Gen1Frame(Modifier.wrapContentWidth()) { GbText(drawer.label) } }
+        when (drawer) {
+            OptionsDrawer.VISUAL -> visualDrawer(state, model)
+            OptionsDrawer.AUDIO -> audioDrawer(model)
+            OptionsDrawer.LAYOUT -> layoutDrawer(state, model)
+            OptionsDrawer.SAVES -> savesDrawer(state, model)
+            OptionsDrawer.THE_PC -> pcDrawer(state, model)
+            OptionsDrawer.ABOUT -> aboutDrawer(model, onShareReport)
+        }
+        item { Gen1BoxButton("BACK", onBack) }
+    }
+}
+
+private fun LazyListScope.visualDrawer(state: UiState, model: StorageViewModel) {
+    item {
+        Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+            GbPalette.ALL.forEach { palette ->
+                Row(
+                    Modifier.fillMaxWidth().gen1Clickable { model.setPalette(palette.id) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Gen1MenuRow(
+                        palette.label,
+                        selected = false,
+                        onSelect = { model.setPalette(palette.id) },
+                        onConfirm = { model.setPalette(palette.id) },
+                        trailing = if (state.paletteId == palette.id) "ON" else null,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PaletteSwatch(palette)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Gen1Toggle(
+                label = "BLACK ON WHITE BOXES",
+                on = !state.windowsFollowPalette,
+                onToggle = { model.setWindowsFollowPalette(!state.windowsFollowPalette) },
+            )
+        }
+    }
+    item { Gen1BoxButton("DOWNLOADS", { model.open(Screen.Downloads) }) }
+}
+
+private fun LazyListScope.audioDrawer(model: StorageViewModel) {
+    item { Gen1BoxButton("SOUND FX", { model.open(Screen.SoundEffects) }) }
+}
+
+private fun LazyListScope.layoutDrawer(state: UiState, model: StorageViewModel) {
+    item {
+        Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+            Gen1Toggle(
+                label = "ALIGNMENT",
+                on = state.windowsOnRight,
+                onToggle = { model.setWindowsOnRight(!state.windowsOnRight) },
+                onLabel = "RIGHT",
+                offLabel = "LEFT",
+            )
+            Gen1Toggle(
+                label = "ALL POKéMON",
+                on = state.showAllSaves,
+                onToggle = { model.setShowAllSaves(!state.showAllSaves) },
+            )
+            Gen1Toggle(
+                label = "WITHDRAW/DEPOSIT",
+                on = state.classicTransferLabels,
+                onToggle = { model.setClassicTransferLabels(!state.classicTransferLabels) },
+            )
+        }
+    }
+}
+
+private fun LazyListScope.savesDrawer(state: UiState, model: StorageViewModel) {
+    item {
+        Gen1Frame {
+            Gen1Field("STATUS", if (state.linked) "LINKED" else "NOT LINKED")
+            state.lastSyncedAtMillis?.let {
+                Gen1Field("LAST SYNC", java.time.Instant.ofEpochMilli(it).toString().take(19))
+            }
+            model.linkedDeviceLabel?.let { Gen1Field("THIS DEVICE", it) }
+        }
+    }
+    if (state.linked) {
+        item {
+            val audio = LocalGen1Audio.current
+            Gen1BoxButton(
+                "SYNC NOW",
+                { audio?.play(SoundEffect.SAVE); model.sync() },
+                enabled = !state.syncing,
+            )
+        }
+        item {
+            Gen1BoxButton("UNLINK", {
+                model.prompt(
+                    Prompt.Confirm(
+                        lines = listOf("UNLINK THIS DEVICE?"),
+                        confirmLabel = "YES",
+                        cancelLabel = "NO",
+                        onConfirm = { model.unlink() },
+                    )
+                )
+            })
+        }
+    } else {
+        item { Gen1BoxButton("ENTER SYNC CODES", { model.open(Screen.Link) }) }
+    }
+}
+
+private fun LazyListScope.pcDrawer(state: UiState, model: StorageViewModel) {
+    item {
+        Gen1Frame(Modifier.wrapContentWidth()) {
+            Gen1Field("STORED", "${state.storage.total} POKéMON")
+        }
+    }
+    item { OptionsExportRow(state, model) }
+}
+
+private fun LazyListScope.aboutDrawer(model: StorageViewModel, onShareReport: () -> Unit) {
+    item { Gen1BoxButton("CREDITS", { model.open(Screen.Credits) }) }
+    item { Gen1BoxButton("SEND REPORT", onShareReport) }
+    item { OptionsLinkRow() }
+}
+
+/** EXPORT and IMPORT, which need the system's pickers and so need a composable. */
+@Composable
+private fun OptionsExportRow(state: UiState, model: StorageViewModel) {
     // The system's own pickers. Nothing is read or written outside the one
     // file the player points at, and the app asks for no storage permission.
     val exportFile = rememberLauncherForActivityResult(
@@ -955,163 +1173,38 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
     val importFile = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(model::importFrom) }
-    val entries = listOf<Pair<String, () -> Unit>>(
-        "DOWNLOADS" to { model.open(Screen.Downloads) },
-        "SOUND FX" to { model.open(Screen.SoundEffects) },
-    )
-    val cursor = rememberCursorLayer(entries.size) { entries[it].second() }
 
-    ScreenColumn {
-        item {
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
-                entries.forEachIndexed { index, (label, action) ->
-                    Gen1MenuRow(label, cursor == index, {}, action)
-                }
-            }
-        }
-        item {
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                GbText("COLOR")
-                GbText("THE SCREEN AND THE SPRITES.", style = Gen1TextSmall)
-                Spacer(Modifier.height(4.dp))
-                GbPalette.ALL.forEach { palette ->
-                    // The swatch is part of the control, not a picture beside
-                    // it: tapping the colours is the obvious way to pick them.
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .gen1Clickable { model.setPalette(palette.id) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Gen1MenuRow(
-                            palette.label,
-                            selected = state.paletteId == palette.id,
-                            onSelect = { model.setPalette(palette.id) },
-                            onConfirm = { model.setPalette(palette.id) },
-                            modifier = Modifier.weight(1f),
-                        )
-                        PaletteSwatch(palette)
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Gen1Toggle(
-                    label = "BLACK ON WHITE BOXES",
-                    on = !state.windowsFollowPalette,
-                    onToggle = { model.setWindowsFollowPalette(!state.windowsFollowPalette) },
-                )
+    Column {
+        Gen1BoxButton(
+            "EXPORT",
+            { exportFile.launch(model.exportFileName()) },
+            enabled = state.storage.total > 0,
+        )
+        Spacer(Modifier.height(gen1Dp(3)))
+        // Anything, not text/plain: a .lua a file manager has never seen is
+        // handed over with no type at all, and a filtered picker would simply
+        // grey it out.
+        Gen1BoxButton("IMPORT", { importFile.launch(arrayOf("*/*")) })
+    }
+}
 
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("SAVE SYNC")
-                Gen1Field("STATUS", if (state.linked) "LINKED" else "NOT LINKED")
-                state.lastSyncedAtMillis?.let {
-                    Gen1Field("LAST SYNC", java.time.Instant.ofEpochMilli(it).toString().take(19))
+@Composable
+private fun OptionsLinkRow() {
+    val context = LocalContext.current
+    Gen1Frame(Modifier.wrapContentWidth()) {
+        GbText("LOGIE 2026")
+        // The whole line is the link. A URL at this size is a hard thing to
+        // hit, and the row around it is not doing anything else.
+        Gen1MenuRow(
+            "github.com/logie-github/TM-Case",
+            selected = false,
+            onSelect = {},
+            onConfirm = {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TM_CASE_REPO)))
                 }
-                model.linkedDeviceLabel?.let { Gen1Field("THIS DEVICE", it) }
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (state.linked) {
-                        val audio = LocalGen1Audio.current
-                        Gen1Button(
-                            "SYNC NOW",
-                            { audio?.play(SoundEffect.SAVE); model.sync() },
-                            enabled = !state.syncing,
-                        )
-                        Gen1Button("UNLINK", {
-                            model.prompt(
-                                Prompt.Confirm(
-                                    lines = listOf(
-                                        "UNLINK THIS DEVICE?",
-                                        "YOUR STORAGE BOXES STAY ON THIS DEVICE.",
-                                    ),
-                                    confirmLabel = "UNLINK",
-                                    onConfirm = { model.unlink() },
-                                )
-                            )
-                        })
-                    } else {
-                        Gen1Button("ENTER SYNC CODES", { model.open(Screen.Link) })
-                    }
-                }
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("THE PC")
-                Gen1Field("STORED", "${state.storage.total} POKéMON")
-                GbText("EXPORTS AS A LUA FILE.", style = Gen1TextSmall)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Gen1Button(
-                        "EXPORT",
-                        { exportFile.launch(model.exportFileName()) },
-                        enabled = state.storage.total > 0,
-                    )
-                    // Anything, not text/plain: a .lua a file manager has
-                    // never seen is handed over with no type at all, and a
-                    // filtered picker would simply grey it out.
-                    Gen1Button("IMPORT", { importFile.launch(arrayOf("*/*")) })
-                }
-            }
-        }
-        item {
-            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                GbText("CONTROLS")
-                Spacer(Modifier.height(gen1Dp(2)))
-                Gen1Toggle(
-                    label = "ALIGNMENT",
-                    on = state.windowsOnRight,
-                    onToggle = { model.setWindowsOnRight(!state.windowsOnRight) },
-                    onLabel = "RIGHT",
-                    offLabel = "LEFT",
-                )
-                Gen1Toggle(
-                    label = "ALL POKéMON",
-                    on = state.showAllSaves,
-                    onToggle = { model.setShowAllSaves(!state.showAllSaves) },
-                )
-                Gen1Toggle(
-                    label = "WITHDRAW/DEPOSIT",
-                    on = state.classicTransferLabels,
-                    onToggle = { model.setClassicTransferLabels(!state.classicTransferLabels) },
-                )
-            }
-        }
-        item {
-            Gen1Frame(Modifier.wrapContentWidth()) {
-                var cursor by remember { mutableStateOf(false) }
-                Gen1MenuRow("SEND REPORT", cursor, { cursor = true }, onShareReport)
-            }
-        }
-        item {
-            val context = LocalContext.current
-            Gen1Frame(Modifier.wrapContentWidth()) {
-                GbText("LOGIE 2026")
-                GbText("VISIT MY RECOMP MOD REPO:", style = Gen1TextSmall)
-                // The whole line is the link. A URL at this size is a hard
-                // thing to hit, and the row around it is not doing anything
-                // else.
-                Gen1MenuRow(
-                    "github.com/logie-github/TM-Case",
-                    selected = false,
-                    onSelect = {},
-                    onConfirm = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(TM_CASE_REPO))
-                            )
-                        }
-                    },
-                )
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Gen1Button("CREDITS", { model.open(Screen.Credits) })
-            }
-        }
+            },
+        )
     }
 }
 
@@ -1288,37 +1381,6 @@ private fun NamePrompt(
  * count fills in once it loads.
  */
 @Composable
-private fun SavePicker(
-    title: String,
-    state: UiState,
-    onChoose: (String) -> Unit,
-    onCancel: () -> Unit,
-) {
-    Gen1Frame {
-        GbText(title)
-        if (state.saves.isEmpty()) {
-            GbText("NO SAVES FOUND.", style = Gen1TextSmall)
-        }
-        LazyColumn(Modifier.heightIn(max = 320.dp)) {
-            itemsIndexed(state.saves) { _, remote ->
-                val save = state.save(remote.key)?.save
-                val trainer = save?.trainerName ?: remote.summary.trainerName ?: remote.label
-                Gen1MenuRow(
-                    "${remote.version.label}  ${trainer.uppercase()}",
-                    selected = state.activeSaveKey == remote.key,
-                    onSelect = { onChoose(remote.key) },
-                    onConfirm = { onChoose(remote.key) },
-                    trailing = save?.let { "${it.partyCount}/${Gen1RecompSave.PARTY_MAX}" } ?: "",
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Gen1Button("CANCEL", onCancel)
-    }
-}
-
-/** The four shades of a palette, drawn as the ramp itself so it can be judged. */
-@Composable
 private fun PaletteSwatch(palette: GbPalette) {
     Row(
         Modifier
@@ -1342,10 +1404,15 @@ private fun Gen1Toggle(
     onToggle: () -> Unit,
     onLabel: String = "ON",
     offLabel: String = "OFF",
+    /** Whether the cursor is on this row. The arrow means nothing else. */
+    selected: Boolean = false,
 ) {
+    // A switch says what it is through its trailing word, and only that. It
+    // used to light the cursor arrow as well, which left rows in OPTIONS
+    // wearing arrows that had nothing to do with where the cursor was.
     Gen1MenuRow(
         label,
-        selected = on,
+        selected = selected,
         onSelect = onToggle,
         onConfirm = onToggle,
         trailing = if (on) onLabel else offLabel,
@@ -1455,13 +1522,6 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     }
                 }
             }
-
-            is Prompt.ChooseDepositSave -> SavePicker(
-                title = prompt.title,
-                state = state,
-                onChoose = { key -> model.selectSave(key) },
-                onCancel = model::dismissPrompt,
-            )
 
             is Prompt.ChooseQuantity -> QuantityPrompt(
                 title = prompt.title,

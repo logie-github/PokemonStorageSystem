@@ -97,6 +97,17 @@ fun Gen1TransferScene(
     ) {
         val spriteSide = gen1Dp(SPRITE_PIXELS)
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Several at once stand in a line, overlapping a little when the
+            // screen is too narrow to set them side by side — three is what
+            // fits and reads, so three is what is shown however many are
+            // going.
+            val company = scene.alsoSpeciesIds.take(COMPANY_MAX - 1)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(
+                    if (company.isEmpty()) gen1Dp(0) else gen1Dp(-COMPANY_OVERLAP)
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             Box(Modifier.size(spriteSide), contentAlignment = Alignment.Center) {
                 if (shown.value > 0f) {
                     Box(
@@ -122,6 +133,28 @@ fun Gen1TransferScene(
                     PokeBall(Modifier.size(gen1Dp(BALL_PIXELS)))
                 }
                 if (puff == 1f) Puff(Modifier.fillMaxSize())
+            }
+            company.forEach { species ->
+                Box(
+                    Modifier.size(spriteSide).alpha(shown.value * (1f - leaving.value)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (shown.value > 0f) {
+                        Box(Modifier.scale(shown.value)) {
+                            key(revision) {
+                                Gen1Sprite(
+                                    speciesId = species,
+                                    gameVersionId = scene.gameVersionId,
+                                    store = store,
+                                    sizeInPixels = SPRITE_PIXELS,
+                                )
+                            }
+                        }
+                    } else {
+                        PokeBall(Modifier.size(gen1Dp(BALL_PIXELS)))
+                    }
+                }
+            }
             }
 
             Spacer(Modifier.height(gen1Dp(6)))
@@ -217,6 +250,10 @@ object Gen1TransferTiming {
         TransferMotion.RELEASE -> RELEASE_MILLIS
     }
 }
+
+/** How many go on screen at once, and how far they lean on each other. */
+private const val COMPANY_MAX = 3
+private const val COMPANY_OVERLAP = 14
 
 /** The front sprite's size, and the ball's, in game pixels. */
 private const val SPRITE_PIXELS = 56

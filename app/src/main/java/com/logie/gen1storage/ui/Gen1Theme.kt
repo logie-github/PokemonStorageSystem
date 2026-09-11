@@ -398,15 +398,16 @@ fun Gen1Button(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    // No plate. These sit inside windows, and a bordered button inside a
+    // bordered window is two rules saying one thing — which is what made the
+    // options screen look like a stack of nested boxes. A choice inside a
+    // window is a word you press, the way the cartridge's are; a choice that
+    // stands on its own is a window itself, which is [Gen1BoxButton].
     Box(
         modifier
             .heightIn(min = 48.dp)
-            .background(Gen1Palette.Ink)
-            .padding(2.dp)
-            .background(if (enabled) Gen1Palette.Panel else Gen1Palette.Muted)
             .gen1Clickable(enabled, onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        // A flat two-tone plate: outer rule, inner fill, no rounding.
+            .padding(horizontal = 10.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         GbText(

@@ -150,6 +150,10 @@ private fun ItemListOverlay(
     onChoose: (ItemStack) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val cursor = rememberCursorLayer(items.size + 1) { index ->
+        val stack = items.getOrNull(index)
+        if (stack == null) onCancel() else onChoose(stack)
+    }
     Box(
         Modifier.fillMaxSize(),
         contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
@@ -159,16 +163,18 @@ private fun ItemListOverlay(
             Spacer(Modifier.height(gen1Dp(2)))
             if (items.isEmpty()) GbText("NOTHING HERE.", style = Gen1TextSmall)
             LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                itemsIndexed(items) { _, stack ->
+                itemsIndexed(items) { index, stack ->
                     Gen1MenuRow(
                         stack.label,
-                        selected = false,
+                        selected = cursor == index,
                         onSelect = {},
                         onConfirm = { onChoose(stack) },
                         trailing = "x${stack.count}",
                     )
                 }
-                item { Gen1MenuRow("CANCEL", selected = false, onSelect = {}, onConfirm = onCancel) }
+                item {
+                    Gen1MenuRow("CANCEL", cursor == items.size, {}, onCancel)
+                }
             }
         }
     }

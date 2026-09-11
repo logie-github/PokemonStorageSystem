@@ -216,21 +216,6 @@ private fun StorageApp(model: StorageViewModel) {
                 }
             }
     ) {
-        // The console fades out through its lightest shade and back in on the
-        // other side, so the screen that is leaving is never caught halfway
-        // out. The swap happens at the top of the fade, where nothing shows.
-        var shown by remember { mutableStateOf(state.screen) }
-        val fade = remember { Animatable(0f) }
-        LaunchedEffect(state.screen) {
-            if (shown != state.screen) {
-                fade.animateTo(1f, tween(FADE_MILLIS))
-                shown = state.screen
-                fade.animateTo(0f, tween(FADE_MILLIS))
-            } else {
-                shown = state.screen
-            }
-        }
-
         Column(Modifier.fillMaxSize()) {
             TopBar()
             Box(Modifier.weight(1f)) {
@@ -240,21 +225,14 @@ private fun StorageApp(model: StorageViewModel) {
                 // pages do not cover, so the app is still usable while reading
                 // a Pokémon.
                 val beneath = state.stack.getOrNull(state.stack.size - 2)
-                if (isUnfolded() && shown is Screen.Status && beneath != null) {
+                if (isUnfolded() && state.screen is Screen.Status && beneath != null) {
                     Row(Modifier.fillMaxSize()) {
                         Spacer(Modifier.weight(1f))
                         Box(Modifier.weight(1f)) { ScreenContent(beneath, state, model, context) }
                     }
                 }
-                ScreenContent(shown, state, model, context)
+                ScreenContent(state.screen, state, model, context)
             }
-        }
-        if (fade.value > 0f) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Gen1Palette.Lightest.copy(alpha = fade.value))
-            )
         }
         // Over the screen it came from and under the result, so the ball is
         // what is on screen for the whole of the wait and the message lands
@@ -344,6 +322,3 @@ private fun shareReport(context: android.content.Context, report: String) {
     val url = "https://github.com/logie-github/PokemonStorageSystem/issues/new?title=$title&body=$body"
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }
-
-/** Half a fade: out through the lightest shade, then back in. */
-private const val FADE_MILLIS = 80

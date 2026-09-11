@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The PC never goes into a backup.
+
+  A backup is a copy of this app's boxes at one moment. Restoring one after a
+  Pokémon has been transferred out would put it back here while it is also in
+  the save — the app would hold a second copy of something it has already
+  handed over, which is the one thing its whole design is there to prevent.
+  Settings are safe to carry across; the Pokémon are not.
+-->
+<full-backup-content>
+    <exclude domain="file" path="pc/" />
+    <exclude domain="file" path="sprites/" />
+    <exclude domain="file" path="cries/" />
+    <exclude domain="file" path="followers/" />
+</full-backup-content>

@@ -35,9 +35,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        // Unchanged from the reader this app grew out of, so an existing
-        // install updates in place instead of appearing as a second app.
-        applicationId = "com.logie.packageexporter"
+        applicationId = "com.logie.pokestorage"
         minSdk = 26
         targetSdk = 35
         versionCode = 12

@@ -110,6 +110,8 @@ data class TransferScene(
     val gameVersionId: String?,
     val name: String,
     val destination: String,
+    /** The others going with it, up to what the scene has room to show. */
+    val alsoSpeciesIds: List<String?> = emptyList(),
     val motion: TransferMotion,
     /**
      * The question being asked, while one is. The scene holds still and shows
@@ -141,8 +143,6 @@ sealed interface Prompt {
     data class RenameCart(val key: String, val fallback: String) : Prompt
     /** A newer release exists; saying yes opens it. */
     data class Update(val version: String, val url: String) : Prompt
-    /** Which save to take a deposit from, when the lists are not showing all. */
-    data class ChooseDepositSave(val title: String) : Prompt
     /** The long-press sprite picker for one species. */
     data class ChooseSpriteSet(val speciesId: String) : Prompt
     /** How many of a stack to move. */

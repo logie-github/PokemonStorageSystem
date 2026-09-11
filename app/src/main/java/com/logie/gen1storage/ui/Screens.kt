@@ -577,6 +577,48 @@ fun StatusScreen(
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
         footer = { Gen1BoxButton("BACK", { model.back() }) },
         underBox = {
+            // How many there are to walk through where this one lives, so the
+            // ends of the box are ends rather than somewhere that looks the
+            // same but does nothing.
+            val siblings = if (key == null) {
+                state.storage.boxes.getOrNull(area - 1)?.contents?.size ?: 0
+            } else {
+                val save = state.save(key)?.save
+                if (area == 0) save?.party?.size ?: 0
+                else save?.boxes?.getOrNull(area - 1)?.size ?: 0
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Gen1BoxButton(
+                    "PREV",
+                    { model.replace(Screen.Status(key, area, slot - 1, transfer)) },
+                    enabled = slot > 0,
+                )
+                TransferButton(state, model, key, area, slot, transfer, pokemon)
+                Gen1BoxButton(
+                    "NEXT",
+                    { model.replace(Screen.Status(key, area, slot + 1, transfer)) },
+                    enabled = slot < siblings - 1,
+                )
+            }
+        },
+    )
+}
+
+/** The transfer this status screen was opened from, if it was opened from one. */
+@Composable
+private fun TransferButton(
+    state: UiState,
+    model: StorageViewModel,
+    key: String?,
+    area: Int,
+    slot: Int,
+    transfer: StatusTransfer?,
+    pokemon: Gen1Pokemon,
+) {
             // Only the transfer this screen was opened from. Looking a
             // Pokémon over is most of why a transfer stalls here, so the way
             // on is under it rather than back through the list.
@@ -615,8 +657,6 @@ fun StatusScreen(
 
                 null -> Unit
             }
-        },
-    )
 }
 
 /**

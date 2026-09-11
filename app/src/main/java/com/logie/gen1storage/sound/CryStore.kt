@@ -3,6 +3,7 @@ package com.logie.gen1storage.sound
 import android.content.Context
 import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.pokemon.Gen1Data
+import com.logie.gen1storage.download.fetchInParallel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -52,12 +53,12 @@ class CryStore(private val directory: File) {
             readTimeout = 20_000
             instanceFollowRedirects = true
         }
-        val bytes = try {
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-            connection.inputStream.use { it.readBytes() }
-        } finally {
-            connection.disconnect()
-        }
+        // Deliberately not disconnected: that shuts the socket and throws
+        // away the keep-alive, so every file after it pays for a fresh TCP
+        // and TLS handshake. Reading the body to the end and closing the
+        // stream hands the connection back to the pool for the next one.
+        if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
+        val bytes = connection.inputStream.use { it.readBytes() }
         if (bytes.isEmpty()) return null
 
         directory.mkdirs()
@@ -81,16 +82,9 @@ class CryStore(private val directory: File) {
     suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
         withContext(Dispatchers.IO) {
             val total = Gen1Data.species.size
-            var done = 0
-            var failed = 0
             onProgress(DownloadProgress(0, total))
-            for (dex in 1..total) {
-                coroutineContext.ensureActive()
-                if (!has(dex) && runCatching { fetch(dex) }.getOrNull() == null) failed++
-                done++
-                onProgress(DownloadProgress(done, total, failed))
-            }
-            DownloadProgress(done, total, failed, finished = true).also(onProgress)
+            val counted = fetchInParallel(1..total, total, onProgress) { fetch(it) }
+            DownloadProgress(total, total, counted, finished = true).also(onProgress)
         }
 
     private companion object {

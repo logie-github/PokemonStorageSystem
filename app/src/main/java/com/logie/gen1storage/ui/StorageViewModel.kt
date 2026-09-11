@@ -35,7 +35,10 @@ import com.logie.gen1storage.transfer.TransferEngine
 import com.logie.gen1storage.transfer.TransferJournal
 import com.logie.gen1storage.transfer.TransferResult
 import com.logie.gen1storage.transfer.WithdrawTarget
+import com.logie.gen1storage.download.DownloadService
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -246,6 +249,30 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     /** What YES on the scene's question will do. */
     private var pendingSend: (() -> Unit)? = null
+
+    /**
+     * Where a download runs.
+     *
+     * Not the view model's scope: that dies with the screen, and a download
+     * of several hundred files is exactly the thing a player walks away from.
+     * A foreground service keeps the process alive alongside it; this keeps
+     * the work from being cancelled the moment the activity goes.
+     */
+    private val downloads = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Tells the service what to say, or takes it down when nothing is left. */
+    private fun showDownload(label: String, progress: DownloadProgress?) {
+        val app = getApplication<Application>()
+        if (progress == null || progress.finished) {
+            val stillGoing = mutable.value.let {
+                listOfNotNull(it.spriteProgress, it.cryProgress, it.followerProgress)
+                    .any { p -> !p.finished }
+            }
+            if (!stillGoing) DownloadService.hide(app)
+        } else {
+            DownloadService.show(app, label, progress.percent)
+        }
+    }
 
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
@@ -630,11 +657,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun downloadSprites() {
         if (spriteJob?.isActive == true) return
-        spriteJob = viewModelScope.launch {
+        spriteJob = downloads.launch {
             mutable.update { it.copy(prompt = null, spriteProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
                 spriteDownloader.download(SpriteSet.downloadable) { progress ->
                     mutable.update { it.copy(spriteProgress = progress) }
+                    showDownload("SPRITES", progress)
                 }
             }
             val installed = sprites.installedSets().sumOf { set -> sprites.countIn(set) }
@@ -652,6 +680,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun cancelSpriteDownload() {
         spriteJob?.cancel()
         spriteJob = null
+        DownloadService.hide(getApplication())
         mutable.update {
             it.copy(
                 spriteProgress = null,
@@ -689,10 +718,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun downloadCries() {
         if (cryJob?.isActive == true) return
-        cryJob = viewModelScope.launch {
+        cryJob = downloads.launch {
             mutable.update { it.copy(prompt = null, cryProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
-                cries.downloadAll { progress -> mutable.update { it.copy(cryProgress = progress) } }
+                cries.downloadAll { progress ->
+                    mutable.update { it.copy(cryProgress = progress) }
+                    showDownload("CRIES", progress)
+                }
             }
             mutable.update { state ->
                 state.copy(
@@ -707,6 +739,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun cancelCryDownload() {
         cryJob?.cancel()
         cryJob = null
+        DownloadService.hide(getApplication())
         mutable.update { it.copy(cryProgress = null, criesInstalled = cries.count()) }
     }
 
@@ -724,11 +757,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     /** Downloads the overworld follower sheets the box grid draws. */
     fun downloadFollowers() {
         if (followerJob?.isActive == true) return
-        followerJob = viewModelScope.launch {
+        followerJob = downloads.launch {
             mutable.update { it.copy(prompt = null, followerProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
                 followers.downloadAll { progress ->
                     mutable.update { it.copy(followerProgress = progress) }
+                    showDownload("FOLLOWERS", progress)
                 }
             }
             mutable.update { state ->
@@ -745,6 +779,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun cancelFollowerDownload() {
         followerJob?.cancel()
         followerJob = null
+        DownloadService.hide(getApplication())
         mutable.update {
             it.copy(
                 followerProgress = null,
@@ -773,7 +808,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * line. In order, each one's bar means what it says.
      */
     fun downloadEverything() {
-        viewModelScope.launch {
+        downloads.launch {
             downloadSprites()
             spriteJob?.join()
             downloadCries()

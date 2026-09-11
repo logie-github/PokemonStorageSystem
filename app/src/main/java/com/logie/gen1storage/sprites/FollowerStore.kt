@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.logie.gen1storage.download.DownloadProgress
+import com.logie.gen1storage.download.fetchInParallel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -105,12 +106,10 @@ class FollowerStore(private val directory: File) {
             readTimeout = 20_000
             instanceFollowRedirects = true
         }
-        val bytes = try {
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-            connection.inputStream.use { it.readBytes() }
-        } finally {
-            connection.disconnect()
-        }
+        // Left connected on purpose: see the note in CryStore.fetch — a
+        // disconnect here costs the next file a whole handshake.
+        if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
+        val bytes = connection.inputStream.use { it.readBytes() }
         if (bytes.isEmpty()) return null
 
         // Confirm it decodes to the sheet this expects before it lands, so a
@@ -132,17 +131,10 @@ class FollowerStore(private val directory: File) {
     /** Fetches every sheet that is not already here, reporting after each. */
     suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
         withContext(Dispatchers.IO) {
-            var done = 0
-            var failed = 0
             onProgress(DownloadProgress(0, LAST_SHEET))
-            for (dex in 1..LAST_SHEET) {
-                coroutineContext.ensureActive()
-                if (!has(dex) && runCatching { fetch(dex) }.getOrNull() == null) failed++
-                done++
-                onProgress(DownloadProgress(done, LAST_SHEET, failed))
-            }
+            val failed = fetchInParallel(1..LAST_SHEET, LAST_SHEET, onProgress) { fetch(it) }
             memory.clear()
-            DownloadProgress(done, LAST_SHEET, failed, finished = true).also(onProgress)
+            DownloadProgress(LAST_SHEET, LAST_SHEET, failed, finished = true).also(onProgress)
         }
 
     companion object {

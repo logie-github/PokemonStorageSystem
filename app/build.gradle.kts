@@ -38,8 +38,10 @@ android {
         applicationId = "com.logie.pokestorage"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.0"
+        // Every release must raise versionCode or Android refuses to
+        // install it over the last one; versionName is what people read.
+        versionCode = 5
+        versionName = "0.5"
     }
 
     signingConfigs {

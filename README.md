@@ -1,71 +1,43 @@
-# Pokémon Storage for Gen1Recomp
+Hello Recomp Discord! The demo for Logie's Pokemon Storage System is out! This is an actual companion app for the official Gen 1 Recomp app. It's easy to set up and transfer, but I'm looking for feedback. 
 
-An Android PC for [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp)
-saves, styled like Bill's PC. Generation I only.
+First, got to the Gen 1 Recomp app and click the Save Sync button then choose Create Sync Account. Go to the PSS app and go to Options → Saves then enter the codes from the Gen 1 Recomp app into the appropriate boxes and hit Sync. It's as easy as that! The app will sync with the recomp every few seconds and the recomp picks up the saves every while as well. For immediate transfers you can go in and manually sync.
 
-Link it once with the two codes from the game's **SAVE SYNC** dialog. No root,
-no Shizuku, no file permissions.
+From here you have customization options. You can go to Options → Downloads to download sprites for your Pokemon. You can set your color palette from the original games with a few of my extra favorites thrown in. You can set sound settings as well as layout settings.
 
-## Features
+Note that this is a DEMO do we are not at 1.0 release. I wouldn't transfer your entire save system in just yet. Just play around with it, give feedback, see the bugs or what you feel needs to improve function wise or looks.
 
-- **Two PCs**: LOGIE'S PC holds Pokémon, PLAYER'S PC holds items from the cart
-  in the machine.
-- **12 boxes of 30**, on top of what your saves already hold.
-- **Items** in and out of the save's item PC, and taken off a Pokémon that is
-  holding one.
-- **Deposit** from a save's boxes. **Withdraw** back into the cart in the
-  machine. Parties are never touched.
-- **Select** one Pokémon or several: SELECT in the window that opens on one
-  ticks it, then tap any other row to tick it too.
-- **Export** the whole PC to a Lua file and **import** it back, in OPTIONS.
-  Importing the same file twice leaves one of each.
-- **Move** stored Pokémon between boxes. **Release** them, with a log kept on
-  the device.
-- **Rename** boxes and saves by holding them.
-- **Auto-sync** on open and every 30 seconds.
-- **Status screens** with stats, types, moves and PP.
-- **Box grid**: six across, five down, each Pokémon on its own spot. Drag one
-  by holding it, or pick MOVE and tap where it goes.
-- **Sound effects**, and **sprites, cries and overworld followers** downloaded
-  from OPTIONS → DOWNLOADS. Tap a sprite to hear it again. Each sound can be turned off in
-  OPTIONS → SOUND FX.
-- **Seven palettes**, windows on the left or right, full screen, foldable
-  aware.
+I had to make a lot of compoemises due to this being an unofficial modern companion app of an old game, but I really wanted this to FEEL like you are logging into Bill's PC in-universe from your phone. I never liked the layout of the Home app as it felt like a game transfer. I still have a lot of work to do in making this feel less like a save game holder than a real in-universe app, but I'm open to suggestions. 
 
-## Controls
+Pipeline: 
 
-Tap a menu row to take it. In the empty space around the windows: swipe to move
-the cursor, tap to take it, double tap for OPTIONS, hold to go back.
+Get feedback and bug tests. the biggest thing I want to avoid is someone's saves getting wiped because I misunderstood how the save sync works. 
 
-## Setup
+Obviously we all want to see Gen 2 implementation, this is coming but I want to be sure gen 1 works first before I add another generation on top of it. 
 
-1. Gen1Recomp → **SAVE SYNC** → **Sync now**
-2. Note the two codes
-3. Here: **OPTIONS → ACCESS SAVE** → enter both → **LINK THIS DEVICE**
+Comparability with LUA mods. I had this idea today and I'd love to have this app be able to have people mod it like they've been doing with the game carts. Don't like the layout? Mod it. Don't like the colors or them? Mod it. Again, this is coming but I'm more concerned with functionality first. 
 
-Treat the codes like a password.
-
-## The rule
-
-A transfer never loses, duplicates or alters a Pokémon, and never corrupts a
-save. See [DESIGN.md](DESIGN.md).
+Enjoy and please be kind in the comments! 
 
 ## Credits
 
-No game code or ripped assets ship with this app — sprites and cries are
-downloaded on request. Not affiliated with Nintendo, Game Freak or The Pokémon
-Company.
+**Sprites** — [The RBY Sprites Project](https://github.com/ShiraTheMogul/rby-sprites-project) by ShiraTheMogul
 
-[Sprites](https://github.com/ShiraTheMogul/rby-sprites-project) ·
-[Followers](https://github.com/burgerslayer7/PokePCFollowers) ·
-[Followers, original](https://github.com/gamecorner-033/PokePCFollowers) ·
-[Cries](https://github.com/PokeAPI/cries) ·
-[Font](https://github.com/cooljeanius/pokemon-font) ·
-[Game data](https://github.com/pret/pokered) ·
-[Saves](https://github.com/bryanthaboi/gen1recomp)
+**Overworld followers** — [PokePCFollowers](https://github.com/burgerslayer7/PokePCFollowers), burgerslayer7's fork of the [original](https://github.com/gamecorner-033/PokePCFollowers) by gamecorner-033. The follower art itself comes from ShockSlayer and the Followers EX / PokéPC lineage.
 
-## Build
+**Cries** — [PokeAPI/cries](https://github.com/PokeAPI/cries)
 
-```sh
-./gradlew testDebugUnitTest lintRelease assembleDebug
-```
+**Font** — [pokemon-font](https://github.com/cooljeanius/pokemon-font) by SuperPencil, under the SIL Open Font License 1.1
+
+**Game data** — [pret/pokered](https://github.com/pret/pokered)
+
+**Saves** — [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp)
+
+Sprites, cries and follower art are downloaded on request. No ripped game assets are distributed in this APK.
+
+## AI Disclaimer
+
+This app has been heavily coded and debugged with AI. It has been tested and tweaked by me, but I'm just a guy with an idea and no other know how.
+
+## Copyright
+
+Pokémon and all related names are trademarks of Nintendo, Creatures Inc. and GAME FREAK Inc. This is an unofficial fan project, not affiliated with, endorsed by, or connected to Nintendo, Creatures Inc., GAME FREAK Inc. or The Pokémon Company in any way. No game code or ripped assets are distributed here. This app does not provide, host or link to ROMs.

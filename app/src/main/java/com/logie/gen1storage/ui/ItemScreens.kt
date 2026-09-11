@@ -110,12 +110,6 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
                     }
                 }
             }
-            item {
-                Gen1Frame(Modifier.wrapContentWidth()) {
-                    Gen1Field("IN THIS SAVE", "${here.sumOf { it.count }}")
-                    Gen1Field("IN THE APP", "${stored.sumOf { it.count }}")
-                }
-            }
             item { Gen1BoxButton("BACK", { model.back() }) }
         }
 

@@ -4,7 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -45,16 +47,28 @@ import kotlinx.coroutines.delay
  * being sent rather than as the app having stopped.
  */
 @Composable
-fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
+fun Gen1TransferScene(
+    scene: TransferScene,
+    store: SpriteStore,
+    revision: Int,
+    onConfirm: () -> Unit = {},
+    onCancel: () -> Unit = {},
+) {
+    // While it is asking, the Pokémon is simply there to be looked at —
+    // whichever way it is about to go.
+    val asking = scene.question != null
     // One number for the whole thing: how much Pokémon is on screen. At zero
     // it is a ball, at one it is the Pokémon, and which way it travels is the
     // only difference between the two directions.
-    val shown = remember(scene) { Animatable(if (scene.arriving) 0f else 1f) }
+    val shown = remember(scene) {
+        Animatable(if (asking || !scene.arriving) 1f else 0f)
+    }
     var puff by remember(scene) { mutableFloatStateOf(0f) }
     // How far a released Pokémon has drifted off the top, nought to one.
     val leaving = remember(scene) { Animatable(0f) }
 
     LaunchedEffect(scene) {
+        if (asking) return@LaunchedEffect
         if (scene.arriving) {
             // The ball is there to be looked at before it opens.
             delay(BALL_HOLD_MILLIS)
@@ -111,9 +125,16 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
             }
 
             Spacer(Modifier.height(gen1Dp(6)))
-            // A release says its piece afterwards, in the message window every
-            // other outcome uses, so there is nothing to put here.
-            if (scene.motion != TransferMotion.RELEASE) {
+            if (asking) {
+                Gen1Frame(Modifier.wrapContentWidth(), opening = true) {
+                    Gen1TypedLines(listOf(scene.question.orEmpty()))
+                    Spacer(Modifier.height(gen1Dp(3)))
+                    Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
+                        Gen1Button("YES", onConfirm)
+                        Gen1Button("NO", onCancel)
+                    }
+                }
+            } else if (scene.motion != TransferMotion.RELEASE) {
                 Gen1Frame(Modifier.wrapContentWidth()) {
                     GbText("Sending ${scene.name} to")
                     GbText("${scene.destination}.")

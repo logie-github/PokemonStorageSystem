@@ -144,7 +144,14 @@ private fun StorageApp(model: StorageViewModel) {
     }
 
     // The B button: Android's Back closes a window, then walks the menu stack.
-    BackHandler(enabled = state.prompt != null || state.stack.size > 1) { model.back() }
+    BackHandler(
+        enabled = state.transferScene?.question != null ||
+            state.prompt != null ||
+            state.stack.size > 1,
+    ) {
+        // Backing out of the question is saying no to it.
+        if (state.transferScene?.question != null) model.cancelSend() else model.back()
+    }
 
     val cursor = remember { Gen1Cursor() }
     val windows = remember { Gen1WindowBounds() }
@@ -253,7 +260,13 @@ private fun StorageApp(model: StorageViewModel) {
         // what is on screen for the whole of the wait and the message lands
         // on top of it the moment the save answers.
         state.transferScene?.let { scene ->
-            Gen1TransferScene(scene, model.sprites, state.spriteRevision)
+            Gen1TransferScene(
+                scene,
+                model.sprites,
+                state.spriteRevision,
+                onConfirm = model::confirmSend,
+                onCancel = model::cancelSend,
+            )
         }
         if (state.prompt != null) PromptWindow(state, model)
     }

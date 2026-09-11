@@ -111,6 +111,12 @@ data class TransferScene(
     val name: String,
     val destination: String,
     val motion: TransferMotion,
+    /**
+     * The question being asked, while one is. The scene holds still and shows
+     * the Pokémon: what is about to happen to it is the thing being agreed
+     * to, so it should be looked at rather than named in a box somewhere else.
+     */
+    val question: String? = null,
 ) {
     /** Whether the Pokémon is the last thing on screen rather than the first. */
     val arriving: Boolean get() = motion != TransferMotion.OUT
@@ -229,6 +235,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     /** When the ball went up, so the result can wait for it to finish. */
     private var sceneStartedAt = 0L
+
+    /** What YES on the scene's question will do. */
+    private var pendingSend: (() -> Unit)? = null
 
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
@@ -1120,6 +1129,31 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         mutable.update { it.copy(storage = storage.state(), prompt = null) }
+    }
+
+    // ------- asking first
+
+    /**
+     * Puts the Pokémon on screen and asks about it.
+     *
+     * Nothing is read or written until the answer comes back: this only holds
+     * the question and the thing that will act on it.
+     */
+    fun askToSend(scene: TransferScene, question: String, send: () -> Unit) {
+        pendingSend = send
+        mutable.update { it.copy(prompt = null, transferScene = scene.copy(question = question)) }
+    }
+
+    /** YES. The transfer sets its own scene going, so the question simply goes. */
+    fun confirmSend() {
+        val send = pendingSend ?: return
+        pendingSend = null
+        send()
+    }
+
+    fun cancelSend() {
+        pendingSend = null
+        mutable.update { it.copy(transferScene = null) }
     }
 
     // ------- items

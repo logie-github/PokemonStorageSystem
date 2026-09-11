@@ -245,14 +245,24 @@ fun StorageSystemScreen(
      * going up is the player's own doing rather than the first they hear of
      * it. Where it is going was never in question; whether to send it is.
      */
-    fun confirmSend(what: String, where: String, send: () -> Unit) {
-        model.prompt(
-            Prompt.Confirm(
-                lines = listOf("SEND $what TO $where?"),
-                confirmLabel = "YES",
-                cancelLabel = "NO",
-                onConfirm = send,
-            )
+    fun confirmSend(
+        what: String,
+        where: String,
+        speciesId: String?,
+        gameVersionId: String?,
+        motion: TransferMotion,
+        send: () -> Unit,
+    ) {
+        model.askToSend(
+            TransferScene(
+                speciesId = speciesId,
+                gameVersionId = gameVersionId,
+                name = what,
+                destination = where,
+                motion = motion,
+            ),
+            "SEND $what TO $where?",
+            send,
         )
     }
 
@@ -271,10 +281,18 @@ fun StorageSystemScreen(
             model.open(Screen.ChooseCart(null, uids))
             return
         }
-        val what = uids.singleOrNull()
-            ?.let { state.storage.find(it)?.second?.pokemon?.displayName?.uppercase() }
-            ?: "${uids.size} POKéMON"
-        confirmSend(what, loaded.trainerName.uppercase()) {
+        // The first one stands for the set when there are several; there is
+        // one sprite's worth of room and it is better than none.
+        val first = uids.firstOrNull()?.let { state.storage.find(it)?.second }
+        val what = if (uids.size == 1) first?.pokemon?.displayName?.uppercase() ?: "IT"
+        else "${uids.size} POKéMON"
+        confirmSend(
+            what = what,
+            where = loaded.trainerName.uppercase(),
+            speciesId = first?.pokemon?.speciesId,
+            gameVersionId = first?.provenance?.gameVersion,
+            motion = TransferMotion.OUT,
+        ) {
             model.withdrawToSave(uids, active, WithdrawTarget.Box(loaded.currentBox))
         }
     }
@@ -433,7 +451,14 @@ fun StorageSystemScreen(
                             depositRows.getOrNull(index)?.let { it.key to it.location }
                         }
                         chosen = null
-                        confirmSend("${picks.size} POKéMON", thisBoxLabel) {
+                        val lead = marked.minOrNull()?.let { depositRows.getOrNull(it) }
+                        confirmSend(
+                            what = "${picks.size} POKéMON",
+                            where = thisBoxLabel,
+                            speciesId = lead?.mon?.speciesId,
+                            gameVersionId = state.remote(lead?.key)?.version?.id,
+                            motion = TransferMotion.IN,
+                        ) {
                             model.depositFromSave(picks, state.currentStorageBox)
                         }
                     },
@@ -540,8 +565,13 @@ fun StorageSystemScreen(
                             state.inLabel,
                             {
                                 chosen = null
-                                val name = pick.mon.displayName.uppercase()
-                                confirmSend(name, thisBoxLabel) {
+                                confirmSend(
+                                    what = pick.mon.displayName.uppercase(),
+                                    where = thisBoxLabel,
+                                    speciesId = pick.mon.speciesId,
+                                    gameVersionId = state.remote(pick.key)?.version?.id,
+                                    motion = TransferMotion.IN,
+                                ) {
                                     model.depositFromSave(
                                         pick.key,
                                         pick.location,
@@ -661,11 +691,23 @@ private fun TransferButton(
                             val active = state.activeSaveKey
                             val loaded = state.save(active)?.save
                             if (active != null && loaded != null) {
-                                model.withdrawToSave(
-                                    listOf(uid),
-                                    active,
-                                    WithdrawTarget.Box(loaded.currentBox),
-                                )
+                                model.askToSend(
+                                    TransferScene(
+                                        speciesId = pokemon.speciesId,
+                                        gameVersionId = null,
+                                        name = pokemon.displayName.uppercase(),
+                                        destination = loaded.trainerName.uppercase(),
+                                        motion = TransferMotion.OUT,
+                                    ),
+                                    "SEND ${pokemon.displayName.uppercase()} TO " +
+                                        "${loaded.trainerName.uppercase()}?",
+                                ) {
+                                    model.withdrawToSave(
+                                        listOf(uid),
+                                        active,
+                                        WithdrawTarget.Box(loaded.currentBox),
+                                    )
+                                }
                             } else {
                                 model.open(Screen.ChooseCart(null, listOf(uid)))
                             }
@@ -676,11 +718,25 @@ private fun TransferButton(
                 StatusTransfer.DEPOSIT -> if (key != null && area > 0) {
                     Gen1Button(state.inLabel, {
                         model.back()
-                        model.depositFromSave(
-                            key,
-                            SaveLocation.Box(area, slot + 1),
-                            state.currentStorageBox,
-                        )
+                        val where = state.storage.boxes
+                            .getOrNull(state.currentStorageBox - 1)?.label
+                            ?: "BOX ${state.currentStorageBox}"
+                        model.askToSend(
+                            TransferScene(
+                                speciesId = pokemon.speciesId,
+                                gameVersionId = state.remote(key)?.version?.id,
+                                name = pokemon.displayName.uppercase(),
+                                destination = where,
+                                motion = TransferMotion.IN,
+                            ),
+                            "SEND ${pokemon.displayName.uppercase()} TO $where?",
+                        ) {
+                            model.depositFromSave(
+                                key,
+                                SaveLocation.Box(area, slot + 1),
+                                state.currentStorageBox,
+                            )
+                        }
                     }, Modifier.wrapContentWidth())
                 }
 

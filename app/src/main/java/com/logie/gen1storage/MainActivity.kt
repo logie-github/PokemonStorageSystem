@@ -68,7 +68,6 @@ import com.logie.gen1storage.ui.ItemPcScreen
 import com.logie.gen1storage.ui.MainMenuScreen
 import com.logie.gen1storage.ui.StorageHomeScreen
 import com.logie.gen1storage.ui.FollowersScreen
-import com.logie.gen1storage.ui.DownloadsScreen
 import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
 import com.logie.gen1storage.ui.gen1Gestures
@@ -280,7 +279,6 @@ private fun ScreenContent(
             )
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
-        Screen.Downloads -> DownloadsScreen(state, model)
         Screen.Sprites -> SpritesScreen(state, model)
         Screen.Cries -> CriesScreen(state, model)
         Screen.Followers -> FollowersScreen(state, model)

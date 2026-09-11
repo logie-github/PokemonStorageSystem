@@ -756,45 +756,6 @@ private fun TransferButton(
 }
 
 /**
- * Everything that is fetched rather than shipped.
- *
- * The front sprites, the cries and the follower sheets are all the games' own
- * material or the community's, so none of them are in the APK and all three
- * are the player's to download. One menu for the set keeps OPTIONS from
- * growing a row per thing that can be fetched.
- */
-@Composable
-fun DownloadsScreen(state: UiState, model: StorageViewModel) {
-    val entries = listOf<Pair<String, () -> Unit>>(
-        "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
-        "DOWNLOAD CRIES" to { model.open(Screen.Cries) },
-        "DOWNLOAD FOLLOWERS" to { model.open(Screen.Followers) },
-        "DOWNLOAD ALL" to { model.downloadEverything() },
-    )
-    val cursor = rememberCursorLayer(entries.size) { entries[it].second() }
-
-    ScreenColumn {
-        item {
-            Gen1Frame(
-                Modifier.wrapContentWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                entries.forEachIndexed { index, (label, action) ->
-                    Gen1MenuRow(label, cursor == index, {}, action)
-                }
-            }
-        }
-        item {
-            Gen1Frame(Modifier.wrapContentWidth()) {
-                Gen1Field("SPRITES", "${percentOf(state.spritesInstalled, SPRITE_TOTAL)}%")
-                Gen1Field("CRIES", "${percentOf(state.criesInstalled, 151)}%")
-                Gen1Field("FOLLOWERS", "${percentOf(state.followersInstalled, 251)}%")
-            }
-        }
-    }
-}
-
-/**
  * One downloadable set's screen: a question, then a percentage and a bar.
  *
  * Shared by all three because they differ only in what they are counting.
@@ -1009,6 +970,7 @@ enum class OptionsDrawer(val label: String) {
     VISUAL("VISUAL"),
     AUDIO("AUDIO"),
     LAYOUT("LAYOUT"),
+    DOWNLOADS("DOWNLOADS"),
     SAVES("SAVES"),
     ABOUT("ABOUT"),
 }
@@ -1056,6 +1018,7 @@ private fun OptionsDrawerContent(
             OptionsDrawer.VISUAL -> visualDrawer(state, model)
             OptionsDrawer.AUDIO -> audioDrawer(state, model)
             OptionsDrawer.LAYOUT -> layoutDrawer(state, model)
+            OptionsDrawer.DOWNLOADS -> downloadsDrawer(state, model)
             OptionsDrawer.SAVES -> savesDrawer(state, model)
             OptionsDrawer.ABOUT -> aboutDrawer(model, onShareReport)
         }
@@ -1090,7 +1053,25 @@ private fun LazyListScope.visualDrawer(state: UiState, model: StorageViewModel) 
             )
         }
     }
-    item { Gen1BoxButton("DOWNLOADS", { model.open(Screen.Downloads) }) }
+}
+
+/**
+ * What is fetched rather than shipped. Its own drawer: none of it is a
+ * setting, and it was sitting under VISUAL because two of the three happen
+ * to be pictures.
+ */
+private fun LazyListScope.downloadsDrawer(state: UiState, model: StorageViewModel) {
+    item {
+        Gen1Frame(Modifier.wrapContentWidth()) {
+            Gen1Field("SPRITES", "${percentOf(state.spritesInstalled, SPRITE_TOTAL)}%")
+            Gen1Field("CRIES", "${percentOf(state.criesInstalled, 151)}%")
+            Gen1Field("FOLLOWERS", "${percentOf(state.followersInstalled, 251)}%")
+        }
+    }
+    item { Gen1BoxButton("SPRITES", { model.open(Screen.Sprites) }) }
+    item { Gen1BoxButton("CRIES", { model.open(Screen.Cries) }) }
+    item { Gen1BoxButton("FOLLOWERS", { model.open(Screen.Followers) }) }
+    item { Gen1BoxButton("DOWNLOAD ALL", { model.downloadEverything() }) }
 }
 
 private fun LazyListScope.audioDrawer(state: UiState, model: StorageViewModel) {

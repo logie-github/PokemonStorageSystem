@@ -92,8 +92,6 @@ sealed interface Screen {
         val transfer: StatusTransfer? = null,
     ) : Screen
     data object Sprites : Screen
-    /** Everything that is fetched rather than shipped: the sprites and the cries. */
-    data object Downloads : Screen
     data object Cries : Screen
     data object Followers : Screen
     data object Options : Screen

@@ -261,7 +261,9 @@ fun StorageSystemScreen(
     val pick: PartyRow? = chosen?.takeIf { mode == PcMode.DEPOSIT }?.let { depositRows.getOrNull(it) }
     val storedPick = when (mode) {
         PcMode.WITHDRAW -> chosen?.let { stored.getOrNull(it) }
-        PcMode.VIEW -> gridSlot?.let { box?.slots?.getOrNull(it) }
+        // The grid's window opens on the second tap, so it follows `chosen`
+        // while the cursor on the grid itself stays on `gridSlot`.
+        PcMode.VIEW -> chosen?.let { box?.slots?.getOrNull(it) }
         else -> null
     }
 
@@ -303,21 +305,27 @@ fun StorageSystemScreen(
                         box = open,
                         followers = model.followers,
                         revision = state.spriteRevision,
-                        selectedSlot = gridSlot,
-                        heldSlot = heldUid?.let { uid ->
-                            open.slots.indexOfFirst { it?.uid == uid }.takeIf { it >= 0 }
-                        },
                         heldName = held,
+                        // Tapping a Pokémon opens its stats, because that
+                        // is what tapping one is asking for nine times in ten.
+                        // Tapping the same one again — after coming back from
+                        // those stats — is the second question, and opens what
+                        // can be done with it.
                         onTap = { slot ->
                             val carrying = heldUid
+                            val here = open.slots.getOrNull(slot)
                             when {
                                 carrying != null -> {
                                     model.moveStoredToSlot(carrying, open.index, slot)
                                     heldUid = null
                                     gridSlot = null
                                 }
-                                open.slots.getOrNull(slot) != null -> gridSlot = slot
-                                else -> gridSlot = null
+                                here == null -> gridSlot = null
+                                gridSlot == slot -> chosen = slot
+                                else -> {
+                                    gridSlot = slot
+                                    statusOf(here.uid, null)?.let(model::open)
+                                }
                             }
                         },
                         onMove = { from, to ->
@@ -436,21 +444,19 @@ fun StorageSystemScreen(
 
             mode == PcMode.VIEW && storedPick != null -> ({
                 // Deliberately cannot transfer: this side only rearranges the
-                // PC, opens a status screen, or releases — so there is no way
-                // to reach a save from here by accident.
+                // PC or releases — so there is no way to reach a save from
+                // here by accident. Stats are the first tap on the grid.
                 val name = storedPick.pokemon.displayName.uppercase()
                 MonActionOverlay(
                     actions = listOf(
+                        // Picks it up. From here a tap on any spot puts it
+                        // down, and the box arrows still work, so moving one
+                        // to another box is the same gesture as moving it two
+                        // spots left.
                         MonAction("MOVE", {
-                            model.prompt(
-                                Prompt.ChooseBox("MOVE TO WHICH BOX?") { target ->
-                                    model.moveStored(storedPick.uid, target)
-                                    chosen = null
-                                }
-                            )
-                        }),
-                        MonAction("STATS", {
-                            statusOf(storedPick.uid, null)?.let(model::open)
+                            heldUid = storedPick.uid
+                            chosen = null
+                            gridSlot = null
                         }),
                         // Only when there is something to take. Generation I
                         // Pokémon hold nothing, so this row simply never
@@ -476,12 +482,15 @@ fun StorageSystemScreen(
                                     onConfirm = {
                                         model.releaseStored(storedPick.uid)
                                         chosen = null
+                                        gridSlot = null
                                     },
                                 )
                             )
                         }),
                     ),
-                    onCancel = { chosen = null },
+                    // Both cleared, so the next tap on that Pokémon is the
+                    // first tap again and opens its stats.
+                    onCancel = { chosen = null; gridSlot = null },
                 )
             })
 

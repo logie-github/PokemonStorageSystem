@@ -41,13 +41,12 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 /**
- * One Pokémon as its overworld follower, standing still and occasionally
- * looking around.
+ * One Pokémon as its overworld follower, standing still and shifting now and
+ * then without ever turning away.
  *
- * The sheet's first frame is the one facing the player, and its third is the
- * same Pokémon turned sideways. Holding the first and flicking to the third
- * now and then is the whole animation: a boxful of them all moving at once
- * would be noise, so each waits its own random while first.
+ * Both frames face the player: the first standing, the other mid-step. A
+ * boxful of them moving at once would be noise, so each waits its own random
+ * while first.
  */
 @Composable
 fun FollowerSprite(
@@ -58,16 +57,14 @@ fun FollowerSprite(
     sizeInPixels: Int = FollowerStore.SIZE,
 ) {
     var idle by remember(dexNumber, revision) { mutableStateOf<ImageBitmap?>(null) }
-    var turned by remember(dexNumber, revision) { mutableStateOf<ImageBitmap?>(null) }
+    var stepping by remember(dexNumber, revision) { mutableStateOf<ImageBitmap?>(null) }
     var frame by remember(dexNumber, revision) { mutableIntStateOf(FollowerStore.FRAME_IDLE) }
 
     LaunchedEffect(dexNumber, revision) {
         if (dexNumber == null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            val one = store.frame(dexNumber, FollowerStore.FRAME_IDLE)
-            val three = store.frame(dexNumber, FollowerStore.FRAME_TURNED)
-            idle = one
-            turned = three
+            idle = store.frame(dexNumber, FollowerStore.FRAME_IDLE)
+            stepping = store.frame(dexNumber, FollowerStore.FRAME_STEP)
         }
     }
 
@@ -79,14 +76,14 @@ fun FollowerSprite(
             delay(Random.nextLong(QUIET_MIN_MILLIS, QUIET_MAX_MILLIS + 1))
             frame = FollowerStore.FRAME_IDLE
             delay(FRAME_MILLIS)
-            frame = FollowerStore.FRAME_TURNED
+            frame = FollowerStore.FRAME_STEP
             delay(FRAME_MILLIS)
             frame = FollowerStore.FRAME_IDLE
             delay(FRAME_MILLIS)
         }
     }
 
-    val shown = if (frame == FollowerStore.FRAME_TURNED) turned ?: idle else idle
+    val shown = if (frame == FollowerStore.FRAME_STEP) stepping ?: idle else idle
     Box(modifier.size(gen1Dp(sizeInPixels)), contentAlignment = Alignment.Center) {
         if (shown != null) {
             Image(
@@ -137,9 +134,6 @@ fun Gen1BoxGrid(
     box: StorageBox,
     followers: FollowerStore,
     revision: Int,
-    selectedSlot: Int?,
-    /** The one picked up and waiting to be put down, from MOVE or a hold. */
-    heldSlot: Int?,
     onTap: (Int) -> Unit,
     onMove: (from: Int, to: Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -198,33 +192,10 @@ fun Gen1BoxGrid(
                     repeat(columns) { column ->
                         val slot = row * columns + column
                         val stored = box.slots.getOrNull(slot)
-                        Box(
-                            Modifier
-                                .size(cell)
-                                .drawBehind {
-                                    // An outline, never a fill: the cartridge
-                                    // marks a choice with a cursor and leaves
-                                    // what is under it readable.
-                                    if (slot == selectedSlot || slot == heldSlot) {
-                                        val rule = gen1Pixel(this).toFloat()
-                                        val colour =
-                                            if (slot == heldSlot) Gen1Palette.Shadow else Gen1Palette.Ink
-                                        drawRect(colour, Offset.Zero, Size(size.width, rule))
-                                        drawRect(
-                                            colour,
-                                            Offset(0f, size.height - rule),
-                                            Size(size.width, rule),
-                                        )
-                                        drawRect(colour, Offset.Zero, Size(rule, size.height))
-                                        drawRect(
-                                            colour,
-                                            Offset(size.width - rule, 0f),
-                                            Size(rule, size.height),
-                                        )
-                                    }
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
+                        // Nothing drawn around a Pokémon: thirty ruled-off
+                        // cells stop reading as a boxful and start reading as
+                        // a table. What is picked is named in the caption.
+                        Box(Modifier.size(cell), contentAlignment = Alignment.Center) {
                             // The one being carried is not drawn in its old
                             // spot: it is under the finger.
                             if (stored != null && slot != dragFrom) {
@@ -273,8 +244,6 @@ fun BoxGridOverlay(
     box: StorageBox,
     followers: FollowerStore,
     revision: Int,
-    selectedSlot: Int?,
-    heldSlot: Int?,
     /** What the caption says while a Pokémon is waiting to be put down. */
     heldName: String?,
     onTap: (Int) -> Unit,
@@ -308,8 +277,6 @@ fun BoxGridOverlay(
                 box = box,
                 followers = followers,
                 revision = revision,
-                selectedSlot = selectedSlot,
-                heldSlot = heldSlot,
                 onTap = onTap,
                 onMove = onMove,
             )
@@ -318,10 +285,6 @@ fun BoxGridOverlay(
         }
     }
 }
-
-/** The shared grid's pixel, as a [androidx.compose.ui.graphics.drawscope.DrawScope] sees it. */
-private fun gen1Pixel(scope: androidx.compose.ui.graphics.drawscope.DrawScope): Int =
-    (scope.size.height / CELL_PIXELS).toInt().coerceAtLeast(1)
 
 /** A spot's side, in game pixels: the sprite with a little air around it. */
 private const val CELL_PIXELS = 18

@@ -20,8 +20,8 @@ import kotlin.coroutines.coroutineContext
  *
  * One file per dex number, each a 16x96 sheet of six 16x16 frames stacked
  * downwards — facing down, up and sideways, twice over for the two walking
- * poses. The grid wants the two that read as one Pokémon glancing about, so
- * only frames 1 and 3 are ever asked for.
+ * poses. The grid wants the two that keep it facing the player, so only
+ * frames 1 and 4 are ever asked for.
  *
  * Downloaded rather than bundled, the same as the front sprites and the
  * cries. This art is the Followers EX / PokéPC lineage rather than this
@@ -152,9 +152,17 @@ class FollowerStore(private val directory: File) {
         /** Frames down one sheet: down, up, side, then the same three walking. */
         const val FRAMES = 6
 
-        /** Standing, and the sideways glance the grid animates to. */
+        /**
+         * The two front-facing poses: standing, and mid-step.
+         *
+         * A sheet's six frames are three headings — down, up, side — each
+         * twice over for the two walking poses, so the pair that keeps a
+         * Pokémon facing the player is 1 and 4. Frames 2 and 3 turn it away
+         * and side-on, which reads as a Pokémon walking off rather than one
+         * shifting its weight where it stands.
+         */
         const val FRAME_IDLE = 1
-        const val FRAME_TURNED = 3
+        const val FRAME_STEP = 4
 
         /**
          * Every sheet the pack has. Only the first 151 can be shown today —

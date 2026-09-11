@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toArgb
 import com.logie.gen1storage.sound.CryStore
 import com.logie.gen1storage.sound.SoundEffect
 import androidx.lifecycle.viewModelScope
+import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
@@ -92,6 +93,14 @@ sealed interface Screen {
     data object SoundEffects : Screen
 }
 
+/** The Pokémon a transfer is moving, and where it is going. */
+data class TransferScene(
+    val speciesId: String?,
+    val gameVersionId: String?,
+    val name: String,
+    val destination: String,
+)
+
 /** The transfer a status screen was opened from, and can finish. */
 enum class StatusTransfer { WITHDRAW, DEPOSIT }
 
@@ -143,6 +152,9 @@ data class UiState(
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
     val windowsOnRight: Boolean = true,
+    val classicTransferLabels: Boolean = false,
+    /** Shown while a transfer is in flight, and cleared by its result. */
+    val transferScene: TransferScene? = null,
     /**
      * The save the top-level PC menu deposits from and withdraws to. Set by
      * opening one, so the menu is never asking which save it means.
@@ -168,6 +180,10 @@ data class UiState(
     val spriteRevision: Int = 0,
 ) {
     val screen: Screen get() = stack.last()
+
+    /** Out of this PC, and into it, as the player has asked them to be named. */
+    val outLabel: String get() = if (classicTransferLabels) "WITHDRAW" else "TRANSFER OUT"
+    val inLabel: String get() = if (classicTransferLabels) "DEPOSIT" else "TRANSFER IN"
     val palette: GbPalette get() = GbPalette.fromId(paletteId)
     val saves: List<RemoteSave> get() = account?.saves.orEmpty()
     fun remote(key: String?): RemoteSave? = saves.firstOrNull { it.key == key }
@@ -218,6 +234,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
+                classicTransferLabels = settings.classicTransferLabels,
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
@@ -480,6 +497,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.paletteId = palette.id
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
+    }
+
+    fun setClassicTransferLabels(on: Boolean) {
+        settings.classicTransferLabels = on
+        mutable.update { it.copy(classicTransferLabels = on) }
     }
 
     private fun enabledSounds(): Set<String> =
@@ -768,8 +790,22 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun depositFromSave(key: String, location: SaveLocation, targetBox: Int) {
         val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
+        val moving = loaded.save?.let { pokemonAt(it, location) }
         viewModelScope.launch {
-            mutable.update { it.copy(busy = true, prompt = null) }
+            mutable.update {
+                it.copy(
+                    busy = true,
+                    prompt = null,
+                    transferScene = moving?.let { mon ->
+                        TransferScene(
+                            speciesId = mon.speciesId,
+                            gameVersionId = loaded.remote.version.id,
+                            name = mon.displayName.uppercase(),
+                            destination = boxLabel(targetBox),
+                        )
+                    },
+                )
+            }
             val result = try {
                 withContext(Dispatchers.IO) { engine.deposit(loaded, location, targetBox) }
             } catch (e: Exception) {
@@ -794,9 +830,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun withdrawToSave(uids: List<String>, key: String, target: WithdrawTarget) {
         if (uids.isEmpty()) return
-        if (mutable.value.save(key) == null) return message("OPEN THE SAVE FIRST.")
+        val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
+        val moving = uids.singleOrNull()?.let { storage.get(it) }
         viewModelScope.launch {
-            mutable.update { it.copy(busy = true, prompt = null) }
+            mutable.update {
+                it.copy(
+                    busy = true,
+                    prompt = null,
+                    transferScene = moving?.let { stored ->
+                        TransferScene(
+                            speciesId = stored.pokemon.speciesId,
+                            gameVersionId = stored.provenance.gameVersion,
+                            name = stored.pokemon.displayName.uppercase(),
+                            destination = loaded.save?.trainerName?.uppercase() ?: "THE SAVE",
+                        )
+                    },
+                )
+            }
             var done = 0
             var stopped: TransferResult? = null
             for (uid in uids) {
@@ -808,7 +858,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 val result = runTransfer { engine.withdraw(loaded, uid, target) }
                 if (result is TransferResult.Success) done++ else { stopped = result; break }
             }
-            finishMany(done, stopped, "TRANSFERRED OUT")
+            finishMany(done, stopped, mutable.value.outLabel)
         }
     }
 
@@ -840,8 +890,17 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 val result = runTransfer { engine.deposit(loaded, location, targetBox) }
                 if (result is TransferResult.Success) done++ else { stopped = result; break }
             }
-            finishMany(done, stopped, "TRANSFERRED IN")
+            finishMany(done, stopped, mutable.value.inLabel)
         }
+    }
+
+    private fun boxLabel(index: Int): String =
+        storage.state().boxes.getOrNull(index - 1)?.label ?: "BOX $index"
+
+    /** The Pokémon a save location points at, for naming it before it moves. */
+    private fun pokemonAt(save: Gen1RecompSave, location: SaveLocation) = when (location) {
+        is SaveLocation.Party -> save.party.getOrNull(location.slot - 1)
+        is SaveLocation.Box -> save.boxes.getOrNull(location.box - 1)?.getOrNull(location.slot - 1)
     }
 
     private fun slotOf(location: SaveLocation): Int = when (location) {
@@ -878,7 +937,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         if (refreshed is SyncResult.Ok) {
             mutable.update { it.copy(account = refreshed.value) }
         }
-        mutable.update { it.copy(storage = storage.state(), busy = false) }
+        mutable.update { it.copy(storage = storage.state(), busy = false, transferScene = null) }
         if (done > 0) mutable.update { it.copy(transfers = it.transfers + done) }
 
         val lines = buildList {
@@ -907,7 +966,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         if (refreshed is SyncResult.Ok) {
             mutable.update { it.copy(account = refreshed.value) }
         }
-        mutable.update { it.copy(storage = storage.state(), busy = false) }
+        mutable.update { it.copy(storage = storage.state(), busy = false, transferScene = null) }
         when (result) {
             is TransferResult.Success -> {
                 mutable.update { it.copy(transfers = it.transfers + 1) }

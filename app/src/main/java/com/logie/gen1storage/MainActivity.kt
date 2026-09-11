@@ -61,6 +61,7 @@ import com.logie.gen1storage.ui.isUnfolded
 import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.CriesScreen
+import com.logie.gen1storage.ui.Gen1TransferScene
 import com.logie.gen1storage.ui.ItemPcScreen
 import com.logie.gen1storage.ui.MainMenuScreen
 import com.logie.gen1storage.ui.StorageHomeScreen
@@ -222,6 +223,12 @@ private fun StorageApp(model: StorageViewModel) {
                 }
                 ScreenContent(state.screen, state, model, context)
             }
+        }
+        // Over the screen it came from and under the result, so the ball is
+        // what is on screen for the whole of the wait and the message lands
+        // on top of it the moment the save answers.
+        state.transferScene?.let { scene ->
+            Gen1TransferScene(scene, model.sprites, state.spriteRevision)
         }
         if (state.prompt != null) PromptWindow(state, model)
     }

@@ -122,6 +122,9 @@ fun StorageSystemScreen(
     onChangeBox: () -> Unit,
     onRenameBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
+    /** What the two directions are called, which is the player's to choose. */
+    outLabel: String,
+    inLabel: String,
     /** False while a message is showing that would be drawn over it anyway. */
     showBox: Boolean = true,
     message: String = "What?",
@@ -132,8 +135,8 @@ fun StorageSystemScreen(
         // Named for which way the Pokémon is going, not for which side of
         // the machine is doing it: OUT leaves this PC for the cartridge, IN
         // comes the other way.
-        add(Triple("TRANSFER OUT PKMN", onWithdraw, SoundEffect.SELECT))
-        add(Triple("TRANSFER IN PKMN", onDeposit, SoundEffect.SELECT))
+        add(Triple("$outLabel PKMN", onWithdraw, SoundEffect.SELECT))
+        add(Triple("$inLabel PKMN", onDeposit, SoundEffect.SELECT))
         add(Triple("VIEW BOXES", onView, SoundEffect.SELECT))
         add(Triple("CHANGE CART", onChangeCart, SoundEffect.CURSOR))
         // Everything the cartridge's PC does not have lives behind this row.

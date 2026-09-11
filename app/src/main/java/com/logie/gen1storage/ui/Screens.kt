@@ -268,6 +268,8 @@ fun StorageSystemScreen(
     }
 
     StorageSystemScreen(
+        outLabel = state.outLabel,
+        inLabel = state.inLabel,
         boxLabel = box?.label ?: "BOX ${state.currentStorageBox}",
         // Hidden rather than drawn under a message that would cover it.
         showBox = refusal == null && emptiness == null,
@@ -380,7 +382,7 @@ fun StorageSystemScreen(
                     emptyMessage = "What? There are no POKéMON here!",
                     marked = marked,
                     onToggle = ::toggle,
-                    actionLabel = "TRANSFER OUT ${marked.size}".takeIf {
+                    actionLabel = "${state.outLabel} ${marked.size}".takeIf {
                         mode == PcMode.WITHDRAW && marked.isNotEmpty() && state.saves.isNotEmpty()
                     },
                     onAction = { startWithdraw(marked.mapNotNull { stored.getOrNull(it)?.uid }) },
@@ -401,7 +403,7 @@ fun StorageSystemScreen(
                     emptyMessage = "There are no POKéMON here.",
                     marked = marked,
                     onToggle = ::toggle,
-                    actionLabel = "TRANSFER IN ${marked.size}".takeIf { marked.isNotEmpty() },
+                    actionLabel = "${state.inLabel} ${marked.size}".takeIf { marked.isNotEmpty() },
                     onAction = {
                         val picks = marked.mapNotNull { index ->
                             depositRows.getOrNull(index)?.let { it.key to it.location }
@@ -431,7 +433,7 @@ fun StorageSystemScreen(
                         // that is not something to infer from what happens to
                         // be loaded.
                         MonAction(
-                            "TRANSFER OUT",
+                            state.outLabel,
                             { startWithdraw(listOf(storedPick.uid)) },
                             enabled = state.saves.isNotEmpty(),
                         ),
@@ -509,7 +511,7 @@ fun StorageSystemScreen(
                 MonActionOverlay(
                     actions = listOf(
                         MonAction(
-                            "TRANSFER IN",
+                            state.inLabel,
                             {
                                 chosen = null
                                 model.depositFromSave(
@@ -583,7 +585,7 @@ fun StatusScreen(
                     val uid = state.storage.boxes.getOrNull(area - 1)
                         ?.contents?.getOrNull(slot)?.uid
                     if (uid != null) {
-                        Gen1Button("TRANSFER OUT", {
+                        Gen1Button(state.outLabel, {
                             model.back()
                             val active = state.activeSaveKey
                             val loaded = state.save(active)?.save
@@ -601,7 +603,7 @@ fun StatusScreen(
                 }
 
                 StatusTransfer.DEPOSIT -> if (key != null && area > 0) {
-                    Gen1Button("TRANSFER IN", {
+                    Gen1Button(state.inLabel, {
                         model.back()
                         model.depositFromSave(
                             key,
@@ -944,6 +946,11 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                     label = "ALL POKéMON",
                     on = state.showAllSaves,
                     onToggle = { model.setShowAllSaves(!state.showAllSaves) },
+                )
+                Gen1Toggle(
+                    label = "WITHDRAW/DEPOSIT",
+                    on = state.classicTransferLabels,
+                    onToggle = { model.setClassicTransferLabels(!state.classicTransferLabels) },
                 )
             }
         }

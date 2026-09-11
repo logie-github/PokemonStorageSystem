@@ -51,6 +51,7 @@ fun Modifier.gen1Gestures(
         val swipeThreshold = maxOf(MIN_SWIPE_PX, shortSide * SWIPE_RATIO)
         val tapSlop = maxOf(MIN_TAP_SLOP_PX, shortSide * TAP_SLOP_RATIO)
         val doubleTapDistance = maxOf(MIN_DOUBLE_TAP_DISTANCE_PX, shortSide * DOUBLE_TAP_DISTANCE_RATIO)
+        val systemEdge = EDGE_DP * density
 
         var lastTapAtMillis = 0L
         var lastTapPosition = Offset.Zero
@@ -61,6 +62,13 @@ fun Modifier.gen1Gestures(
             // at all. What is done with it still depends on where it started.
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val start = down.position
+            // The side strips belong to the system's back gesture. A swipe
+            // there is taken away mid-flight, and what was left of it used to
+            // arrive here looking like a tap — which is a confirm, so swiping
+            // back took whatever the cursor was sitting on.
+            if (start.x <= systemEdge || start.x >= size.width - systemEdge) {
+                return@awaitEachGesture
+            }
             val free = isFreeSpace(start)
             var travelled = Offset.Zero
 
@@ -80,8 +88,10 @@ fun Modifier.gen1Gestures(
             val outcome = withTimeoutOrNull(HOLD_DELAY_MILLIS) {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
+                    // The pointer vanishing is not a release: something else
+                    // took the gesture. Whatever it was, it was not a tap.
                     val change = event.changes.firstOrNull { it.id == down.id }
-                        ?: return@withTimeoutOrNull GestureOutcome.RELEASED
+                        ?: return@withTimeoutOrNull GestureOutcome.CANCELLED
                     travelled = change.position - start
                     if (abs(travelled.x) > swipeThreshold || abs(travelled.y) > swipeThreshold) {
                         return@withTimeoutOrNull GestureOutcome.SWIPED
@@ -105,6 +115,8 @@ fun Modifier.gen1Gestures(
                     return@awaitEachGesture
                 }
             }
+
+            if (outcome == GestureOutcome.CANCELLED) return@awaitEachGesture
 
             // Everything else belongs to whatever was touched unless the touch
             // began on the screen itself.
@@ -147,7 +159,10 @@ fun Modifier.gen1Gestures(
     }
 )
 
-private enum class GestureOutcome { SWIPED, RELEASED }
+private enum class GestureOutcome { SWIPED, RELEASED, CANCELLED }
+
+/** As wide as the system's own back-gesture strip down each side. */
+private const val EDGE_DP = 24f
 
 // TM35 Metronome main.lua, verbatim.
 private const val SWIPE_RATIO = 0.055f

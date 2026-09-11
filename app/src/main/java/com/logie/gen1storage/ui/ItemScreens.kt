@@ -85,8 +85,8 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
     val here = save.pcItems
     val stored = state.items
     val rows = listOf<Pair<String, () -> Unit>>(
-        "WITHDRAW" to { mode = ItemMode.WITHDRAW },
-        "DEPOSIT" to { mode = ItemMode.DEPOSIT },
+        state.outLabel to { mode = ItemMode.WITHDRAW },
+        state.inLabel to { mode = ItemMode.DEPOSIT },
     )
     val cursor = rememberCursorLayer(rows.size) { rows[it].second() }
 

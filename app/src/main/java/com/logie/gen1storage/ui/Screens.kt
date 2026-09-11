@@ -755,12 +755,18 @@ private fun TransferButton(
             }
 }
 
+/** Every sprite the normal download fetches: each set, every species. */
+private val SPRITE_TOTAL = SpriteSet.downloadable.size * 151
+
+private fun percentOf(have: Int, whole: Int): Int =
+    if (whole <= 0) 0 else ((have.coerceAtMost(whole) * 100) / whole)
+
 /**
- * One downloadable set's screen: a question, then a percentage and a bar.
+ * One downloadable set's screen: a question, then a share and a bar.
  *
  * Shared by all three because they differ only in what they are counting.
- * The player never has to think about where any of it comes from or which
- * file is which.
+ * Every choice on it is on the one cursor, so a swipe reaches the buttons
+ * here exactly as it reaches a menu row anywhere else.
  */
 @Composable
 private fun DownloadPage(
@@ -780,32 +786,52 @@ private fun DownloadPage(
 ) {
     val running = progress != null && !progress.finished
 
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText(heading)
-                Spacer(Modifier.height(6.dp))
-            }
+    val choices = buildList<Pair<String, () -> Unit>> {
+        if (running) {
+            add("STOP" to onStop)
+        } else {
+            if (progress != null) add("OK" to onDismiss)
+            add((if (hasSome) "DOWNLOAD MISSING" else "DOWNLOAD") to {
+                model.prompt(
+                    Prompt.Confirm(
+                        lines = listOf(confirmLine),
+                        confirmLabel = "YES",
+                        cancelLabel = "NO",
+                        onConfirm = onDownload,
+                    )
+                )
+            })
+            if (hasSome) add("DELETE" to {
+                model.prompt(
+                    Prompt.Confirm(
+                        lines = listOf(deleteLine),
+                        confirmLabel = "YES",
+                        cancelLabel = "NO",
+                        onConfirm = onDelete,
+                    )
+                )
+            })
         }
+        add("BACK" to { model.back() })
+    }
+    val cursor = rememberCursorLayer(choices.size) { choices[it].second() }
+
+    ScreenColumn {
+        item { Gen1Frame(Modifier.wrapContentWidth()) { GbText(heading) } }
 
         if (progress != null) {
             item {
                 Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
-                    // The share, and nothing else. A running count of files
-                    // is the machine's business, not the player's.
+                    // The share, and nothing else. A running count of files is
+                    // the machine's business, not the player's.
                     DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(10.dp))
                     if (progress.finished) {
+                        Spacer(Modifier.height(10.dp))
                         GbText(
                             if (progress.error != null) "STOPPED: ${progress.error.uppercase()}"
                             else "DONE.",
                             style = Gen1TextSmall,
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Gen1BoxButton("OK", onDismiss)
-                    } else {
-                        Spacer(Modifier.height(8.dp))
-                        Gen1BoxButton("STOP", onStop)
                     }
                 }
             }
@@ -818,51 +844,13 @@ private fun DownloadPage(
                     Gen1Field("SPACE USED", spaceUsed)
                 }
             }
-            // Their own buttons rather than a row crammed inside the window,
-            // which is what was breaking DELETE across two lines.
-            item {
-                Gen1BoxButton(
-                    if (hasSome) "DOWNLOAD MISSING" else "DOWNLOAD",
-                    {
-                        model.prompt(
-                            Prompt.Confirm(
-                                lines = listOf(confirmLine),
-                                confirmLabel = "YES",
-                                cancelLabel = "NO",
-                                onConfirm = onDownload,
-                            )
-                        )
-                    },
-                    Modifier.wrapContentWidth(),
-                )
-            }
-            if (hasSome) {
-                item {
-                    Gen1BoxButton(
-                        "DELETE",
-                        {
-                            model.prompt(
-                                Prompt.Confirm(
-                                    lines = listOf(deleteLine),
-                                    confirmLabel = "YES",
-                                    cancelLabel = "NO",
-                                    onConfirm = onDelete,
-                                )
-                            )
-                        },
-                        Modifier.wrapContentWidth(),
-                    )
-                }
-            }
+        }
+
+        itemsIndexed(choices) { index, (label, action) ->
+            Gen1BoxButton(label, action, selected = cursor == index)
         }
     }
 }
-
-/** Every sprite the normal download fetches: each set, every species. */
-private val SPRITE_TOTAL = SpriteSet.downloadable.size * 151
-
-private fun percentOf(have: Int, whole: Int): Int =
-    if (whole <= 0) 0 else ((have.coerceAtMost(whole) * 100) / whole)
 
 @Composable
 fun CriesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
@@ -1004,6 +992,23 @@ private fun OptionsList(
     }
 }
 
+/** One line in a drawer: a word, what it currently says, and what taking it does. */
+private data class OptionRow(
+    val label: String,
+    val trailing: String? = null,
+    val enabled: Boolean = true,
+    val swatch: GbPalette? = null,
+    val action: () -> Unit,
+)
+
+/**
+ * A drawer's contents, all on one cursor.
+ *
+ * Every choice a drawer offers goes in one list and one cursor layer runs
+ * down it, so a swipe reaches a switch here exactly as it reaches a menu row
+ * anywhere else. Two layers on one screen would mean only the top one moved,
+ * which is how the settings ended up half-reachable.
+ */
 @Composable
 private fun OptionsDrawerContent(
     drawer: OptionsDrawer,
@@ -1012,203 +1017,180 @@ private fun OptionsDrawerContent(
     onShareReport: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val audio = LocalGen1Audio.current
+    val rows = buildList {
+        when (drawer) {
+            OptionsDrawer.VISUAL -> {
+                GbPalette.ALL.forEach { palette ->
+                    add(
+                        OptionRow(
+                            palette.label,
+                            trailing = if (state.paletteId == palette.id) "ON" else null,
+                            swatch = palette,
+                        ) { model.setPalette(palette.id) }
+                    )
+                }
+                add(
+                    OptionRow(
+                        "BLACK ON WHITE BOXES",
+                        trailing = if (!state.windowsFollowPalette) "ON" else "OFF",
+                    ) { model.setWindowsFollowPalette(!state.windowsFollowPalette) }
+                )
+            }
+
+            OptionsDrawer.AUDIO -> {
+                add(
+                    OptionRow("DISABLE ALL", trailing = if (state.soundOff) "ON" else "OFF") {
+                        model.setSoundOff(!state.soundOff)
+                    }
+                )
+                if (!state.soundOff) {
+                    SoundEffect.entries.forEach { effect ->
+                        val on = effect.id in state.soundsOn
+                        add(OptionRow(effect.label, trailing = if (on) "ON" else "OFF") {
+                            model.setSoundEnabled(effect, !on)
+                        })
+                    }
+                }
+            }
+
+            OptionsDrawer.LAYOUT -> {
+                add(
+                    OptionRow("ALIGNMENT", if (state.windowsOnRight) "RIGHT" else "LEFT") {
+                        model.setWindowsOnRight(!state.windowsOnRight)
+                    }
+                )
+                add(OptionRow("ALL POKéMON", if (state.showAllSaves) "ON" else "OFF") {
+                    model.setShowAllSaves(!state.showAllSaves)
+                })
+                add(OptionRow("ALL ITEMS", if (state.showAllItems) "ON" else "OFF") {
+                    model.setShowAllItems(!state.showAllItems)
+                })
+                add(
+                    OptionRow(
+                        "WITHDRAW/DEPOSIT",
+                        if (state.classicTransferLabels) "ON" else "OFF",
+                    ) { model.setClassicTransferLabels(!state.classicTransferLabels) }
+                )
+            }
+
+            OptionsDrawer.DOWNLOADS -> {
+                add(OptionRow("SPRITES", "${percentOf(state.spritesInstalled, SPRITE_TOTAL)}%") {
+                    model.open(Screen.Sprites)
+                })
+                add(OptionRow("CRIES", "${percentOf(state.criesInstalled, 151)}%") {
+                    model.open(Screen.Cries)
+                })
+                add(OptionRow("FOLLOWERS", "${percentOf(state.followersInstalled, 251)}%") {
+                    model.open(Screen.Followers)
+                })
+                add(OptionRow("DOWNLOAD ALL") { model.downloadEverything() })
+            }
+
+            OptionsDrawer.SAVES -> {
+                if (state.linked) {
+                    add(OptionRow("SYNC NOW", enabled = !state.syncing) {
+                        audio?.play(SoundEffect.SAVE)
+                        model.sync()
+                    })
+                    add(OptionRow("UNLINK") {
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("UNLINK THIS DEVICE?"),
+                                confirmLabel = "YES",
+                                cancelLabel = "NO",
+                                onConfirm = { model.unlink() },
+                            )
+                        )
+                    })
+                } else {
+                    add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
+                }
+            }
+
+            OptionsDrawer.ABOUT -> {
+                add(OptionRow("CREDITS") { model.open(Screen.Credits) })
+                add(OptionRow("SEND REPORT", action = onShareReport))
+            }
+        }
+        add(OptionRow("BACK", action = onBack))
+    }
+
+    val cursor = rememberCursorLayer(rows.size) { rows[it].action() }
+
     ScreenColumn {
         item { Gen1Frame(Modifier.wrapContentWidth()) { GbText(drawer.label) } }
-        when (drawer) {
-            OptionsDrawer.VISUAL -> visualDrawer(state, model)
-            OptionsDrawer.AUDIO -> audioDrawer(state, model)
-            OptionsDrawer.LAYOUT -> layoutDrawer(state, model)
-            OptionsDrawer.DOWNLOADS -> downloadsDrawer(state, model)
-            OptionsDrawer.SAVES -> savesDrawer(state, model)
-            OptionsDrawer.ABOUT -> aboutDrawer(model, onShareReport)
-        }
-        item { Gen1BoxButton("BACK", onBack) }
-    }
-}
 
-private fun LazyListScope.visualDrawer(state: UiState, model: StorageViewModel) {
-    item {
-        Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-            GbPalette.ALL.forEach { palette ->
-                Row(
-                    Modifier.fillMaxWidth().gen1Clickable { model.setPalette(palette.id) },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Gen1MenuRow(
-                        palette.label,
-                        selected = false,
-                        onSelect = { model.setPalette(palette.id) },
-                        onConfirm = { model.setPalette(palette.id) },
-                        trailing = if (state.paletteId == palette.id) "ON" else null,
-                        modifier = Modifier.weight(1f),
-                    )
-                    PaletteSwatch(palette)
+        if (drawer == OptionsDrawer.SAVES) {
+            item {
+                Gen1Frame {
+                    Gen1Field("STATUS", if (state.linked) "LINKED" else "NOT LINKED")
+                    state.lastSyncedAtMillis?.let {
+                        Gen1Field(
+                            "LAST SYNC",
+                            java.time.Instant.ofEpochMilli(it).toString().take(19),
+                        )
+                    }
+                    model.linkedDeviceLabel?.let { Gen1Field("THIS DEVICE", it) }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Gen1Toggle(
-                label = "BLACK ON WHITE BOXES",
-                on = !state.windowsFollowPalette,
-                onToggle = { model.setWindowsFollowPalette(!state.windowsFollowPalette) },
-            )
         }
-    }
-}
 
-/**
- * What is fetched rather than shipped. Its own drawer: none of it is a
- * setting, and it was sitting under VISUAL because two of the three happen
- * to be pictures.
- */
-private fun LazyListScope.downloadsDrawer(state: UiState, model: StorageViewModel) {
-    item {
-        Gen1Frame(Modifier.wrapContentWidth()) {
-            Gen1Field("SPRITES", "${percentOf(state.spritesInstalled, SPRITE_TOTAL)}%")
-            Gen1Field("CRIES", "${percentOf(state.criesInstalled, 151)}%")
-            Gen1Field("FOLLOWERS", "${percentOf(state.followersInstalled, 251)}%")
+        // Whatever is being fetched, said here as well as on its own screen —
+        // DOWNLOAD ALL starts three of them and never left this drawer.
+        if (drawer == OptionsDrawer.DOWNLOADS) {
+            val busy = listOfNotNull(
+                state.spriteProgress?.let { "SPRITES" to it },
+                state.cryProgress?.let { "CRIES" to it },
+                state.followerProgress?.let { "FOLLOWERS" to it },
+            ).firstOrNull { !it.second.finished }
+            if (busy != null) {
+                item {
+                    Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
+                        GbText(busy.first, style = Gen1TextSmall)
+                        Spacer(Modifier.height(gen1Dp(2)))
+                        DownloadProgressBar(busy.second.percent, Modifier.fillMaxWidth())
+                    }
+                }
+            }
         }
-    }
-    item { Gen1BoxButton("SPRITES", { model.open(Screen.Sprites) }) }
-    item { Gen1BoxButton("CRIES", { model.open(Screen.Cries) }) }
-    item { Gen1BoxButton("FOLLOWERS", { model.open(Screen.Followers) }) }
-    item { Gen1BoxButton("DOWNLOAD ALL", { model.downloadEverything() }) }
-}
 
-private fun LazyListScope.audioDrawer(state: UiState, model: StorageViewModel) {
-    // The switches themselves rather than a door to them. There are eight of
-    // them and nothing else in here, so a screen of their own was a trip to
-    // make for one list.
-    item {
-        Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-            Gen1Toggle(
-                label = "DISABLE ALL",
-                on = state.soundOff,
-                onToggle = { model.setSoundOff(!state.soundOff) },
-            )
-        }
-    }
-    if (!state.soundOff) {
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                SoundEffect.entries.forEach { effect ->
-                    Gen1Toggle(
-                        label = effect.label,
-                        on = effect.id in state.soundsOn,
-                        onToggle = {
-                            model.setSoundEnabled(effect, effect.id !in state.soundsOn)
-                        },
-                    )
+                rows.forEachIndexed { index, row ->
+                    if (row.swatch != null) {
+                        Row(
+                            Modifier.fillMaxWidth().gen1Clickable { row.action() },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Gen1MenuRow(
+                                row.label,
+                                selected = cursor == index,
+                                onSelect = {},
+                                onConfirm = row.action,
+                                trailing = row.trailing,
+                                modifier = Modifier.weight(1f),
+                            )
+                            PaletteSwatch(row.swatch)
+                        }
+                    } else {
+                        Gen1MenuRow(
+                            row.label,
+                            selected = cursor == index,
+                            onSelect = {},
+                            onConfirm = row.action,
+                            trailing = row.trailing,
+                            enabled = row.enabled,
+                        )
+                    }
                 }
             }
         }
+
+        if (drawer == OptionsDrawer.ABOUT) item { OptionsLinkRow() }
     }
 }
 
-private fun LazyListScope.layoutDrawer(state: UiState, model: StorageViewModel) {
-    item {
-        Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-            Gen1Toggle(
-                label = "ALIGNMENT",
-                on = state.windowsOnRight,
-                onToggle = { model.setWindowsOnRight(!state.windowsOnRight) },
-                onLabel = "RIGHT",
-                offLabel = "LEFT",
-            )
-            Gen1Toggle(
-                label = "ALL POKéMON",
-                on = state.showAllSaves,
-                onToggle = { model.setShowAllSaves(!state.showAllSaves) },
-            )
-            Gen1Toggle(
-                label = "ALL ITEMS",
-                on = state.showAllItems,
-                onToggle = { model.setShowAllItems(!state.showAllItems) },
-            )
-            Gen1Toggle(
-                label = "WITHDRAW/DEPOSIT",
-                on = state.classicTransferLabels,
-                onToggle = { model.setClassicTransferLabels(!state.classicTransferLabels) },
-            )
-        }
-    }
-}
-
-private fun LazyListScope.savesDrawer(state: UiState, model: StorageViewModel) {
-    item {
-        Gen1Frame {
-            Gen1Field("STATUS", if (state.linked) "LINKED" else "NOT LINKED")
-            state.lastSyncedAtMillis?.let {
-                Gen1Field("LAST SYNC", java.time.Instant.ofEpochMilli(it).toString().take(19))
-            }
-            model.linkedDeviceLabel?.let { Gen1Field("THIS DEVICE", it) }
-        }
-    }
-    if (state.linked) {
-        item {
-            val audio = LocalGen1Audio.current
-            Gen1BoxButton(
-                "SYNC NOW",
-                { audio?.play(SoundEffect.SAVE); model.sync() },
-                enabled = !state.syncing,
-            )
-        }
-        item {
-            Gen1BoxButton("UNLINK", {
-                model.prompt(
-                    Prompt.Confirm(
-                        lines = listOf("UNLINK THIS DEVICE?"),
-                        confirmLabel = "YES",
-                        cancelLabel = "NO",
-                        onConfirm = { model.unlink() },
-                    )
-                )
-            })
-        }
-    } else {
-        item { Gen1BoxButton("ENTER SYNC CODES", { model.open(Screen.Link) }) }
-    }
-}
-
-private fun LazyListScope.pcDrawer(state: UiState, model: StorageViewModel) {
-    item {
-        Gen1Frame(Modifier.wrapContentWidth()) {
-            Gen1Field("STORED", "${state.storage.total} POKéMON")
-        }
-    }
-    item { OptionsExportRow(state, model) }
-}
-
-private fun LazyListScope.aboutDrawer(model: StorageViewModel, onShareReport: () -> Unit) {
-    item { Gen1BoxButton("CREDITS", { model.open(Screen.Credits) }) }
-    item { Gen1BoxButton("SEND REPORT", onShareReport) }
-    item { OptionsLinkRow() }
-}
-
-/** EXPORT and IMPORT, which need the system's pickers and so need a composable. */
-@Composable
-private fun OptionsExportRow(state: UiState, model: StorageViewModel) {
-    // The system's own pickers. Nothing is read or written outside the one
-    // file the player points at, and the app asks for no storage permission.
-    val exportFile = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/plain")
-    ) { uri -> uri?.let(model::exportTo) }
-    val importFile = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let(model::importFrom) }
-
-    Column {
-        Gen1BoxButton(
-            "EXPORT",
-            { exportFile.launch(model.exportFileName()) },
-            enabled = state.storage.total > 0,
-        )
-        Spacer(Modifier.height(gen1Dp(3)))
-        // Anything, not text/plain: a .lua a file manager has never seen is
-        // handed over with no type at all, and a filtered picker would simply
-        // grey it out.
-        Gen1BoxButton("IMPORT", { importFile.launch(arrayOf("*/*")) })
-    }
-}
 
 @Composable
 private fun OptionsLinkRow() {

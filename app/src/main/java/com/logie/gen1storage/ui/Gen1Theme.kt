@@ -431,10 +431,12 @@ fun Gen1BoxButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** Whether the cursor is on it, so a swipe can reach it like any row. */
+    selected: Boolean = false,
 ) {
     Gen1FrameBox(modifier.wrapContentWidth().gen1Clickable(enabled, onClick)) {
         GbText(
-            label.uppercase(),
+            (if (selected && enabled) "▶" else "") + label.uppercase(),
             style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
         )
     }

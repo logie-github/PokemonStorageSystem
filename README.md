@@ -9,15 +9,20 @@ no Shizuku, no file permissions.
 ## Features
 
 - **12 boxes of 20**, on top of what your saves already hold.
-- **Deposit** from a save's boxes. **Withdraw** back into them — it asks which
-  game and which save. Parties are never touched.
+- **Deposit** from a save's boxes. **Withdraw** back into the cart in the
+  machine. Parties are never touched.
+- **Select** one Pokémon or several: SELECT in the window that opens on one
+  ticks it, then tap any other row to tick it too.
+- **Export** the whole PC to a Lua file and **import** it back, in OPTIONS.
+  Importing the same file twice leaves one of each.
 - **Move** stored Pokémon between boxes. **Release** them, with a log kept on
   the device.
 - **Rename** boxes and saves by holding them.
 - **Auto-sync** on open and every 30 seconds.
 - **Status screens** with stats, types, moves and PP.
-- **Sound effects**, and **sprites and cries** downloaded on request. Tap a
-  sprite to hear it again. Each sound can be turned off in OPTIONS → SOUND FX.
+- **Sound effects**, and **sprites and cries** downloaded from OPTIONS →
+  DOWNLOADS. Tap a sprite to hear it again. Each sound can be turned off in
+  OPTIONS → SOUND FX.
 - **Seven palettes**, windows on the left or right, full screen, foldable
   aware.
 

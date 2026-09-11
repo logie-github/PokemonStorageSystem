@@ -35,21 +35,26 @@ import com.logie.gen1storage.gen1recomp.ItemStack
 fun MainMenuScreen(state: UiState, model: StorageViewModel) {
     val save = state.save(state.activeSaveKey)?.save
     val player = save?.trainerName?.uppercase()
-    val entries = listOf<Pair<String, () -> Unit>>(
+    // Never a stand-in name. Every save's items at once is nobody's PC in
+    // particular, so it is yours; otherwise it is whoever's cartridge is in
+    // the machine. With neither, there is no item PC to name and the row is
+    // not offered at all.
+    val itemPcLabel = when {
+        state.showAllItems -> "YOUR PC"
+        player != null -> "$player'S PC"
+        else -> null
+    }
+    val entries = buildList<Pair<String, () -> Unit>> {
         // The cartridge is chosen on the way in rather than being asked for
         // in the middle of a transfer. Skipped when the account has no saves
         // at all, so an empty account is not locked out of its own PC.
-        "LOGIE'S PC" to {
+        add("LOGIE'S PC" to {
             if (save != null || state.saves.isEmpty()) model.open(Screen.Storage)
             else model.open(Screen.ChooseCart(null, thenOpenStorage = true))
-        },
-        "${player ?: "PLAYER"}'S PC" to {
-            // No cartridge in the machine means there is no item PC to open,
-            // so the only useful thing to ask for is the cartridge.
-            if (save == null) model.open(Screen.ChooseCart(null)) else model.open(Screen.ItemPc)
-        },
-        "OPTIONS" to { model.open(Screen.Options) },
-    )
+        })
+        itemPcLabel?.let { add(it to { model.open(Screen.ItemPc) }) }
+        add("OPTIONS" to { model.open(Screen.Options) })
+    }
     // The shared cursor rather than a count of its own, so the arrow is on a
     // row from the moment the menu opens and a swipe moves it.
     val cursor = rememberCursorLayer(entries.size) { entries[it].second() }
@@ -80,7 +85,7 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
     val save = state.save(key)?.save
     var mode by remember { mutableStateOf(ItemMode.MENU) }
 
-    if (save == null || key == null) {
+    if (!state.showAllItems && (save == null || key == null)) {
         ScreenColumn {
             item { Gen1Frame(Modifier.wrapContentWidth()) { GbText("NO CART IN THE MACHINE.") } }
             item { Gen1BoxButton("CHANGE CART", { model.open(Screen.ChooseCart(null)) }) }
@@ -88,7 +93,18 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
         return
     }
 
-    val here = save.pcItems
+    // Every save's items, or just the one in the machine. Each row carries
+    // the save it came from, because an item is a count and the same POTION
+    // in two playthroughs is two different things to take from.
+    val sources: List<Pair<String, ItemStack>> = if (state.showAllItems) {
+        state.saves.flatMap { remote ->
+            state.save(remote.key)?.save?.pcItems.orEmpty().map { remote.key to it }
+        }
+    } else {
+        save?.pcItems.orEmpty().map { key.orEmpty() to it }
+    }
+
+    val here = sources.map { it.second }
     val stored = state.items
     val rows = listOf<Pair<String, () -> Unit>>(
         state.outLabel to { mode = ItemMode.WITHDRAW },
@@ -103,7 +119,10 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
                     Modifier.wrapContentWidth(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 ) {
-                    GbText("${save.trainerName.uppercase()}'S PC")
+                    GbText(
+                        if (state.showAllItems) "YOUR PC"
+                        else "${save?.trainerName?.uppercase()}'S PC"
+                    )
                     Spacer(Modifier.height(gen1Dp(2)))
                     rows.forEachIndexed { index, (label, take) ->
                         Gen1MenuRow(
@@ -111,7 +130,10 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
                             selected = cursor == index,
                             onSelect = {},
                             onConfirm = take,
-                            enabled = if (index == 0) stored.isNotEmpty() else here.isNotEmpty(),
+                            // Sending one out needs a cartridge to send it
+                            // to, whatever the lists happen to be showing.
+                            enabled = if (index == 0) stored.isNotEmpty() && save != null
+                            else here.isNotEmpty(),
                         )
                     }
                 }
@@ -121,17 +143,33 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
 
         if (mode != ItemMode.MENU) {
             val intoApp = mode == ItemMode.DEPOSIT
-            val list = if (intoApp) here else stored
+            // Coming in, a row knows its own save; going out, everything
+            // goes to the cartridge in the machine.
+            val rows: List<Pair<String, ItemStack>> =
+                if (intoApp) sources else stored.map { key.orEmpty() to it }
             ItemListOverlay(
                 title = if (intoApp) "TAKE WHAT?" else "PUT BACK WHAT?",
-                items = list,
-                onChoose = { stack ->
+                items = rows.map { it.second },
+                headers = if (intoApp && state.showAllItems) {
+                    rows.map { (from, _) ->
+                        state.save(from)?.save?.trainerName?.uppercase() ?: "?"
+                    }
+                } else emptyList(),
+                onChoose = { index ->
+                    val (from, stack) = rows[index]
                     mode = ItemMode.MENU
                     model.prompt(
                         Prompt.ChooseQuantity(
                             title = stack.label,
                             max = stack.count,
-                        ) { count -> model.transferItem(key, stack.id, count, intoApp) }
+                        ) { count ->
+                            model.transferItem(
+                                if (intoApp) from else key.orEmpty(),
+                                stack.id,
+                                count,
+                                intoApp,
+                            )
+                        }
                     )
                 },
                 onCancel = { mode = ItemMode.MENU },
@@ -147,12 +185,13 @@ private enum class ItemMode { MENU, WITHDRAW, DEPOSIT }
 private fun ItemListOverlay(
     title: String,
     items: List<ItemStack>,
-    onChoose: (ItemStack) -> Unit,
+    /** Whose save each row is from, when more than one is being shown. */
+    headers: List<String> = emptyList(),
+    onChoose: (Int) -> Unit,
     onCancel: () -> Unit,
 ) {
     val cursor = rememberCursorLayer(items.size + 1) { index ->
-        val stack = items.getOrNull(index)
-        if (stack == null) onCancel() else onChoose(stack)
+        if (index >= items.size) onCancel() else onChoose(index)
     }
     Box(
         Modifier.fillMaxSize(),
@@ -164,11 +203,16 @@ private fun ItemListOverlay(
             if (items.isEmpty()) GbText("NOTHING HERE.", style = Gen1TextSmall)
             LazyColumn(Modifier.heightIn(max = 320.dp)) {
                 itemsIndexed(items) { index, stack ->
+                    val header = headers.getOrNull(index)
+                    if (header != null && header != headers.getOrNull(index - 1)) {
+                        if (index > 0) Spacer(Modifier.height(gen1Dp(3)))
+                        GbText(header, style = Gen1TextSmall)
+                    }
                     Gen1MenuRow(
                         stack.label,
                         selected = cursor == index,
                         onSelect = {},
-                        onConfirm = { onChoose(stack) },
+                        onConfirm = { onChoose(index) },
                         trailing = "x${stack.count}",
                     )
                 }

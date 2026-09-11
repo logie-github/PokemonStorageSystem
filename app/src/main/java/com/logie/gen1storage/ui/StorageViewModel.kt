@@ -176,6 +176,7 @@ data class UiState(
     val lastSyncedAtMillis: Long? = null,
     val currentStorageBox: Int = 1,
     val showAllSaves: Boolean = false,
+    val showAllItems: Boolean = false,
     /** The [GbPalette] id everything is drawn through. */
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
@@ -265,6 +266,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 items = itemStorage.state(),
                 linked = credentials.isLinked,
                 showAllSaves = settings.showAllSaves,
+                showAllItems = settings.showAllItems,
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
@@ -596,6 +598,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * save that fails to load is skipped rather than failing the whole view;
      * the ones that did load are still worth showing.
      */
+    fun setShowAllItems(enabled: Boolean) {
+        settings.showAllItems = enabled
+        mutable.update { it.copy(showAllItems = enabled) }
+        if (enabled) loadAllSaves()
+    }
+
     fun loadAllSaves() = viewModelScope.launch {
         if (mutable.value.loadingAll) return@launch
         val remotes = mutable.value.saves

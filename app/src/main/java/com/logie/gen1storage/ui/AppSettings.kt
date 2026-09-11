@@ -24,6 +24,15 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_SHOW_ALL, value).apply()
 
     /**
+     * Show every save's items in the item PC at once, the way [showAllSaves]
+     * does for Pokémon. Off by default, for the same reason: it fetches every
+     * save rather than the one in the machine.
+     */
+    var showAllItems: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_ALL_ITEMS, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_ALL_ITEMS, value).apply()
+
+    /**
      * The colour palette everything is drawn through, by [GbPalette] id.
      * Defaults to the untinted look.
      */
@@ -85,6 +94,7 @@ class AppSettings(private val prefs: SharedPreferences) {
 
     private companion object {
         const val KEY_SHOW_ALL = "show-all-saves"
+        const val KEY_SHOW_ALL_ITEMS = "show-all-items"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
         const val KEY_WINDOWS_RIGHT = "windows-on-right"

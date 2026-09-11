@@ -1120,6 +1120,11 @@ private fun LazyListScope.layoutDrawer(state: UiState, model: StorageViewModel) 
                 onToggle = { model.setShowAllSaves(!state.showAllSaves) },
             )
             Gen1Toggle(
+                label = "ALL ITEMS",
+                on = state.showAllItems,
+                onToggle = { model.setShowAllItems(!state.showAllItems) },
+            )
+            Gen1Toggle(
                 label = "WITHDRAW/DEPOSIT",
                 on = state.classicTransferLabels,
                 onToggle = { model.setClassicTransferLabels(!state.classicTransferLabels) },

@@ -44,6 +44,7 @@ fun ChooseCartScreen(
     model: StorageViewModel,
     game: String?,
     sendUids: List<String> = emptyList(),
+    thenOpenStorage: Boolean = false,
 ) {
     val sending = sendUids.isNotEmpty()
     val games = listOf(
@@ -68,7 +69,9 @@ fun ChooseCartScreen(
                     art = art,
                     chosen = game == version.id,
                     modifier = Modifier.weight(1f),
-                    onClick = { model.replace(Screen.ChooseCart(version.id, sendUids)) },
+                    onClick = {
+                        model.replace(Screen.ChooseCart(version.id, sendUids, thenOpenStorage))
+                    },
                 )
             }
         }
@@ -97,7 +100,7 @@ fun ChooseCartScreen(
         val columns = if (isUnfolded()) 2 else 1
         val choose: (RemoteSave) -> Unit = { remote ->
             if (sending) model.chooseWithdrawSave(sendUids, remote.key)
-            else model.chooseCart(remote.key)
+            else model.chooseCart(remote.key, thenOpenStorage)
         }
         // The shared cursor, told how wide the grid is, so it walks across a
         // two-column layout rather than down one of them.

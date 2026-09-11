@@ -255,7 +255,14 @@ private fun ScreenContent(
         Screen.Storage -> StorageHomeScreen(state, model)
         Screen.ItemPc -> ItemPcScreen(state, model)
         Screen.Link -> LinkScreen(state, model)
-        is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game, screen.sendUids)
+        is Screen.ChooseCart ->
+            ChooseCartScreen(
+                state,
+                model,
+                screen.game,
+                screen.sendUids,
+                screen.thenOpenStorage,
+            )
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
         Screen.Downloads -> DownloadsScreen(state, model)

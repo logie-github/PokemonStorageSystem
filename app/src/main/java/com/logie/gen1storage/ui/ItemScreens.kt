@@ -36,7 +36,13 @@ fun MainMenuScreen(state: UiState, model: StorageViewModel) {
     val save = state.save(state.activeSaveKey)?.save
     val player = save?.trainerName?.uppercase()
     val entries = listOf<Pair<String, () -> Unit>>(
-        "LOGIE'S PC" to { model.open(Screen.Storage) },
+        // The cartridge is chosen on the way in rather than being asked for
+        // in the middle of a transfer. Skipped when the account has no saves
+        // at all, so an empty account is not locked out of its own PC.
+        "LOGIE'S PC" to {
+            if (save != null || state.saves.isEmpty()) model.open(Screen.Storage)
+            else model.open(Screen.ChooseCart(null, thenOpenStorage = true))
+        },
         "${player ?: "PLAYER"}'S PC" to {
             // No cartridge in the machine means there is no item PC to open,
             // so the only useful thing to ask for is the cartridge.

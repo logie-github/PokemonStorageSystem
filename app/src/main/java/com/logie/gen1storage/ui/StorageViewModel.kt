@@ -66,6 +66,13 @@ sealed interface Screen {
          * cartridge to work with, and picking a save goes on to its boxes.
          */
         val sendUids: List<String> = emptyList(),
+        /**
+         * Set when the cartridge is being chosen on the way into the PC. The
+         * choice then opens the PC rather than returning to the menu it came
+         * from, so picking a cart is the first step of the trip instead of an
+         * interruption partway through one.
+         */
+        val thenOpenStorage: Boolean = false,
     ) : Screen
     /**
      * The status screen. A null [key] means the Pokémon is in this app's PC and
@@ -469,7 +476,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * silently pointing at a playthrough the player has moved on from is worse
      * than asking again.
      */
-    fun chooseCart(key: String) = selectSave(key) { back() }
+    fun chooseCart(key: String, thenOpenStorage: Boolean = false) = selectSave(key) {
+        mutable.update { state ->
+            val stack = state.stack.dropLastWhile { it is Screen.ChooseCart }
+            val next = if (thenOpenStorage) stack + Screen.Storage else stack
+            state.copy(stack = next.ifEmpty { listOf(Screen.Home) })
+        }
+    }
 
     /**
      * Picks the save a withdrawal lands in, and does it.

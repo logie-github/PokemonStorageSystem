@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -120,14 +119,13 @@ fun Gen1TransferScene(
                             .scale(shown.value)
                             .alpha(shown.value * (1f - leaving.value))
                     ) {
-                        key(revision) {
-                            Gen1Sprite(
-                                speciesId = scene.speciesId,
-                                gameVersionId = scene.gameVersionId,
-                                store = store,
-                                sizeInPixels = SPRITE_PIXELS,
-                            )
-                        }
+                        Gen1Sprite(
+                            speciesId = scene.speciesId,
+                            gameVersionId = scene.gameVersionId,
+                            store = store,
+                            revision = revision,
+                            sizeInPixels = SPRITE_PIXELS,
+                        )
                     }
                 } else {
                     PokeBall(Modifier.size(gen1Dp(BALL_PIXELS)))
@@ -141,14 +139,13 @@ fun Gen1TransferScene(
                 ) {
                     if (shown.value > 0f) {
                         Box(Modifier.scale(shown.value)) {
-                            key(revision) {
-                                Gen1Sprite(
-                                    speciesId = species,
-                                    gameVersionId = scene.gameVersionId,
-                                    store = store,
-                                    sizeInPixels = SPRITE_PIXELS,
-                                )
-                            }
+                            Gen1Sprite(
+                                speciesId = species,
+                                gameVersionId = scene.gameVersionId,
+                                store = store,
+                                revision = revision,
+                                sizeInPixels = SPRITE_PIXELS,
+                            )
                         }
                     } else {
                         PokeBall(Modifier.size(gen1Dp(BALL_PIXELS)))

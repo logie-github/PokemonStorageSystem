@@ -2,14 +2,13 @@ package com.logie.gen1storage.sprites
 
 import android.graphics.BitmapFactory
 import com.logie.gen1storage.download.DownloadProgress
+import com.logie.gen1storage.download.fetchInParallel
 import com.logie.gen1storage.pokemon.Gen1Data
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.coroutines.coroutineContext
 
 /**
  * Fetches the Generation I front sprites and stores them exactly as downloaded.
@@ -37,26 +36,26 @@ class SpriteDownloader(private val store: SpriteStore) {
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadProgress = withContext(Dispatchers.IO) {
         val species = Gen1Data.species.map { it.id }
-        val total = sets.size * species.size
-        var done = 0
-        var failed = 0
+        // Every file in the run, across every set, as one flat list. Going set
+        // by set would have each set's tail waiting on its own last few files
+        // while the line sat idle.
+        val wanted = sets.flatMap { set -> species.map { set to it } }
+        val total = wanted.size
 
         onProgress(DownloadProgress(0, total))
+        sets.forEach { set -> File(store.fileFor(set, species.first()).parent!!).mkdirs() }
 
-        for (set in sets) {
-            File(store.fileFor(set, species.first()).parent!!).mkdirs()
-            for (id in species) {
-                coroutineContext.ensureActive()
-                val target = store.fileFor(set, id)
-                if (!target.isFile) {
-                    val ok = runCatching { fetch(set, id, target) }.getOrDefault(false)
-                    if (!ok) failed++
-                }
-                done++
-                onProgress(DownloadProgress(done, total, failed))
-            }
+        // Four hundred and fifty small files: the time goes on round trips, not
+        // on bytes, so they go a handful at a time rather than one after
+        // another. The same treatment the followers and the cries already had.
+        val failed = fetchInParallel(wanted, total, onProgress) { (set, id) ->
+            val target = store.fileFor(set, id)
+            // Already here is already done. TRUE stands for "nothing to do"
+            // because the helper reads null as a failure.
+            if (target.isFile) true
+            else true.takeIf { fetch(set, id, target) }
         }
-        DownloadProgress(done, total, failed, finished = true).also(onProgress)
+        DownloadProgress(total, total, failed, finished = true).also(onProgress)
     }
 
     private fun fetch(set: SpriteSet, speciesId: String, target: File): Boolean {
@@ -66,12 +65,13 @@ class SpriteDownloader(private val store: SpriteStore) {
             readTimeout = 30_000
             instanceFollowRedirects = true
         }
-        val bytes = try {
+        // Deliberately not disconnected: that closes the pooled socket, and
+        // with four hundred and fifty files to fetch from one host it meant
+        // four hundred and fifty fresh handshakes. Closing the stream hands
+        // the connection back to the pool for the next one.
+        val bytes =
             if (connection.responseCode != HttpURLConnection.HTTP_OK) return false
-            connection.inputStream.use { it.readBytes() }
-        } finally {
-            connection.disconnect()
-        }
+            else connection.inputStream.use { it.readBytes() }
         if (bytes.isEmpty()) return false
 
         // Confirm it really is an image before it lands in the sprite folder,

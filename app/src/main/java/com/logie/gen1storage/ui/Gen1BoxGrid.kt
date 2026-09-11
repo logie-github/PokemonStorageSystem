@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -303,15 +302,13 @@ private fun BoxHead(
     val end = Gen1Text.copy(textAlign = TextAlign.End)
     Row(modifier) {
         Column(Modifier.width(gen1Dp(HEAD_SPRITE_PIXELS))) {
-            // Keyed on the revision so a download or a set change redraws it.
-            key(spriteRevision) {
-                Gen1Sprite(
-                    pokemon?.speciesId,
-                    stored?.provenance?.gameVersion,
-                    sprites,
-                    sizeInPixels = HEAD_SPRITE_PIXELS,
-                )
-            }
+            Gen1Sprite(
+                pokemon?.speciesId,
+                stored?.provenance?.gameVersion,
+                sprites,
+                revision = spriteRevision,
+                sizeInPixels = HEAD_SPRITE_PIXELS,
+            )
             Spacer(Modifier.height(gen1Dp(2)))
             GbText(
                 pokemon?.species?.let { "No.%03d".format(it.dexNumber) } ?: " ",

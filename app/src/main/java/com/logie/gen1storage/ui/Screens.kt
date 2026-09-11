@@ -991,7 +991,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
             // The list keeps the edge the menus use; the drawer opens into
             // the space beside it rather than over the top of it.
             if (!Gen1Layout.windowsOnRight) {
-                Box(Modifier.weight(1f)) { OptionsList(state, model, drawer) { drawer = it } }
+                Box(Modifier.weight(1f)) { OptionsList(state, model) { drawer = it } }
                 Box(Modifier.weight(1f)) {
                     drawer?.let {
                         OptionsDrawerContent(it, state, model, onShareReport) { drawer = null }
@@ -1003,13 +1003,13 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                         OptionsDrawerContent(it, state, model, onShareReport) { drawer = null }
                     }
                 }
-                Box(Modifier.weight(1f)) { OptionsList(state, model, drawer) { drawer = it } }
+                Box(Modifier.weight(1f)) { OptionsList(state, model) { drawer = it } }
             }
         }
         return
     }
 
-    OptionsList(state, model, drawer) { drawer = it }
+    OptionsList(state, model) { drawer = it }
 }
 
 /** The drawers, in the order they are offered. */
@@ -1026,7 +1026,6 @@ enum class OptionsDrawer(val label: String) {
 private fun OptionsList(
     state: UiState,
     model: StorageViewModel,
-    open: OptionsDrawer?,
     onOpen: (OptionsDrawer) -> Unit,
 ) {
     val drawers = OptionsDrawer.entries
@@ -1043,7 +1042,6 @@ private fun OptionsList(
                         selected = cursor == index,
                         onSelect = {},
                         onConfirm = { onOpen(entry) },
-                        trailing = if (open == entry) "◀" else null,
                     )
                 }
             }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,6 +48,12 @@ fun ChooseCartScreen(
     thenOpenStorage: Boolean = false,
 ) {
     val sending = sendUids.isNotEmpty()
+    // The lead Pokémon is in the save itself; the account's summary carries
+    // only the trainer, the badges and the count. So the saves on the shelf
+    // are read as soon as the shelf is opened. Nothing is re-fetched that is
+    // already held at the revision the account reports, so coming back here is
+    // free.
+    LaunchedEffect(state.saves) { model.loadAllSaves() }
     val games = listOf(
         GameVersion.RED to R.drawable.title_red,
         GameVersion.BLUE to R.drawable.title_blue,
@@ -189,6 +196,9 @@ private fun SaveRow(
     modifier: Modifier,
 ) {
     val save = state.save(remote.key)?.save
+    // Nothing has been read yet, so nothing is known about the party. Saying
+    // "NO POKéMON" here would be a claim rather than a reading.
+    val read = save != null
     val fallback = "SAVE $slot"
     val title = remember(remote.key, state.cartRevision) { model.cartName(remote.key) }
         ?.uppercase() ?: fallback
@@ -223,19 +233,30 @@ private fun SaveRow(
                 }
                 GbText(trainer, style = Gen1TextSmall, maxLines = 1)
                 GbText(
-                    lead?.let { "${it.displayName.uppercase()}, L${it.level}" } ?: "NO POKéMON",
+                    when {
+                        lead != null -> "${lead.displayName.uppercase()}, L${lead.level}"
+                        read -> "NO POKéMON"
+                        else -> " "
+                    },
                     style = Gen1TextSmall,
                     maxLines = 1,
                 )
                 time?.let { GbText("PLAY TIME: $it", style = Gen1TextSmall, maxLines = 1) }
                 GbText("$badges BADGES - $caught CAUGHT", style = Gen1TextSmall, maxLines = 1)
             }
-            Gen1Sprite(
-                speciesId = lead?.speciesId,
-                gameVersionId = remote.version.id,
-                store = model.sprites,
-                sizeInPixels = 32,
-            )
+            // The bracketed mark means "there is no art for this one", which
+            // is only worth saying once the save has actually been read.
+            if (read) {
+                Gen1Sprite(
+                    speciesId = lead?.speciesId,
+                    gameVersionId = remote.version.id,
+                    store = model.sprites,
+                    revision = state.spriteRevision,
+                    sizeInPixels = 32,
+                )
+            } else {
+                Spacer(Modifier.size(gen1Dp(32)))
+            }
         }
     }
 }

@@ -27,7 +27,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -35,8 +38,11 @@ import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.Font
@@ -276,14 +282,34 @@ fun Modifier.gen1Ground(): Modifier {
     val ramp = remember(palette) {
         intArrayOf(palette.lightest.toArgb(), palette.light.toArgb(), palette.dark.toArgb())
     }
-    return this.drawWithCache {
-        val heightPx = size.height.roundToInt().coerceAtLeast(1)
-        val image = ditherRamp(unit, heightPx, ramp)
-        // Repeated across, clamped down: the strip is already the full height,
-        // so only the horizontal axis has anything to tile.
-        val brush = ShaderBrush(ImageShader(image, TileMode.Repeated, TileMode.Clamp))
-        onDrawBehind { drawRect(brush) }
+
+    // The ramp belongs to the window, never to whatever happens to be carrying
+    // it. Measured off the element instead, a half-width column beside a menu
+    // ran the whole light-to-dark ramp over its own height and a shorter one
+    // over its own, so the two disagreed about what colour a given line of the
+    // screen was and left a seam straight down the middle — the ground visibly
+    // stepping where a window began. One strip, one height, and every piece of
+    // ground on screen reads the same row of it at the same height.
+    val windowHeight = LocalWindowInfo.current.containerSize.height.coerceAtLeast(1)
+    val image = remember(unit, windowHeight, ramp) { ditherRamp(unit, windowHeight, ramp) }
+    // Repeated across, clamped down: the strip is already the window's height,
+    // so only the horizontal axis has anything to tile.
+    val brush = remember(image) {
+        ShaderBrush(ImageShader(image, TileMode.Repeated, TileMode.Clamp))
     }
+
+    // Where this piece of ground sits in the window, so the strip can be drawn
+    // from the window's top corner and then cut to the piece. Read inside the
+    // draw lambda, so moving only ever costs a redraw.
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    return this
+        .onGloballyPositioned { origin = it.positionInRoot() }
+        .drawBehind {
+            val area = size
+            translate(left = -origin.x, top = -origin.y) {
+                drawRect(brush, topLeft = origin, size = area)
+            }
+        }
 }
 
 /**

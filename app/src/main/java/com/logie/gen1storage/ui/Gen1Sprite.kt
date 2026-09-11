@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.SpriteStore
 
@@ -40,21 +42,35 @@ fun Gen1Sprite(
     gameVersionId: String?,
     store: SpriteStore,
     modifier: Modifier = Modifier,
+    /**
+     * Bumped whenever what is on disk changes — a download finishing, a
+     * palette change, a set pinned to a species.
+     *
+     * Part of the keys rather than something callers wrap this in, because
+     * forgetting to wrap it is silent: a sprite that answered "nothing here"
+     * before the download went on saying it afterwards, and the art looked
+     * like it had never arrived.
+     */
+    revision: Int = 0,
     /** Width and height in Game Boy pixels; the games draw a front sprite at 56. */
     sizeInPixels: Int = 56,
     onLongPress: ((String) -> Unit)? = null,
     onTap: (() -> Unit)? = null,
 ) {
-    var image by remember(speciesId, gameVersionId) { mutableStateOf<ImageBitmap?>(null) }
+    var image by remember(speciesId, gameVersionId, revision) { mutableStateOf<ImageBitmap?>(null) }
     // Whether the answer is in yet. Without this the first frame after a
     // change has no image and no reason to think one is coming, so the
     // bracketed mark flashed up every time — on the cartridge screen, once
     // per save, every time the game was switched.
-    var settled by remember(speciesId, gameVersionId) { mutableStateOf(false) }
+    var settled by remember(speciesId, gameVersionId, revision) { mutableStateOf(false) }
 
-    LaunchedEffect(speciesId, gameVersionId, store) {
+    LaunchedEffect(speciesId, gameVersionId, store, revision) {
         settled = false
-        image = speciesId?.let { store.load(it, gameVersionId) }
+        // Off the main thread: this decodes a PNG and then walks it twice to
+        // point sample and recolour it, and on the main thread that is a
+        // dropped frame every time a sprite changes — which, walking a box
+        // with the cursor, is every spot.
+        image = speciesId?.let { id -> withContext(Dispatchers.IO) { store.load(id, gameVersionId) } }
         settled = true
     }
 

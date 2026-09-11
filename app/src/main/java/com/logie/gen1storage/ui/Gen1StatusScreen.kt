@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,16 +79,14 @@ fun Gen1StatusScreen(
             // bracketed placeholder flashed over it until the file loaded
             // again; from out here it is the same sprite either way.
             val sprite: @Composable () -> Unit = {
-                // Keyed on the revision so a download or a set change redraws it.
-                key(spriteRevision) {
-                    Gen1Sprite(
-                        pokemon.speciesId,
-                        gameVersionId,
-                        store,
-                        onLongPress = onSpriteLongPress,
-                        onTap = { cries?.cry(pokemon.species?.dexNumber) },
-                    )
-                }
+                Gen1Sprite(
+                    pokemon.speciesId,
+                    gameVersionId,
+                    store,
+                    revision = spriteRevision,
+                    onLongPress = onSpriteLongPress,
+                    onTap = { cries?.cry(pokemon.species?.dexNumber) },
+                )
             }
             Row(Modifier.fillMaxWidth()) {
                 Column(Modifier.width(gen1Dp(56))) {

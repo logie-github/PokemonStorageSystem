@@ -17,8 +17,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.logie.gen1storage.sound.LocalGen1Audio
+import com.logie.gen1storage.sound.SoundEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -40,14 +44,21 @@ fun Gen1MenuRow(
     trailing: String? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    /** What taking this row sounds like. Null for rows that are not a choice. */
+    sound: SoundEffect? = SoundEffect.CURSOR,
 ) {
+    val audio = LocalGen1Audio.current
     Row(
         modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
             // One tap takes the row. The two-tap cursor-then-A rhythm belongs
             // to the swipe controls, where there is a cursor to move first.
-            .gen1Clickable(enabled) { onSelect(); onConfirm() },
+            .gen1Clickable(enabled) {
+                sound?.let { audio?.play(it) }
+                onSelect()
+                onConfirm()
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(20.dp)) {
@@ -112,13 +123,13 @@ fun StorageSystemScreen(
     overlay: @Composable (() -> Unit)? = null,
     action: @Composable (() -> Unit)? = null,
 ) {
-    val rows: List<Pair<String, () -> Unit>> = buildList {
-        add("WITHDRAW PKMN" to onWithdraw)
-        add("DEPOSIT PKMN" to onDeposit)
-        add("VIEW BOXES" to onView)
-        add("CHANGE CART" to onChangeCart)
+    val rows: List<Triple<String, () -> Unit, SoundEffect>> = buildList {
+        add(Triple("WITHDRAW PKMN", onWithdraw, SoundEffect.SELECT))
+        add(Triple("DEPOSIT PKMN", onDeposit, SoundEffect.SELECT))
+        add(Triple("VIEW BOXES", onView, SoundEffect.SELECT))
+        add(Triple("CHANGE CART", onChangeCart, SoundEffect.CURSOR))
         // Everything the cartridge's PC does not have lives behind this row.
-        if (onOptions != null) add("OPTIONS" to onOptions)
+        if (onOptions != null) add(Triple("OPTIONS", onOptions, SoundEffect.OPTIONS))
     }
 
     // Four layers, and the order is the whole point: the menu, then whatever
@@ -141,8 +152,8 @@ fun StorageSystemScreen(
                 .align(Gen1Layout.corner(top = true, menuSide = true))
                 .wrapContentWidth()
         ) {
-            rows.forEachIndexed { index, (label, action) ->
-                Gen1MenuRow(label, selected == index, {}, action)
+            rows.forEachIndexed { index, (label, action, sound) ->
+                Gen1MenuRow(label, selected == index, {}, action, sound = sound)
             }
         }
 
@@ -214,6 +225,10 @@ fun MonListOverlay(
     val selected = rememberCursorLayer(entries.size + 1) { index ->
         if (index < entries.size) onConfirm(index) else onCancel()
     }
+    // The cursor can walk past the bottom of what is drawn, so the list has to
+    // follow it. Without this a swipe moves a cursor nobody can see.
+    val scroll = rememberLazyListState()
+    LaunchedEffect(selected) { scroll.animateScrollToItem(selected) }
     Box(
         Modifier.fillMaxSize(),
         contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
@@ -227,7 +242,7 @@ fun MonListOverlay(
             if (entries.isEmpty()) {
                 GbText(emptyMessage)
             }
-            LazyColumn(Modifier.heightIn(max = 320.dp)) {
+            LazyColumn(Modifier.heightIn(max = 320.dp), state = scroll) {
                 itemsIndexed(entries) { index, row ->
                     if (row.header != null) {
                         if (index > 0) Spacer(Modifier.height(gen1Dp(3)))
@@ -304,12 +319,14 @@ fun ChangeBoxOverlay(
         val box = boxes.getOrNull(index)
         if (box == null) onCancel() else onConfirm(box.first)
     }
+    val scroll = rememberLazyListState()
+    LaunchedEffect(selected) { scroll.animateScrollToItem(selected) }
     Box(
         Modifier.fillMaxSize(),
         contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
     ) {
         Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5))) {
-            LazyColumn(Modifier.heightIn(max = 380.dp)) {
+            LazyColumn(Modifier.heightIn(max = 380.dp), state = scroll) {
                 itemsIndexed(boxes) { index, (number, label, count) ->
                     Gen1MenuRow(
                         label,

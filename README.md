@@ -9,14 +9,15 @@ no Shizuku, no file permissions.
 ## Features
 
 - **12 boxes of 20**, on top of what your saves already hold.
-- **Deposit** any Pokémon from a save — party or its own PC boxes.
-- **Withdraw** back into any save. It asks which game and which save.
+- **Deposit** from a save's boxes. **Withdraw** back into them — it asks which
+  game and which save. Parties are never touched.
 - **Move** stored Pokémon between boxes. **Release** them, with a log kept on
   the device.
 - **Rename** boxes and saves by holding them.
 - **Auto-sync** on open and every 30 seconds.
 - **Status screens** with stats, types, moves and PP.
-- **Sprites and cries**, downloaded on request. Tap a sprite to hear it again.
+- **Sprites, cries and sound effects**, downloaded on request. Tap a sprite to
+  hear it again. Each sound can be turned off in OPTIONS → SOUND FX.
 - **Seven palettes**, windows on the left or right, full screen, foldable
   aware.
 

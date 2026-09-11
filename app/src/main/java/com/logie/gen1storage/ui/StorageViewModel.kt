@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.compose.ui.graphics.toArgb
+import com.logie.gen1storage.sound.SoundEffect
 import androidx.lifecycle.viewModelScope
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
@@ -54,6 +55,7 @@ sealed interface Screen {
     data object Sprites : Screen
     data object Options : Screen
     data object Credits : Screen
+    data object SoundEffects : Screen
 }
 
 /** A modal the Generation I menus would draw as a window over everything. */
@@ -106,6 +108,9 @@ data class UiState(
     val activeSaveKey: String? = null,
     /** Bumped when a cartridge is renamed, so the carts redraw. */
     val cartRevision: Int = 0,
+    /** All sound off, and which individual effects are on under that. */
+    val soundOff: Boolean = false,
+    val soundsOn: Set<String> = emptySet(),
     val loadingAll: Boolean = false,
     val spriteProgress: SpriteProgress? = null,
     val spritesInstalled: Int = 0,
@@ -156,6 +161,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
+                soundOff = settings.soundOff,
+                soundsOn = enabledSounds(),
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
             )
         }
@@ -404,6 +411,22 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
     }
+
+    private fun enabledSounds(): Set<String> =
+        SoundEffect.entries.filter { settings.soundEnabled(it) }.map { it.id }.toSet()
+
+    fun setSoundOff(off: Boolean) {
+        settings.soundOff = off
+        mutable.update { it.copy(soundOff = off, soundsOn = enabledSounds()) }
+    }
+
+    fun setSoundEnabled(effect: SoundEffect, enabled: Boolean) {
+        settings.setSoundEnabled(effect, enabled)
+        mutable.update { it.copy(soundsOn = enabledSounds()) }
+    }
+
+    /** Whether an effect may be heard, for the player to consult. */
+    fun soundEnabled(effect: SoundEffect): Boolean = settings.soundEnabled(effect)
 
     fun setWindowsOnRight(enabled: Boolean) {
         settings.windowsOnRight = enabled

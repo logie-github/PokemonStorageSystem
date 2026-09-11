@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Pokemon
+import com.logie.gen1storage.sound.LocalGen1Audio
+import com.logie.gen1storage.sound.SoundEffect
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StoredPokemon
@@ -162,17 +164,14 @@ fun StorageSystemScreen(
     var refusal by remember(mode) { mutableStateOf<String?>(null) }
 
 
-    // Everything a save holds, grouped the way the save holds it: the party
-    // first, then each of its boxes. Deposit used to offer only the party,
-    // which meant a Pokémon already in a save's PC could not be moved here
-    // without first withdrawing it in the game.
+    // A save's boxes, and only its boxes. A transfer never touches a party:
+    // the party is what the player is actually carrying, the games guard it
+    // with the last-Pokémon rule, and there is nothing here worth the risk of
+    // reaching into it.
     val depositRows = buildList {
         val keys = if (state.showAllSaves) state.saves.map { it.key } else listOfNotNull(state.activeSaveKey)
         keys.forEach { key ->
             val save = state.save(key)?.save ?: return@forEach
-            save.party.forEachIndexed { index, mon ->
-                add(PartyRow(key, SaveLocation.Party(index + 1), 0, index, mon, save))
-            }
             save.boxes.forEachIndexed { boxIndex, box ->
                 box.forEachIndexed { index, mon ->
                     add(PartyRow(key, SaveLocation.Box(boxIndex + 1, index + 1), boxIndex + 1, index, mon, save))
@@ -186,7 +185,7 @@ fun StorageSystemScreen(
         val row = depositRows[index]
         val previous = depositRows.getOrNull(index - 1)
         if (previous != null && previous.key == row.key && previous.area == row.area) return null
-        val where = if (row.area == 0) "PARTY" else "BOX ${row.area}"
+        val where = "BOX ${row.area}"
         return if (state.showAllSaves) "${row.save.trainerName.uppercase()} $where" else where
     }
 
@@ -337,33 +336,24 @@ fun StorageSystemScreen(
             mode == PcMode.DEPOSIT && pick != null -> ({
                 // The games never let the last one go, and neither does this —
                 // counted per save, not per list.
-                // Only the party has a last one worth protecting.
-                val last = pick.area == 0 && pick.save.partyCount <= 1
                 MonActionOverlay(
                     actions = listOf(
                         MonAction(
                             "DEPOSIT",
                             {
-                                // Chosen, then refused in the message window,
-                                // which is where the games say it.
-                                if (last) {
-                                    refusal = "You can't deposit the last POKéMON!"
-                                    chosen = null
-                                } else {
-                                    model.prompt(
-                                        Prompt.Confirm(
-                                            lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
-                                            confirmLabel = "DEPOSIT",
-                                            onConfirm = {
-                                                model.depositFromSave(
-                                                    pick.key,
-                                                    pick.location,
-                                                    state.currentStorageBox,
-                                                )
-                                            },
-                                        )
+                                model.prompt(
+                                    Prompt.Confirm(
+                                        lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
+                                        confirmLabel = "DEPOSIT",
+                                        onConfirm = {
+                                            model.depositFromSave(
+                                                pick.key,
+                                                pick.location,
+                                                state.currentStorageBox,
+                                            )
+                                        },
                                     )
-                                }
+                                )
                             },
                         ),
                         MonAction("STATS", { model.open(Screen.Status(pick.key, pick.area, pick.slot)) }),
@@ -516,6 +506,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
     var cursor by remember { mutableStateOf(-1) }
     val entries = listOf<Pair<String, () -> Unit>>(
         "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
+        "SOUND FX" to { model.open(Screen.SoundEffects) },
     )
 
     ScreenColumn {
@@ -570,7 +561,12 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.linked) {
-                        Gen1Button("SYNC NOW", { model.sync() }, enabled = !state.syncing)
+                        val audio = LocalGen1Audio.current
+                        Gen1Button(
+                            "SYNC NOW",
+                            { audio?.play(SoundEffect.SAVE); model.sync() },
+                            enabled = !state.syncing,
+                        )
                         Gen1Button("UNLINK", {
                             model.prompt(
                                 Prompt.Confirm(
@@ -938,20 +934,14 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
 
             is Prompt.ChooseWithdrawTarget -> {
                 val save = state.save(prompt.key)?.save
-                Gen1Frame {
-                    GbText("PUT IT WHERE?")
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    GbText("PUT IT IN WHICH BOX?")
                     if (save == null) {
                         GbText("THAT SAVE IS NOT OPEN.")
                     } else {
-                        Gen1MenuRow(
-                            "PARTY",
-                            selected = false,
-                            onSelect = { model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Party) },
-                            onConfirm = { model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Party) },
-                            trailing = "${save.partyCount}/${Gen1RecompSave.PARTY_MAX}",
-                            enabled = save.partyCount < Gen1RecompSave.PARTY_MAX,
-                        )
-                        LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                        // Boxes only. A withdrawal never joins a party — that
+                        // is the player's to arrange in the game.
+                        LazyColumn(Modifier.heightIn(max = 320.dp)) {
                             itemsIndexed(save.boxes) { index, box ->
                                 val number = index + 1
                                 Gen1MenuRow(
@@ -969,8 +959,50 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                             }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(gen1Dp(3)))
                     Gen1Button("CANCEL", model::dismissPrompt)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Which of the interface's sounds may be heard.
+ *
+ * One switch over the lot, and under it one per sound. A recording that is not
+ * on the device is marked so, because a switch that is on and silent is worse
+ * than one that says why.
+ */
+@Composable
+fun SoundEffectsScreen(state: UiState, model: StorageViewModel) {
+    ScreenColumn {
+        item {
+            Gen1Frame {
+                GbText("SOUND FX", style = Gen1TextLarge)
+            }
+        }
+        item {
+            Gen1Frame {
+                Gen1Toggle(
+                    label = "DISABLE ALL",
+                    on = state.soundOff,
+                    onToggle = { model.setSoundOff(!state.soundOff) },
+                )
+            }
+        }
+        if (!state.soundOff) {
+            item {
+                Gen1Frame {
+                    SoundEffect.entries.forEach { effect ->
+                        Gen1Toggle(
+                            label = effect.label,
+                            on = effect.id in state.soundsOn,
+                            onToggle = {
+                                model.setSoundEnabled(effect, effect.id !in state.soundsOn)
+                            },
+                        )
+                    }
                 }
             }
         }

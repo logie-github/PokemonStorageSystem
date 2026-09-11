@@ -29,7 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.pokemon.Gen1Growth
-import com.logie.gen1storage.sound.LocalCryPlayer
+import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
 import com.logie.gen1storage.sprites.SpriteStore
@@ -56,7 +56,7 @@ fun Gen1StatusScreen(
 
     // One cry, when a Pokémon is opened — not on every page turn, and not
     // again when something unrelated recomposes.
-    val cries = LocalCryPlayer.current
+    val cries = LocalGen1Audio.current
     LaunchedEffect(pokemon.fingerprint) { cries?.cry(pokemon.species?.dexNumber) }
 
     Row(modifier.fillMaxSize().padding(gen1Dp(4))) {

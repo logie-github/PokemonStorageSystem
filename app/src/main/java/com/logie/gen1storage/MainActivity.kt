@@ -23,6 +23,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -45,9 +47,12 @@ import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
+import com.logie.gen1storage.ui.SoundEffectsScreen
 import com.logie.gen1storage.ui.GbButton
-import com.logie.gen1storage.sound.LocalCryPlayer
-import com.logie.gen1storage.sound.rememberCryPlayer
+import com.logie.gen1storage.sound.Gen1Audio
+import com.logie.gen1storage.sound.LocalGen1Audio
+import com.logie.gen1storage.sound.SoundEffect
+import com.logie.gen1storage.sound.rememberGen1Audio
 import com.logie.gen1storage.ui.Gen1Cursor
 import com.logie.gen1storage.ui.Gen1Layout
 import com.logie.gen1storage.ui.Gen1WindowBounds
@@ -134,11 +139,28 @@ private fun StorageApp(model: StorageViewModel) {
 
     val cursor = remember { Gen1Cursor() }
     val windows = remember { Gen1WindowBounds() }
+    val audio = rememberGen1Audio()
+
+    // The player's own switches decide what is heard; the audio layer just
+    // asks. Kept in a side effect so a setting changed in OPTIONS takes hold
+    // without the player object having to be rebuilt.
+    SideEffect { audio.allowed = { effect -> effect.id in state.soundsOn } }
+
+    // Turning the machine on, once.
+    LaunchedEffect(Unit) { audio.play(SoundEffect.OPEN_PC) }
+
+    // Backing all the way out to the main menu is logging off. Only on the
+    // way down — the app starts at the main menu, and that is turning on.
+    var lastDepth by remember { mutableIntStateOf(1) }
+    LaunchedEffect(state.stack.size) {
+        if (state.stack.size == 1 && lastDepth > 1) audio.play(SoundEffect.LOG_OFF)
+        lastDepth = state.stack.size
+    }
 
     CompositionLocalProvider(
         LocalGen1Cursor provides cursor,
         LocalGen1WindowBounds provides windows,
-        LocalCryPlayer provides rememberCryPlayer(),
+        LocalGen1Audio provides audio,
     ) {
     Box(
         Modifier
@@ -155,9 +177,15 @@ private fun StorageApp(model: StorageViewModel) {
                     // nothing rather than closing the app — a hold should never
                     // be the thing that puts someone out of the machine.
                     GbButton.B -> model.back()
-                    GbButton.A -> cursor.confirm()
+                    GbButton.A -> {
+                        audio.play(SoundEffect.CURSOR)
+                        cursor.confirm()
+                    }
                     GbButton.START ->
-                        if (state.screen != Screen.Options) model.open(Screen.Options)
+                        if (state.screen != Screen.Options) {
+                            audio.play(SoundEffect.OPTIONS)
+                            model.open(Screen.Options)
+                        }
                     GbButton.UP, GbButton.DOWN, GbButton.LEFT, GbButton.RIGHT ->
                         cursor.move(button)
                     else -> Unit
@@ -209,6 +237,7 @@ private fun ScreenContent(
         is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
         Screen.Sprites -> SpritesScreen(state, model)
         Screen.Credits -> CreditsScreen()
+        Screen.SoundEffects -> SoundEffectsScreen(state, model)
         Screen.Options -> OptionsScreen(
             state = state,
             model = model,

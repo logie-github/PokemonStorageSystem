@@ -2,6 +2,7 @@ package com.logie.gen1storage.ui
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.logie.gen1storage.sound.SoundEffect
 
 /**
  * The player's own preferences. Every one defaults to the plain behaviour: the
@@ -61,12 +62,26 @@ class AppSettings(private val prefs: SharedPreferences) {
         }.apply()
     }
 
+    /** One switch over the lot, for when none of it is wanted. */
+    var soundOff: Boolean
+        get() = prefs.getBoolean(KEY_SOUND_OFF, false)
+        set(value) = prefs.edit().putBoolean(KEY_SOUND_OFF, value).apply()
+
+    fun soundEnabled(effect: SoundEffect): Boolean =
+        !soundOff && prefs.getBoolean(KEY_SOUND_PREFIX + effect.id, true)
+
+    fun setSoundEnabled(effect: SoundEffect, enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SOUND_PREFIX + effect.id, enabled).apply()
+    }
+
     private companion object {
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
         const val KEY_WINDOWS_RIGHT = "windows-on-right"
         const val KEY_CART_PREFIX = "cart-name-"
+        const val KEY_SOUND_OFF = "sound-off"
+        const val KEY_SOUND_PREFIX = "sound-"
         /** As long as a name can be and still fit a cartridge label. */
         const val MAX_CART_NAME = 10
     }

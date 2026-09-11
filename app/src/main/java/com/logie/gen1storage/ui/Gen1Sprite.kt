@@ -56,7 +56,10 @@ fun Gen1Sprite(
             .size(gen1Dp(sizeInPixels))
             .then(
                 if (speciesId != null && (onLongPress != null || onTap != null)) {
-                    Modifier.pointerInput(speciesId, onTap) {
+                    // Claims the hold when it has one of its own, so the back
+                    // gesture does not fire alongside the picker.
+                    (if (onLongPress != null) Modifier.gen1HoldRegion() else Modifier)
+                        .pointerInput(speciesId, onTap) {
                         detectTapGestures(
                             onTap = onTap?.let { tap -> { _ -> tap() } },
                             onLongPress = onLongPress?.let { press -> { _ -> press(speciesId) } },

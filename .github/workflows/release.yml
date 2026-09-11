@@ -114,7 +114,11 @@ jobs:
           echo "sha256=$(cut -d' ' -f1 < "${{ steps.version.outputs.apk }}.sha256")" >> "$GITHUB_OUTPUT"
           cat "${{ steps.version.outputs.apk }}.sha256"
 
+      # A convenience copy. The release assets below are the deliverable, and
+      # the artifact store has a quota that has nothing to do with whether the
+      # APK built and signed.
       - name: Upload the release APK as a workflow artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.apk }}

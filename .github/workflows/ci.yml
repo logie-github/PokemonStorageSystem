@@ -58,7 +58,11 @@ jobs:
           fi
           git checkout -- app/src/main/java/com/logie/gen1storage/pokemon/
 
+      # Convenience, not the point of the run. The artifact store has a quota
+      # and fills up; a build whose tests and lint both passed has not failed
+      # because there was nowhere to put a copy of the APK.
       - name: Upload the debug APK
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: Gen1Storage-debug-${{ github.sha }}
@@ -68,6 +72,7 @@ jobs:
 
       - name: Upload the test and lint reports
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: reports

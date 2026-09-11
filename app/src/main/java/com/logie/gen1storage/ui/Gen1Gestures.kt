@@ -43,6 +43,7 @@ enum class GbButton { UP, DOWN, LEFT, RIGHT, A, B, START, SELECT }
  */
 fun Modifier.gen1Gestures(
     isFreeSpace: (Offset) -> Boolean,
+    isHoldClaimed: (Offset) -> Boolean,
     onButton: (GbButton) -> Unit,
 ): Modifier = this.then(
     Modifier.pointerInput(Unit) {
@@ -94,8 +95,11 @@ fun Modifier.gen1Gestures(
             // Held still past the delay: B, wherever the finger is. Consumed
             // and drained so the row underneath does not fire on release too.
             if (outcome == null) {
-                val withinSlop = abs(travelled.x) <= tapSlop && abs(travelled.y) <= tapSlop
-                if (withinSlop) {
+                // Generous about drift: a finger held still for half a second
+                // is never perfectly still, and cancelling the hold over a few
+                // pixels is why it sometimes did nothing at all.
+                val held = abs(travelled.x) < swipeThreshold && abs(travelled.y) < swipeThreshold
+                if (held && !isHoldClaimed(start)) {
                     onButton(GbButton.B)
                     drain(travelled, consume = true)
                     return@awaitEachGesture

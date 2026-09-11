@@ -105,10 +105,9 @@ fun Gen1StatusScreen(
         Spacer(Modifier.weight(1f))
     }
 
-    // Out of the window and into the screen's own corner, on whichever side
-    // the menus are set to: it is a way out of this screen, not a field of it.
+    // Opposite the menus, so it never lands under whatever they are showing.
     Box(Modifier.fillMaxSize().padding(gen1Dp(4))) {
-        Box(Modifier.align(Gen1Layout.corner(top = false, menuSide = true))) { footer() }
+        Box(Modifier.align(Gen1Layout.corner(top = false, menuSide = false))) { footer() }
     }
 }
 

@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 
 /**
@@ -107,6 +106,8 @@ fun StorageSystemScreen(
     onChangeBox: () -> Unit,
     onRenameBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
+    /** False while a message is showing that would be drawn over it anyway. */
+    showBox: Boolean = true,
     message: String = "What?",
     overlay: @Composable (() -> Unit)? = null,
     action: @Composable (() -> Unit)? = null,
@@ -147,24 +148,27 @@ fun StorageSystemScreen(
 
         overlay?.invoke()
 
-        Box(
-            Modifier.fillMaxSize(),
-            contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
-        ) {
-            // Tap to change box, hold to rename it — the same window, because
-            // it is the same subject, and there is nowhere better to put a
-            // rename than on the thing being renamed.
-            Gen1Frame(
-                Modifier
-                    .wrapContentWidth()
-                    .pointerInput(onChangeBox, onRenameBox) {
-                        detectTapGestures(
-                            onTap = { onChangeBox() },
-                            onLongPress = { onRenameBox() },
-                        )
-                    }
+        if (showBox) {
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
             ) {
-                GbText(boxLabel.uppercase())
+                // Tap to change box, hold to rename it — the same window,
+                // because it is the same subject, and there is nowhere better
+                // to put a rename than on the thing being renamed.
+                Gen1Frame(
+                    Modifier
+                        .wrapContentWidth()
+                        .gen1HoldRegion()
+                        .pointerInput(onChangeBox, onRenameBox) {
+                            detectTapGestures(
+                                onTap = { onChangeBox() },
+                                onLongPress = { onRenameBox() },
+                            )
+                        }
+                ) {
+                    GbText(boxLabel.uppercase())
+                }
             }
         }
 
@@ -175,16 +179,13 @@ fun StorageSystemScreen(
             // Sized to its text, and drawn over the box window rather than
             // beside it: when a box is empty the message is what matters,
             // and that is where the cartridge puts it.
-            Gen1Frame(Modifier.wrapContentWidth()) { GbText(message, style = Gen1Text) }
+            Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) { GbText(message, style = Gen1Text) }
         }
 
 
         action?.invoke()
     }
 }
-
-/** How much of the screen a list may cover before it has to scroll sideways. */
-private const val LIST_MAX_WIDTH = 0.78f
 
 /**
  * One row of a Pokémon list. [header] labels the group this row starts, which
@@ -219,7 +220,7 @@ fun MonListOverlay(
     ) {
         Gen1Frame(
             Modifier
-                .widthIn(max = (LocalConfiguration.current.screenWidthDp * LIST_MAX_WIDTH).dp)
+                .gen1MaxWidth()
                 .wrapContentWidth()
                 .padding(top = gen1Dp(5))
         ) {

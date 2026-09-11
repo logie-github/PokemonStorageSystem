@@ -149,7 +149,7 @@ private fun StorageApp(model: StorageViewModel) {
             .displayCutoutPadding()
             // Always on. Everything but the hold is read only in empty space,
             // so this never takes a gesture a window wanted.
-            .gen1Gestures(windows::isFreeSpace) { button ->
+            .gen1Gestures(windows::isFreeSpace, windows::isHoldClaimed) { button ->
                 when (button) {
                     // Back, from anywhere. At the top of the stack this does
                     // nothing rather than closing the app — a hold should never

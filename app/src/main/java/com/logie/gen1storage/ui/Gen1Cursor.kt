@@ -109,18 +109,47 @@ fun rememberCursorLayer(
 class Gen1WindowBounds {
     private val bounds = mutableStateMapOf<Any, Rect>()
 
+    /** Windows that do something of their own with a hold. */
+    private val holds = mutableStateMapOf<Any, Rect>()
+
     fun set(owner: Any, rect: Rect) {
         bounds[owner] = rect
     }
 
     fun forget(owner: Any) {
         bounds.remove(owner)
+        holds.remove(owner)
+    }
+
+    fun setHold(owner: Any, rect: Rect) {
+        holds[owner] = rect
     }
 
     fun isFreeSpace(point: Offset): Boolean = bounds.values.none { it.contains(point) }
+
+    /**
+     * Whether something under [point] wants the hold for itself.
+     *
+     * A hold anywhere goes back, but a cartridge and a box window are renamed
+     * by holding them. Both fire on their own timer, so without this the hold
+     * would rename *and* navigate away from what it renamed.
+     */
+    fun isHoldClaimed(point: Offset): Boolean = holds.values.any { it.contains(point) }
 }
 
 val LocalGen1WindowBounds = staticCompositionLocalOf { Gen1WindowBounds() }
+
+/**
+ * Marks this window as handling its own hold, so the global back gesture
+ * leaves it alone.
+ */
+@Composable
+fun Modifier.gen1HoldRegion(): Modifier {
+    val registry = LocalGen1WindowBounds.current
+    val owner = remember { Any() }
+    DisposableEffect(registry, owner) { onDispose { registry.forget(owner) } }
+    return onGloballyPositioned { registry.setHold(owner, it.boundsInRoot()) }
+}
 
 /**
  * Reports this window's position to the gesture layer, and forgets it again

@@ -1,5 +1,6 @@
 package com.logie.gen1storage.ui
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,35 +10,31 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.R
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.sync.RemoteSave
 
 /**
- * Choosing which cartridge the PC is working with.
+ * Choosing which save the PC is working with.
  *
- * The screen opens on the three games and nothing else — no menu behind it, no
- * message window, no box window — because at that moment there is exactly one
- * decision to make. Picking a game keeps the three where they are and lists
- * that game's saves underneath as cartridges, so changing game is one tap
- * rather than a trip backwards.
+ * The screen opens on the three games and nothing else, because at that moment
+ * there is one decision to make. Picking a game keeps the three on screen and
+ * lists that game's saves underneath.
  *
- * Whatever is chosen here stays chosen until it is changed or the app is
- * closed. It is deliberately not written to disk: which cartridge is in the
- * machine is a fact about this sitting, not a preference.
+ * Whatever is chosen stays chosen until it is changed or the app is closed. It
+ * is deliberately not written to disk: which save is loaded is a fact about
+ * this sitting, not a preference.
  */
 @Composable
 fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
@@ -75,50 +72,40 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
             return@Column
         }
 
-        val carts = state.saves.filter { it.version.id == game }
-        if (carts.isEmpty()) {
+        val saves = state.saves.filter { it.version.id == game }
+        if (saves.isEmpty()) {
             Notice("NO SAVES FOUND.")
             return@Column
         }
 
-        val palette = paletteFor(game)
+        // Two columns once there is room for two, one otherwise. A save is a
+        // window like every other window here, so it is capped the same way
+        // and never runs the width of an opened screen.
+        val columns = if (isUnfolded()) 2 else 1
         LazyColumn(verticalArrangement = Arrangement.spacedBy(gen1Dp(4))) {
-            items(carts.chunked(CARTS_PER_ROW)) { row ->
+            items(saves.chunked(columns)) { row ->
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(gen1Dp(3)),
+                    horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
                 ) {
                     row.forEach { remote ->
-                        Cart(
+                        SaveRow(
                             remote = remote,
-                            slot = carts.indexOf(remote) + 1,
+                            slot = saves.indexOf(remote) + 1,
                             state = state,
                             model = model,
-                            palette = palette,
                             selected = state.activeSaveKey == remote.key,
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    // Keeps a short last row the same width as a full one.
-                    repeat(CARTS_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
     }
 }
 
-/** One line in a window sized to it, centred on the screen. */
-@Composable
-private fun Notice(text: String) {
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Gen1Frame(Modifier.wrapContentWidth()) { GbText(text) }
-    }
-}
-
-/** Three across, as asked; a fourth would make each one too narrow to read. */
-private const val CARTS_PER_ROW = 3
-
-/** Each game in its own colours, whatever the app's palette happens to be. */
+/** Each game shown in its own colours, whatever the app's palette is set to. */
 private fun paletteFor(gameId: String?): GbPalette = when (gameId) {
     GameVersion.RED.id -> GbPalette.RED
     GameVersion.BLUE.id -> GbPalette.BLUE
@@ -148,82 +135,80 @@ private fun TitleCard(
 }
 
 /**
- * One save, drawn on the cartridge.
+ * One save, as an ordinary window.
  *
- * Identified by its slot rather than by its trainer — a cartridge is a
- * cartridge, and two playthroughs by the same trainer are otherwise the same
- * label twice. A hold renames it to whatever the player would rather call it.
- *
- * Nothing here is outlined. On a folded phone a cart is about a third of the
- * screen, the type on it is at its smallest, and an outline at that size turns
- * every glyph into a smudge. Flat dark text on the flat label reads.
+ * It used to be drawn on a picture of a cartridge, which meant a layout that
+ * fought every other window in the app and type small enough to be a smudge on
+ * a folded phone. It is a window like the rest now: four lines and the party's
+ * lead on the right. A hold renames it.
  */
 @Composable
-private fun Cart(
+private fun SaveRow(
     remote: RemoteSave,
     slot: Int,
     state: UiState,
     model: StorageViewModel,
-    palette: GbPalette,
     selected: Boolean,
     modifier: Modifier,
 ) {
     val save = state.save(remote.key)?.save
-    val trainer = (save?.trainerName ?: remote.summary.trainerName ?: "?").uppercase()
     val fallback = "SAVE $slot"
-    // Read through the revision so a rename redraws the label.
-    val title = remember(remote.key, state.cartRevision) {
-        model.cartName(remote.key)
-    }?.uppercase() ?: fallback
+    val title = remember(remote.key, state.cartRevision) { model.cartName(remote.key) }
+        ?.uppercase() ?: fallback
+    val trainer = (save?.trainerName ?: remote.summary.trainerName ?: "?").uppercase()
     val lead = save?.party?.firstOrNull()
+    val badges = save?.badgeCount ?: remote.summary.badges ?: 0
+    val caught = save?.let { it.partyCount + it.storedCount } ?: remote.summary.dexCount ?: 0
+    val time = save?.playTimeText ?: remote.summary.timeText ?: "--:--"
 
-    Box(
+    Gen1Frame(
         modifier
-            .aspectRatio(CART_WIDTH.toFloat() / CART_HEIGHT)
+            .gen1HoldRegion()
             .pointerInput(remote.key) {
                 detectTapGestures(
                     onTap = { model.chooseCart(remote.key) },
                     onLongPress = { model.prompt(Prompt.RenameCart(remote.key, fallback)) },
                 )
-            },
-    ) {
-        Gen1Art(R.drawable.cart, palette, Modifier.fillMaxSize(), title)
-
-        Column(
-            Modifier
-                .fillMaxSize()
-                // The label recess the cartridge art leaves for exactly this.
-                .padding(
-                    start = gen1Dp(7),
-                    end = gen1Dp(7),
-                    top = gen1Dp(14),
-                    bottom = gen1Dp(7),
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Label(if (selected) "▶$title" else title, palette)
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Gen1Sprite(
-                    speciesId = lead?.speciesId,
-                    gameVersionId = remote.version.id,
-                    store = model.sprites,
-                    sizeInPixels = 20,
-                )
             }
-            Label(trainer, palette)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                GbText(if (selected) "▶$title" else title, maxLines = 1)
+                GbText(trainer, style = Gen1TextSmall, maxLines = 1)
+                GbText(
+                    lead?.let { "${it.displayName.uppercase()}, L${it.level}" } ?: "NO POKéMON",
+                    style = Gen1TextSmall,
+                    maxLines = 1,
+                )
+                GbText("$time - $badges BADGES - $caught CAUGHT", style = Gen1TextSmall, maxLines = 1)
+            }
+            Gen1Sprite(
+                speciesId = lead?.speciesId,
+                gameVersionId = remote.version.id,
+                store = model.sprites,
+                sizeInPixels = 32,
+            )
         }
     }
 }
 
-private const val CART_WIDTH = 48
-private const val CART_HEIGHT = 54
-
-/** A line on the label: the palette's darkest on the label's own shade. */
+/** One line in a window sized to it, centred on the screen. */
 @Composable
-private fun Label(text: String, palette: GbPalette) {
-    GbText(
-        text,
-        style = Gen1TextTiny.copy(color = palette.darkest, textAlign = TextAlign.Center),
-        maxLines = 1,
-    )
+private fun Notice(text: String) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Gen1Frame(Modifier.gen1MaxWidth()) { GbText(text) }
+    }
+}
+
+/**
+ * How wide a window may get.
+ *
+ * Half the screen once there is a lot of it — a window that runs the width of
+ * an opened foldable stops reading as a window and starts reading as a page.
+ */
+@Composable
+fun Modifier.gen1MaxWidth(): Modifier {
+    val screen = LocalConfiguration.current.screenWidthDp
+    val cap = if (isUnfolded()) screen / 2 else (screen * 0.86f).toInt()
+    return this.widthIn(max = cap.dp)
 }

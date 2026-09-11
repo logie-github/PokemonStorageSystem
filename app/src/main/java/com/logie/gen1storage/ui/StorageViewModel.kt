@@ -252,6 +252,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // must not be pulled out from under it.
         if (current.syncing || current.busy || !credentials.isLinked) return@launch
         mutable.update { it.copy(syncing = true) }
+        // In a finally, because the flag is what stops a second sync starting
+        // on top of the first — if an unexpected throw ever left it set, the
+        // automatic sync would go quiet for the rest of the session and look
+        // exactly like a feature that was never wired up.
+        try {
+            runSync(silent)
+        } finally {
+            mutable.update { it.copy(syncing = false) }
+        }
+    }
+
+    private suspend fun runSync(silent: Boolean) {
         when (val result = withContext(Dispatchers.IO) { saves.listSaves() }) {
             is SyncResult.Ok -> {
                 val account = result.value
@@ -266,7 +278,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                                 ?.rev == it.loaded[key]?.rev
                         },
                         storage = storage.state(),
-                        syncing = false,
                         lastSyncedAtMillis = System.currentTimeMillis(),
                         diagnostics = diagnosticsFor(account) + storage.loadNotes,
                         recoveryNotes = notes.resolved + notes.unresolved,
@@ -281,14 +292,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             SyncResult.Unauthorized -> {
                 credentials.clear()
                 mutable.update {
-                    it.copy(syncing = false, linked = false, account = null, activeSaveKey = null)
+                    it.copy(linked = false, account = null, activeSaveKey = null)
                 }
                 message("THIS DEVICE IS NO LONGER LINKED.", "LINK IT AGAIN WITH FRESH CODES.")
             }
-            is SyncResult.Conflict -> mutable.update { it.copy(syncing = false) }
+            is SyncResult.Conflict -> Unit
             is SyncResult.Failed -> {
                 mutable.update {
-                    it.copy(syncing = false, diagnostics = listOf("Sync failed: ${result.message}"))
+                    it.copy(diagnostics = listOf("Sync failed: ${result.message}"))
                 }
                 if (!silent) message(result.message.uppercase())
             }
@@ -510,7 +521,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
         viewModelScope.launch {
             mutable.update { it.copy(busy = true, prompt = null) }
-            val result = withContext(Dispatchers.IO) { engine.deposit(loaded, location, targetBox) }
+            val result = try {
+                withContext(Dispatchers.IO) { engine.deposit(loaded, location, targetBox) }
+            } catch (e: Exception) {
+                mutable.update { it.copy(busy = false) }
+                return@launch message("THE TRANSFER COULD NOT START.", e.message.orEmpty().uppercase())
+            }
             finish(result)
         }
     }
@@ -519,7 +535,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
         viewModelScope.launch {
             mutable.update { it.copy(busy = true, prompt = null) }
-            val result = withContext(Dispatchers.IO) { engine.withdraw(loaded, uid, target) }
+            val result = try {
+                withContext(Dispatchers.IO) { engine.withdraw(loaded, uid, target) }
+            } catch (e: Exception) {
+                mutable.update { it.copy(busy = false) }
+                return@launch message("THE TRANSFER COULD NOT START.", e.message.orEmpty().uppercase())
+            }
             finish(result)
         }
     }

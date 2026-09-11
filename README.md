@@ -1,99 +1,55 @@
 # Pokémon Storage for Gen1Recomp
 
-An Android storage system for [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp)
-saves, built to look and behave like Bill's PC.
+An Android PC for [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp)
+saves, styled like Bill's PC. Generation I only.
 
-Link it once with the two codes from the game's **SAVE SYNC** dialog. No
-Shizuku, no root, no folder picking, no storage permission — the app reads and
-writes saves through the same service the game does, and never touches another
-app's files.
+Link it once with the two codes from the game's **SAVE SYNC** dialog. No root,
+no Shizuku, no file permissions.
 
-Generation I only.
+## Features
 
-## What it does
+- **12 boxes of 20**, on top of what your saves already hold.
+- **Deposit** any Pokémon from a save — party or its own PC boxes.
+- **Withdraw** back into any save. It asks which game and which save.
+- **Move** stored Pokémon between boxes. **Release** them, with a log kept on
+  the device.
+- **Rename** boxes and saves by holding them.
+- **Auto-sync** on open and every 30 seconds.
+- **Status screens** with stats, types, moves and PP.
+- **Sprites and cries**, downloaded on request. Tap a sprite to hear it again.
+- **Seven palettes**, windows on the left or right, full screen, foldable
+  aware.
 
-**Storage**
+## Controls
 
-- Twelve boxes of twenty, on top of whatever your saves already hold.
-- Deposit a Pokémon from a save's party, withdraw one back into any save's
-  party or PC.
-- Move stored Pokémon between boxes. Hold a box or a cartridge to rename it.
-- Release a Pokémon, with the entry kept in a log on the device so it is
-  recoverable by hand.
+Tap a menu row to take it. In the empty space around the windows: swipe to move
+the cursor, tap to take it, double tap for OPTIONS, hold to go back.
 
-**Saves**
+## Setup
 
-- Reads every Red, Blue and Yellow playthrough on your account.
-- Pick a cartridge from the three games, then from that game's saves — each one
-  drawn as a cartridge showing the trainer, their lead Pokémon, badges and
-  catches.
-- Re-reads the account when the app opens and every thirty seconds it is on
-  screen, so nothing goes stale while the game is running.
-- Keeps a local backup of every save it writes.
+1. Gen1Recomp → **SAVE SYNC** → **Sync now**
+2. Note the two codes
+3. Here: **OPTIONS → ACCESS SAVE** → enter both → **LINK THIS DEVICE**
 
-**Looking at Pokémon**
+Treat the codes like a password.
 
-- The Generation I status screen, both pages — stats, types, OT, moves and PP.
-- Downloadable sprites, shown in the art of the game a Pokémon came from. Hold
-  a sprite to pin that species to a different game's art.
-- Cries play when a status page opens, and again when the sprite is tapped.
+## The rule
 
-**Interface**
-
-- The real Generation I window border, drawn from the tiles in the games'
-  disassembly, and the Game Boy font.
-- Seven colour palettes: untinted, Red, Blue, Green, Yellow, the Game Boy Color
-  pastel mix, and the Super Game Boy route palette. Sprites are recoloured to
-  match.
-- Windows on the left or the right, whichever suits your grip.
-- Full screen in any orientation. On a foldable, the status pages take the left
-  half and the menu stays usable on the right.
-
-**Controls**
-
-Tap a menu row to take it. You can also drive it from the empty space around
-the windows:
-
-| Gesture | |
-| --- | --- |
-| Swipe | Moves the cursor |
-| Tap | Takes whatever the cursor is on |
-| Double tap | OPTIONS |
-| Tap and hold | Back |
-
-## Getting started
-
-1. In Gen1Recomp, open **SAVE SYNC** and tap **Sync now**.
-2. Read off the two eight-digit codes.
-3. In this app: **OPTIONS → ACCESS SAVE** → enter both codes → **LINK THIS
-   DEVICE**.
-
-Changes made here reach the game on its next sync.
-
-**Treat the codes like a password.** Anyone holding both can read and write
-every save on the account. Use **Get new sync codes** in the game if they leak.
-
-## The one rule
-
-A transfer never loses, duplicates or silently alters a Pokémon, and never
-leaves a valid save corrupted. Everything else in the app follows from that —
-see [DESIGN.md](DESIGN.md) for how.
+A transfer never loses, duplicates or alters a Pokémon, and never corrupts a
+save. See [DESIGN.md](DESIGN.md).
 
 ## Credits
 
-This app ships no game code and no ripped game assets. It is not affiliated
-with Nintendo, Game Freak or The Pokémon Company. Full credits are in the app
-under **OPTIONS → CREDITS**.
+No game code or ripped assets ship with this app. Not affiliated with Nintendo,
+Game Freak or The Pokémon Company.
 
-- Sprites — [ShiraTheMogul/rby-sprites-project](https://github.com/ShiraTheMogul/rby-sprites-project)
-- Cries — [PokeAPI/cries](https://github.com/PokeAPI/cries)
-- Font — [pokemon-font](https://github.com/cooljeanius/pokemon-font) by Superpencil, SIL OFL 1.1
-- Game data — [pret/pokered](https://github.com/pret/pokered)
-- Saves and sync — [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp)
+[Sprites](https://github.com/ShiraTheMogul/rby-sprites-project) ·
+[Cries](https://github.com/PokeAPI/cries) ·
+[Font](https://github.com/cooljeanius/pokemon-font) ·
+[Game data](https://github.com/pret/pokered) ·
+[Saves](https://github.com/bryanthaboi/gen1recomp)
 
-## Building
-
-JDK 17 and the Android SDK (platform 35).
+## Build
 
 ```sh
 ./gradlew testDebugUnitTest lintRelease assembleDebug

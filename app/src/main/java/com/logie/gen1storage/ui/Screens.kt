@@ -44,8 +44,12 @@ import com.logie.gen1storage.transfer.WithdrawTarget
 import java.time.Instant
 
 /** One party slot the deposit list can offer, and the save it belongs to. */
+/** One place in a save a Pokémon can be taken from, and what is there. */
 private data class PartyRow(
     val key: String,
+    val location: SaveLocation,
+    /** 0 for the party, otherwise the box number — what groups the list. */
+    val area: Int,
     val slot: Int,
     val mon: Gen1Pokemon,
     val save: Gen1RecompSave,
@@ -143,7 +147,14 @@ fun StorageSystemScreen(
     var chosen by remember(mode) { mutableStateOf<Int?>(null) }
 
     val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
-    val stored = box?.contents.orEmpty()
+    val boxContents = box?.contents.orEmpty()
+    // WITHDRAW offers everything the app holds; VIEW is about the box that is
+    // open, because that is the one being rearranged.
+    val stored = if (mode == PcMode.WITHDRAW) {
+        state.storage.boxes.flatMap { it.contents }
+    } else {
+        boxContents
+    }
 
     // ALL POKéMON puts every save in the lists at once, so there is nothing
     // to choose; otherwise the PC works with one cartridge at a time.
@@ -151,31 +162,40 @@ fun StorageSystemScreen(
     var refusal by remember(mode) { mutableStateOf<String?>(null) }
 
 
+    // Everything a save holds, grouped the way the save holds it: the party
+    // first, then each of its boxes. Deposit used to offer only the party,
+    // which meant a Pokémon already in a save's PC could not be moved here
+    // without first withdrawing it in the game.
     val depositRows = buildList {
-        val keys = if (state.showAllSaves) {
-            state.saves.map { it.key }
-        } else {
-            listOfNotNull(state.activeSaveKey)
-        }
+        val keys = if (state.showAllSaves) state.saves.map { it.key } else listOfNotNull(state.activeSaveKey)
         keys.forEach { key ->
             val save = state.save(key)?.save ?: return@forEach
-            save.party.forEachIndexed { index, mon -> add(PartyRow(key, index, mon, save)) }
+            save.party.forEachIndexed { index, mon ->
+                add(PartyRow(key, SaveLocation.Party(index + 1), 0, index, mon, save))
+            }
+            save.boxes.forEachIndexed { boxIndex, box ->
+                box.forEachIndexed { index, mon ->
+                    add(PartyRow(key, SaveLocation.Box(boxIndex + 1, index + 1), boxIndex + 1, index, mon, save))
+                }
+            }
         }
     }
 
-// An empty list has nothing to draw a window around, so it speaks through
+    /** The label a group starts under, or null once that group is open. */
+    fun depositHeader(index: Int): String? {
+        val row = depositRows[index]
+        val previous = depositRows.getOrNull(index - 1)
+        if (previous != null && previous.key == row.key && previous.area == row.area) return null
+        val where = if (row.area == 0) "PARTY" else "BOX ${row.area}"
+        return if (state.showAllSaves) "${row.save.trainerName.uppercase()} $where" else where
+    }
+
+    // An empty list has nothing to draw a window around, so it speaks through
     // the message window instead — which is what the cartridge does.
     val emptiness = when (mode) {
         PcMode.WITHDRAW, PcMode.VIEW -> "What? There are no POKéMON here!".takeIf { stored.isEmpty() }
         PcMode.DEPOSIT -> "There are no POKéMON here.".takeIf { depositRows.isEmpty() }
         else -> null
-    }
-
-    /** The label a group of party rows sits under, or null once it is open. */
-    fun depositHeader(index: Int): String? {
-        val row = depositRows[index]
-        if (index > 0 && depositRows[index - 1].key == row.key) return null
-        return "${row.save.trainerName.uppercase()}'s PARTY"
     }
 
     // The list and the window that opens on a chosen Pokémon are separate
@@ -187,6 +207,8 @@ fun StorageSystemScreen(
 
     StorageSystemScreen(
         boxLabel = box?.label ?: "BOX ${state.currentStorageBox}",
+        // Hidden rather than drawn under a message that would cover it.
+        showBox = refusal == null && emptiness == null,
         // Both directions need a cartridge in the machine. If there is not one
         // yet, that is the only question worth asking, so it gets the whole
         // screen rather than a window over this one.
@@ -251,18 +273,18 @@ fun StorageSystemScreen(
             mode == PcMode.WITHDRAW && storedPick != null -> ({
                 MonActionOverlay(
                     actions = listOf(
+                        // Always asks which save it is going to, and then
+                        // where inside it — a withdrawal leaves the app, and
+                        // that is not something to infer from what happens to
+                        // be loaded.
                         MonAction(
                             "WITHDRAW",
-                            {
-                                val key = state.activeSaveKey
-                                if (key == null) model.prompt(Prompt.ChooseWithdrawSave(storedPick.uid))
-                                else model.prompt(Prompt.ChooseWithdrawTarget(storedPick.uid, key))
-                            },
+                            { model.prompt(Prompt.ChooseWithdrawSave(storedPick.uid)) },
                             enabled = state.saves.isNotEmpty(),
                         ),
                         MonAction("STATS", {
                             model.open(
-                                Screen.Status(null, state.currentStorageBox, stored.indexOf(storedPick))
+                                Screen.Status(null, state.currentStorageBox, boxContents.indexOf(storedPick))
                             )
                         }),
                     ),
@@ -288,7 +310,7 @@ fun StorageSystemScreen(
                         }),
                         MonAction("STATS", {
                             model.open(
-                                Screen.Status(null, state.currentStorageBox, stored.indexOf(storedPick))
+                                Screen.Status(null, state.currentStorageBox, boxContents.indexOf(storedPick))
                             )
                         }),
                         MonAction("RELEASE", {
@@ -315,7 +337,8 @@ fun StorageSystemScreen(
             mode == PcMode.DEPOSIT && pick != null -> ({
                 // The games never let the last one go, and neither does this —
                 // counted per save, not per list.
-                val last = pick.save.partyCount <= 1
+                // Only the party has a last one worth protecting.
+                val last = pick.area == 0 && pick.save.partyCount <= 1
                 MonActionOverlay(
                     actions = listOf(
                         MonAction(
@@ -334,7 +357,7 @@ fun StorageSystemScreen(
                                             onConfirm = {
                                                 model.depositFromSave(
                                                     pick.key,
-                                                    SaveLocation.Party(pick.slot + 1),
+                                                    pick.location,
                                                     state.currentStorageBox,
                                                 )
                                             },
@@ -343,7 +366,7 @@ fun StorageSystemScreen(
                                 }
                             },
                         ),
-                        MonAction("STATS", { model.open(Screen.Status(pick.key, 0, pick.slot)) }),
+                        MonAction("STATS", { model.open(Screen.Status(pick.key, pick.area, pick.slot)) }),
                     ),
                     onCancel = { chosen = null },
                 )
@@ -540,6 +563,9 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
             Gen1Frame {
                 GbText("SAVE SYNC")
                 Gen1Field("STATUS", if (state.linked) "LINKED" else "NOT LINKED")
+                state.lastSyncedAtMillis?.let {
+                    Gen1Field("LAST SYNC", java.time.Instant.ofEpochMilli(it).toString().take(19))
+                }
                 model.linkedDeviceLabel?.let { Gen1Field("THIS DEVICE", it) }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -752,7 +778,7 @@ private fun SavePicker(
     Gen1Frame {
         GbText(title)
         if (state.saves.isEmpty()) {
-            GbText("NO SAVES ON THE ACCOUNT.", style = Gen1TextSmall)
+            GbText("NO SAVES FOUND.", style = Gen1TextSmall)
         }
         LazyColumn(Modifier.heightIn(max = 320.dp)) {
             itemsIndexed(state.saves) { _, remote ->

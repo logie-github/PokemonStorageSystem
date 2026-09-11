@@ -34,6 +34,9 @@ fun Gen1Frame(
     val pixel = gen1PixelPx().toFloat()
     Column(
         modifier
+            // Half an opened screen at most. A window that runs the width of
+            // an unfolded phone stops reading as a window.
+            .gen1MaxWidth()
             .gen1WindowBounds()
             .background(fill)
             .drawBehind { drawGen1Border(ink, pixel) }

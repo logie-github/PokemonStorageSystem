@@ -180,7 +180,8 @@ fun StorageSystemScreen(
         if (showBox) {
             Box(
                 Modifier.fillMaxSize(),
-                contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
+                // The far corner, because the message wants the menu's edge.
+                contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
             ) {
                 // Tap to change box, hold to rename it — the same window,
                 // because it is the same subject, and there is nowhere better
@@ -203,11 +204,11 @@ fun StorageSystemScreen(
 
         Box(
             Modifier.fillMaxSize(),
-            contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
+            // Against the same edge as the menu and the windows that open
+            // under it, so it lines up with what it is talking about rather
+            // than sitting off on its own across the screen.
+            contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
         ) {
-            // Sized to its text, and drawn over the box window rather than
-            // beside it: when a box is empty the message is what matters,
-            // and that is where the cartridge puts it.
             Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) {
                 Gen1TypedLines(listOf(message))
             }

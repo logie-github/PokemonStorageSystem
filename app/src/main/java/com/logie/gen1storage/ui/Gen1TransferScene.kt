@@ -115,15 +115,13 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
             // other outcome uses, so there is nothing to put here.
             if (scene.motion != TransferMotion.RELEASE) {
                 Gen1Frame(Modifier.wrapContentWidth()) {
-                    Gen1TypedLines(
-                        listOf(
-                            "Sending ${scene.name} to",
-                            "${scene.destination}.",
-                            // One is arriving and the other is leaving, and
-                            // the same word cannot be right for both.
-                            if (scene.arriving) "Hello, ${scene.name}!"
-                            else "Goodbye, ${scene.name}!",
-                        )
+                    GbText("Sending ${scene.name} to")
+                    GbText("${scene.destination}.")
+                    // One is arriving and the other is leaving, and the same
+                    // word cannot be right for both.
+                    GbText(
+                        if (scene.arriving) "Hello, ${scene.name}!"
+                        else "Goodbye, ${scene.name}!"
                     )
                 }
             }
@@ -203,18 +201,22 @@ object Gen1TransferTiming {
 private const val SPRITE_PIXELS = 56
 private const val BALL_PIXELS = 16
 /** How long the Pokémon takes to go into the ball, or to come out of it. */
-private const val GROW_MILLIS = 320L
+private const val GROW_MILLIS = 560L
 
 /** How long a ball is on screen before it opens, on the way in. */
-private const val BALL_HOLD_MILLIS = 260L
+private const val BALL_HOLD_MILLIS = 420L
 
-/** A beat on whatever the scene ends on, so it is seen rather than glimpsed. */
-private const val HOLD_MILLIS = 320L
+/**
+ * A beat on whatever the scene ends on, so it is seen rather than glimpsed.
+ * Short on purpose: the motion itself is what there is to watch, and a long
+ * pause after it has stopped reads as the app having hung.
+ */
+private const val HOLD_MILLIS = 120L
 
 /** A released Pokémon stands there a moment before it goes. */
 private const val FREED_HOLD_MILLIS = 420L
 private const val LEAVE_MILLIS = 560
-private const val PUFF_MILLIS = 180L
+private const val PUFF_MILLIS = 260L
 private const val PUFF_MOTES = 8
 
 private val BALL_TILE = listOf(

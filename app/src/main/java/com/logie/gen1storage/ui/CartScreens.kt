@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,23 +95,36 @@ fun ChooseCartScreen(
         // window like every other window here, so it is capped the same way
         // and never runs the width of an opened screen.
         val columns = if (isUnfolded()) 2 else 1
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(gen1Dp(4))) {
+        val choose: (RemoteSave) -> Unit = { remote ->
+            if (sending) model.chooseWithdrawSave(sendUids, remote.key)
+            else model.chooseCart(remote.key)
+        }
+        // The shared cursor, told how wide the grid is, so it walks across a
+        // two-column layout rather than down one of them.
+        val cursor = rememberCursorLayer(saves.size, columns) { index ->
+            saves.getOrNull(index)?.let(choose)
+        }
+        val scroll = rememberLazyListState()
+        LaunchedEffect(cursor, columns) { scroll.animateScrollToItem(cursor / columns) }
+        LazyColumn(
+            state = scroll,
+            verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+        ) {
             items(saves.chunked(columns)) { row ->
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
                 ) {
                     row.forEach { remote ->
+                        val index = saves.indexOf(remote)
                         SaveRow(
                             remote = remote,
-                            slot = saves.indexOf(remote) + 1,
+                            slot = index + 1,
                             state = state,
                             model = model,
-                            selected = !sending && state.activeSaveKey == remote.key,
-                            onChoose = {
-                                if (sending) model.chooseWithdrawSave(sendUids, remote.key)
-                                else model.chooseCart(remote.key)
-                            },
+                            cursor = cursor == index,
+                            loaded = !sending && state.activeSaveKey == remote.key,
+                            onChoose = { choose(remote) },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -163,7 +178,10 @@ private fun SaveRow(
     slot: Int,
     state: UiState,
     model: StorageViewModel,
-    selected: Boolean,
+    /** Where the cursor is. */
+    cursor: Boolean,
+    /** Whether this is the cartridge already in the machine. */
+    loaded: Boolean,
     onChoose: () -> Unit,
     modifier: Modifier,
 ) {
@@ -189,7 +207,17 @@ private fun SaveRow(
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                GbText(if (selected) "▶$title" else title, maxLines = 1)
+                // The arrow is the cursor and nothing else. Which cart is
+                // in the machine is a different fact, and it was confusing to
+                // say both with one mark.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    GbText(
+                        if (cursor) "▶$title" else title,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                    )
+                    if (loaded) GbText("LOADED", style = Gen1TextSmall, maxLines = 1)
+                }
                 GbText(trainer, style = Gen1TextSmall, maxLines = 1)
                 GbText(
                     lead?.let { "${it.displayName.uppercase()}, L${it.level}" } ?: "NO POKéMON",

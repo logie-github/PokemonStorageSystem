@@ -101,7 +101,17 @@ sealed interface Screen {
 }
 
 /** Which way the ball scene runs. */
-enum class TransferMotion { OUT, IN, RELEASE }
+enum class TransferMotion {
+    OUT, IN, RELEASE;
+
+    /**
+     * What the move is called from where the player is standing. Only one
+     * that leaves this PC is being sent anywhere; one arriving is being
+     * brought in.
+     */
+    val verb: String get() = if (this == IN) "BRING" else "SEND"
+    val gerund: String get() = if (this == IN) "Bringing" else "Sending"
+}
 
 /** The Pokémon a transfer is moving, and where it is going. */
 data class TransferScene(

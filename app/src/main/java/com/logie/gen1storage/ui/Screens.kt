@@ -264,7 +264,7 @@ fun StorageSystemScreen(
                 alsoSpeciesIds = alsoSpeciesIds,
                 motion = motion,
             ),
-            "SEND $what TO $where?",
+            "${motion.verb} $what TO $where?",
             send,
         )
     }
@@ -708,7 +708,8 @@ private fun TransferButton(
                                         destination = loaded.trainerName.uppercase(),
                                         motion = TransferMotion.OUT,
                                     ),
-                                    "SEND ${pokemon.displayName.uppercase()} TO " +
+                                    "${TransferMotion.OUT.verb} " +
+                                        "${pokemon.displayName.uppercase()} TO " +
                                         "${loaded.trainerName.uppercase()}?",
                                 ) {
                                     model.withdrawToSave(
@@ -738,7 +739,8 @@ private fun TransferButton(
                                 destination = where,
                                 motion = TransferMotion.IN,
                             ),
-                            "SEND ${pokemon.displayName.uppercase()} TO $where?",
+                            "${TransferMotion.IN.verb} " +
+                                "${pokemon.displayName.uppercase()} TO $where?",
                         ) {
                             model.depositFromSave(
                                 key,
@@ -1008,7 +1010,6 @@ enum class OptionsDrawer(val label: String) {
     AUDIO("AUDIO"),
     LAYOUT("LAYOUT"),
     SAVES("SAVES"),
-    THE_PC("THE PC"),
     ABOUT("ABOUT"),
 }
 
@@ -1056,7 +1057,6 @@ private fun OptionsDrawerContent(
             OptionsDrawer.AUDIO -> audioDrawer(state, model)
             OptionsDrawer.LAYOUT -> layoutDrawer(state, model)
             OptionsDrawer.SAVES -> savesDrawer(state, model)
-            OptionsDrawer.THE_PC -> pcDrawer(state, model)
             OptionsDrawer.ABOUT -> aboutDrawer(model, onShareReport)
         }
         item { Gen1BoxButton("BACK", onBack) }

@@ -161,15 +161,15 @@ fun Gen1TransferScene(
             if (asking) {
                 Gen1Frame(Modifier.wrapContentWidth(), opening = true) {
                     Gen1TypedLines(listOf(scene.question.orEmpty()))
-                    Spacer(Modifier.height(gen1Dp(3)))
-                    Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
-                        Gen1Button("YES", onConfirm)
-                        Gen1Button("NO", onCancel)
-                    }
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    // The same cursor-led choice every other window offers.
+                    // Two words side by side had nothing saying which of them
+                    // the A button would take.
+                    Gen1ChoiceRows(listOf("YES" to onConfirm, "NO" to onCancel))
                 }
             } else if (scene.motion != TransferMotion.RELEASE) {
                 Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText("Sending ${scene.name} to")
+                    GbText("${scene.motion.gerund} ${scene.name} to")
                     GbText("${scene.destination}.")
                     // One is arriving and the other is leaving, and the same
                     // word cannot be right for both.

@@ -613,6 +613,28 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
             }
         }
         item {
+            val context = LocalContext.current
+            Gen1Frame(Modifier.wrapContentWidth()) {
+                GbText("LOGIE 2026")
+                GbText("VISIT MY RECOMP MOD REPO:", style = Gen1TextSmall)
+                // The whole line is the link. A URL at this size is a hard
+                // thing to hit, and the row around it is not doing anything
+                // else.
+                Gen1MenuRow(
+                    "github.com/logie-github/TM-Case",
+                    selected = false,
+                    onSelect = {},
+                    onConfirm = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(TM_CASE_REPO))
+                            )
+                        }
+                    },
+                )
+            }
+        }
+        item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 Gen1Button("CREDITS", { model.open(Screen.Credits) })
             }
@@ -811,6 +833,8 @@ private fun PaletteSwatch(palette: GbPalette) {
         }
     }
 }
+
+private const val TM_CASE_REPO = "https://github.com/logie-github/TM-Case"
 
 /** An on/off row drawn as a menu entry with its state in the right column. */
 @Composable

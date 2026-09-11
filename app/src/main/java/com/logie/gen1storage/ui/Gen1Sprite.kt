@@ -46,9 +46,16 @@ fun Gen1Sprite(
     onTap: (() -> Unit)? = null,
 ) {
     var image by remember(speciesId, gameVersionId) { mutableStateOf<ImageBitmap?>(null) }
+    // Whether the answer is in yet. Without this the first frame after a
+    // change has no image and no reason to think one is coming, so the
+    // bracketed mark flashed up every time — on the cartridge screen, once
+    // per save, every time the game was switched.
+    var settled by remember(speciesId, gameVersionId) { mutableStateOf(false) }
 
     LaunchedEffect(speciesId, gameVersionId, store) {
+        settled = false
         image = speciesId?.let { store.load(it, gameVersionId) }
+        settled = true
     }
 
     Box(
@@ -80,7 +87,10 @@ fun Gen1Sprite(
                 // them would undo the whole point of the presentation.
                 filterQuality = FilterQuality.None,
             )
-        } else {
+        } else if (settled) {
+            // Only once nothing is genuinely coming. Until then the space is
+            // simply empty, which is quieter than a mark that is about to be
+            // replaced.
             SpritePlaceholderMark()
         }
     }

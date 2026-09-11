@@ -26,6 +26,8 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -760,6 +762,14 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
 @Composable
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
     var cursor by remember { mutableStateOf(-1) }
+    // The system's own pickers. Nothing is read or written outside the one
+    // file the player points at, and the app asks for no storage permission.
+    val exportFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri -> uri?.let(model::exportTo) }
+    val importFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let(model::importFrom) }
     val entries = listOf<Pair<String, () -> Unit>>(
         "DOWNLOADS" to { model.open(Screen.Downloads) },
         "SOUND FX" to { model.open(Screen.SoundEffects) },
@@ -838,6 +848,25 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                     } else {
                         Gen1Button("ENTER SYNC CODES", { model.open(Screen.Link) })
                     }
+                }
+            }
+        }
+        item {
+            Gen1Frame {
+                GbText("THE PC")
+                Gen1Field("STORED", "${state.storage.total} POKéMON")
+                GbText("EXPORTS AS A LUA FILE.", style = Gen1TextSmall)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Gen1Button(
+                        "EXPORT",
+                        { exportFile.launch(model.exportFileName()) },
+                        enabled = state.storage.total > 0,
+                    )
+                    // Anything, not text/plain: a .lua a file manager has
+                    // never seen is handed over with no type at all, and a
+                    // filtered picker would simply grey it out.
+                    Gen1Button("IMPORT", { importFile.launch(arrayOf("*/*")) })
                 }
             }
         }

@@ -175,6 +175,56 @@ class StorageRepository(private val directory: File) {
         true
     }
 
+    /**
+     * Puts an exported archive back into the PC.
+     *
+     * A uid already here is the same Pokémon, so it is skipped rather than
+     * placed again: importing a file twice, or importing one that overlaps
+     * what is already stored, must never end with two of anything. Each one
+     * goes back to the box it came from when there is room, and to the first
+     * box with room when there is not, which is what a deposit does anyway.
+     *
+     * Written once, at the end, so a file that runs out of room partway still
+     * leaves the PC in one state rather than several.
+     */
+    fun importArchive(archive: StorageArchive.Archive): ImportReport = synchronized(lock) {
+        ensureLoaded()
+        var added = 0
+        var skipped = 0
+        var unplaced = 0
+        val held = HashSet<String>()
+        boxes.forEach { box -> box.forEach { held += it.uid } }
+
+        archive.entries.forEach { entry ->
+            if (!held.add(entry.stored.uid)) {
+                skipped++
+                return@forEach
+            }
+            val start = (entry.box - 1).coerceIn(0, StorageLayout.BOX_COUNT - 1)
+            val target = (0 until StorageLayout.BOX_COUNT)
+                .map { offset -> (start + offset) % StorageLayout.BOX_COUNT }
+                .firstOrNull { boxes[it].size < StorageLayout.BOX_CAPACITY }
+            if (target == null) {
+                held.remove(entry.stored.uid)
+                unplaced++
+            } else {
+                boxes[target].add(entry.stored)
+                added++
+            }
+        }
+
+        // Only for a box the player has not named themselves: their own name
+        // for a box is theirs, and an import is not the place to overwrite it.
+        archive.boxNames.forEach { (index, name) ->
+            if (index in 1..StorageLayout.BOX_COUNT && names[index] == null) {
+                names[index] = name.take(MAX_BOX_NAME)
+            }
+        }
+
+        if (added > 0 || archive.boxNames.isNotEmpty()) persist()
+        ImportReport(added, skipped, unplaced, archive.unreadable)
+    }
+
     /** Forces a re-read from disk; used after an external repair. */
     fun reload() = synchronized(lock) {
         loaded = false

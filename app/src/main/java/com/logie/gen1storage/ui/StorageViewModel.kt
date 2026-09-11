@@ -1,12 +1,14 @@
 package com.logie.gen1storage.ui
 
 import android.app.Application
+import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.compose.ui.graphics.toArgb
 import com.logie.gen1storage.sound.CryStore
 import com.logie.gen1storage.sound.SoundEffect
 import androidx.lifecycle.viewModelScope
+import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
 import com.logie.gen1storage.sync.AccountState
@@ -605,6 +607,75 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun cryBytesOnDisk(): Long = cries.bytesOnDisk()
+
+    // ------- export and import
+
+    /**
+     * Writes the whole PC to a Lua file the player chooses.
+     *
+     * Every Pokémon goes across as it is held, uid and all, so the file is a
+     * restoration rather than a description — and it is the same Lua the saves
+     * and the storage file are written in, readable by this app's own parser
+     * and by anyone who opens it in a text editor.
+     */
+    fun exportTo(uri: Uri) = viewModelScope.launch {
+        val state = storage.state()
+        if (state.total == 0) return@launch message("THERE IS NOTHING IN THE PC.")
+        val result = runCatching {
+            withContext(Dispatchers.IO) {
+                val bytes = StorageArchive.encode(state, System.currentTimeMillis())
+                val resolver = getApplication<Application>().contentResolver
+                // Truncated first: writing over a longer file otherwise leaves
+                // the tail of the old one behind, which would not parse.
+                resolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+                    ?: error("THE FILE COULD NOT BE OPENED")
+                bytes.size
+            }
+        }
+        result.fold(
+            onSuccess = { size ->
+                message("EXPORTED ${state.total} POKéMON.", "${size / 1024} KB WRITTEN.")
+            },
+            onFailure = { message("THE EXPORT FAILED.", it.message.orEmpty().uppercase()) },
+        )
+    }
+
+    /**
+     * Reads an exported file back into the PC.
+     *
+     * A uid already held is the same Pokémon and is skipped, so importing a
+     * file twice cannot duplicate anything. What was added, what was already
+     * here and what would not fit are all reported: an import that quietly
+     * dropped something would be the one failure this app cannot have.
+     */
+    fun importFrom(uri: Uri) = viewModelScope.launch {
+        val archive = runCatching {
+            withContext(Dispatchers.IO) {
+                val resolver = getApplication<Application>().contentResolver
+                val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("THE FILE COULD NOT BE OPENED")
+                StorageArchive.decode(bytes)
+            }
+        }.getOrElse { Result.failure(it) }
+
+        val decoded = archive.getOrElse {
+            return@launch message("THE IMPORT FAILED.", it.message.orEmpty().uppercase())
+        }
+        val report = withContext(Dispatchers.IO) { storage.importArchive(decoded) }
+        mutable.update { it.copy(storage = storage.state()) }
+        message(
+            *buildList {
+                add("IMPORTED ${report.added} POKéMON.")
+                if (report.skipped > 0) add("${report.skipped} WERE ALREADY HERE.")
+                if (report.unplaced > 0) add("${report.unplaced} DID NOT FIT; THE PC IS FULL.")
+                if (report.unreadable > 0) add("${report.unreadable} COULD NOT BE READ.")
+            }.toTypedArray()
+        )
+    }
+
+    /** What an export would be called, so the picker opens with a name in it. */
+    fun exportFileName(): String =
+        "gen1storage-" + java.time.LocalDate.now().toString() + ".lua"
 
     // ------- transfers
 

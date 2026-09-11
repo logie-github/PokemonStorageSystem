@@ -41,9 +41,9 @@ save. See [DESIGN.md](DESIGN.md).
 
 ## Credits
 
-The sound effects are the original games'. No other game code or artwork ships
-with this app — sprites and cries are downloaded on request. Not affiliated with
-Nintendo, Game Freak or The Pokémon Company.
+No game code or ripped assets ship with this app — sprites and cries are
+downloaded on request. Not affiliated with Nintendo, Game Freak or The Pokémon
+Company.
 
 [Sprites](https://github.com/ShiraTheMogul/rby-sprites-project) ·
 [Cries](https://github.com/PokeAPI/cries) ·

@@ -22,10 +22,10 @@ import java.util.Collections
 /**
  * Everything the app plays: the Pokémon cries and the interface's own sounds.
  *
- * The interface's sound effects are bundled; the cries are not. There are 151
- * cries and they are large, so one is fetched on first use and kept on the
- * device the way the sprites are. The seven sound effects are small enough to
- * ship, and a sound that punctuates a tap cannot arrive a second after it.
+ * The interface's sound effects are this project's own work and ship with it.
+ * The cries are not: they are the games' recordings, so one is fetched on first
+ * use and kept on the device the way the sprites are, and nothing of theirs is
+ * distributed here.
  *
  * [SoundPool] rather than MediaPlayer because these are short one-shots: it
  * keeps decoded samples in memory and starts them immediately. Loading is

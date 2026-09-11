@@ -3,9 +3,8 @@ package com.logie.gen1storage.sound
 /**
  * The interface's own sounds, each bundled as a raw resource.
  *
- * The resource names carry the sound's name in the games' own audio data —
- * `turn_on_pc`, `press_ab` and so on — so which recording is which stays
- * obvious from the file alone.
+ * The resource names say which moment a recording marks — `turn_on_pc`,
+ * `press_ab` and so on — so which is which stays obvious from the file alone.
  */
 enum class SoundEffect(val id: String, val label: String, val resourceName: String) {
     OPEN_PC("open-pc", "OPEN PC", "sfx_turn_on_pc"),

@@ -15,9 +15,11 @@ class SoundEffectTest {
 
     @Test
     fun `every effect names a distinct recording`() {
-        val files = SoundEffect.entries.map { it.file }
-        assertEquals(files.size, files.toSet().size)
-        files.forEach { assertTrue(it, it.endsWith(".ogg")) }
+        val names = SoundEffect.entries.map { it.resourceName }
+        assertEquals(names.size, names.toSet().size)
+        // Raw resource names: lowercase, digits and underscores only, or the
+        // build will not accept the file.
+        names.forEach { assertTrue(it, it.matches(Regex("[a-z0-9_]+"))) }
     }
 
     @Test
@@ -28,19 +30,19 @@ class SoundEffectTest {
 
     @Test
     fun `the recordings are the ones the games call them`() {
-        assertEquals("turn_on_pc.ogg", SoundEffect.OPEN_PC.file)
-        assertEquals("press_ab.ogg", SoundEffect.CURSOR.file)
-        assertEquals("save.ogg", SoundEffect.SAVE.file)
-        assertEquals("start_menu.ogg", SoundEffect.OPTIONS.file)
-        assertEquals("turn_off_pc.ogg", SoundEffect.LOG_OFF.file)
-        assertEquals("enter_pc.ogg", SoundEffect.SELECT.file)
+        assertEquals("sfx_turn_on_pc", SoundEffect.OPEN_PC.resourceName)
+        assertEquals("sfx_press_ab", SoundEffect.CURSOR.resourceName)
+        assertEquals("sfx_save", SoundEffect.SAVE.resourceName)
+        assertEquals("sfx_start_menu", SoundEffect.OPTIONS.resourceName)
+        assertEquals("sfx_turn_off_pc", SoundEffect.LOG_OFF.resourceName)
+        assertEquals("sfx_enter_pc", SoundEffect.SELECT.resourceName)
+        assertEquals("sfx_withdraw_deposit", SoundEffect.TRANSFER.resourceName)
     }
 
     @Test
-    fun `the menu lists all six`() {
-        assertEquals(6, SoundEffect.entries.size)
+    fun `the menu lists every effect`() {
         assertEquals(
-            listOf("OPEN PC", "CURSOR", "SAVE", "OPTIONS", "LOG OFF", "SELECT"),
+            listOf("OPEN PC", "CURSOR", "SAVE", "OPTIONS", "LOG OFF", "SELECT", "TRANSFER"),
             SoundEffect.entries.map { it.label },
         )
     }

@@ -66,6 +66,13 @@ class Gen1RecompSave(val root: LuaValue.Table) {
     /** `save.playTime` is a plain seconds accumulator in a Generation I save. */
     val playTimeSeconds: Double get() = root["playTime"].asDouble() ?: 0.0
 
+    /** Play time as the save screen says it: so many hours, so many minutes. */
+    val playTimeLongText: String
+        get() {
+            val total = playTimeSeconds.toLong()
+            return "${total / 3600} HOURS ${(total % 3600) / 60} MINUTES"
+        }
+
     val playTimeText: String
         get() {
             val total = playTimeSeconds.toLong()

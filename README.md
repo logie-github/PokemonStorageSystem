@@ -16,8 +16,8 @@ no Shizuku, no file permissions.
 - **Rename** boxes and saves by holding them.
 - **Auto-sync** on open and every 30 seconds.
 - **Status screens** with stats, types, moves and PP.
-- **Sprites, cries and sound effects**, downloaded on request. Tap a sprite to
-  hear it again. Each sound can be turned off in OPTIONS → SOUND FX.
+- **Sound effects**, and **sprites and cries** downloaded on request. Tap a
+  sprite to hear it again. Each sound can be turned off in OPTIONS → SOUND FX.
 - **Seven palettes**, windows on the left or right, full screen, foldable
   aware.
 
@@ -41,8 +41,9 @@ save. See [DESIGN.md](DESIGN.md).
 
 ## Credits
 
-No game code or ripped assets ship with this app. Not affiliated with Nintendo,
-Game Freak or The Pokémon Company.
+The sound effects are the original games'. No other game code or artwork ships
+with this app — sprites and cries are downloaded on request. Not affiliated with
+Nintendo, Game Freak or The Pokémon Company.
 
 [Sprites](https://github.com/ShiraTheMogul/rby-sprites-project) ·
 [Cries](https://github.com/PokeAPI/cries) ·

@@ -145,8 +145,6 @@ jobs:
           tag="${{ steps.version.outputs.tag }}"
           previous="$(git tag --sort=-version:refname | grep -v "^$tag$" | head -1 || true)"
           {
-            echo "Pokémon Storage for Gen1Recomp — a local Generation I storage system for Red, Blue and Yellow saves."
-            echo
             echo "### Install"
             echo
             echo "\`${{ steps.version.outputs.apk }}\` — sideload it on Android 8.0 (API 26) or newer."
@@ -168,10 +166,6 @@ jobs:
             else
               echo "First release."
             fi
-            echo
-            echo "### Scope"
-            echo
-            echo "Gen1Recomp saves for Pokémon Red, Blue and Yellow on Android. Generation II and later are out of scope."
           } > release-notes.md
           cat release-notes.md
 

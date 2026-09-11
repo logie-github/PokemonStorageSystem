@@ -159,7 +159,7 @@ private fun SaveRow(
     val lead = save?.party?.firstOrNull()
     val badges = save?.badgeCount ?: remote.summary.badges ?: 0
     val caught = save?.let { it.partyCount + it.storedCount } ?: remote.summary.dexCount ?: 0
-    val time = save?.playTimeText ?: remote.summary.timeText ?: "--:--"
+    val time = save?.playTimeLongText
 
     Gen1Frame(
         modifier
@@ -180,7 +180,8 @@ private fun SaveRow(
                     style = Gen1TextSmall,
                     maxLines = 1,
                 )
-                GbText("$time - $badges BADGES - $caught CAUGHT", style = Gen1TextSmall, maxLines = 1)
+                time?.let { GbText("PLAY TIME: $it", style = Gen1TextSmall, maxLines = 1) }
+                GbText("$badges BADGES - $caught CAUGHT", style = Gen1TextSmall, maxLines = 1)
             }
             Gen1Sprite(
                 speciesId = lead?.speciesId,

@@ -1,5 +1,7 @@
 package com.logie.gen1storage.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
@@ -708,7 +711,7 @@ private val LEGAL = listOf(
     "POKéMON AND ALL RELATED NAMES, CHARACTERS, TRADEMARKS, AND INTELLECTUAL PROPERTY ARE THE PROPERTY OF THEIR RESPECTIVE OWNERS.",
     "THIS PROJECT IS NOT AFFILIATED WITH, ENDORSED BY, SPONSORED BY, OR OTHERWISE ASSOCIATED WITH THE POKéMON COMPANY, NINTENDO, OR GAME FREAK. THIS PROJECT GRATEFULLY ACKNOWLEDGES THEIR IDEAS, CREATIVE WORK, AND CONTRIBUTIONS TO THE POKéMON FRANCHISE.",
     "NO COPYRIGHT INFRINGEMENT IS INTENDED.",
-    "NO RIPPED GAME ASSETS ARE DISTRIBUTED IN THIS APK.",
+    "THE SOUND EFFECTS IN THIS APP ARE THE ORIGINAL GAMES'. NO OTHER GAME CODE OR ARTWORK IS DISTRIBUTED IN THIS APK: SPRITES AND CRIES ARE DOWNLOADED AT THE PLAYER'S REQUEST.",
 )
 
 /**
@@ -910,6 +913,26 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 onDone = { model.renameCart(prompt.key, it) },
                 onCancel = model::dismissPrompt,
             )
+
+            is Prompt.Update -> {
+                val context = LocalContext.current
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    GbText("VERSION ${prompt.version} IS OUT.")
+                    GbText("UPDATE?", style = Gen1TextSmall)
+                    Spacer(Modifier.height(gen1Dp(3)))
+                    Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
+                        Gen1Button("YES", {
+                            model.dismissPrompt()
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(prompt.url))
+                                )
+                            }
+                        })
+                        Gen1Button("NO", model::dismissPrompt)
+                    }
+                }
+            }
 
             is Prompt.ChooseWithdrawSave -> SavePicker(
                 title = "PUT IT IN WHICH SAVE?",

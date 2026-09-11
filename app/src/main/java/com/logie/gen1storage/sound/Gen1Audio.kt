@@ -22,20 +22,19 @@ import java.util.Collections
 /**
  * Everything the app plays: the Pokémon cries and the interface's own sounds.
  *
- * None of it ships with the app. Both the cries and the sound effects are
- * lifted from the games, and this app distributes neither — a recording is
- * fetched once on first use and kept on the device, the same arrangement the
- * sprites use, and anything it cannot find is simply silent.
+ * The interface's sound effects are bundled; the cries are not. There are 151
+ * cries and they are large, so one is fetched on first use and kept on the
+ * device the way the sprites are. The seven sound effects are small enough to
+ * ship, and a sound that punctuates a tap cannot arrive a second after it.
  *
  * [SoundPool] rather than MediaPlayer because these are short one-shots: it
  * keeps decoded samples in memory and starts them immediately. Loading is
  * asynchronous, so a sound asked for before its sample is ready is remembered
  * and played from the load callback rather than dropped.
  */
-class Gen1Audio(context: Context) {
+class Gen1Audio(private val context: Context) {
 
     private val cryDirectory = File(context.filesDir, "cries")
-    private val effectDirectory = File(context.filesDir, "sfx")
 
     private val pool = SoundPool.Builder()
         .setMaxStreams(4)
@@ -69,6 +68,9 @@ class Gen1Audio(context: Context) {
         }
     }
 
+    /** Sound effects are bundled, so each is loaded once and kept. */
+    private val effects = Collections.synchronizedMap(HashMap<SoundEffect, Int>())
+
     /**
      * Plays an interface sound, if the player has left it on.
      *
@@ -77,7 +79,19 @@ class Gen1Audio(context: Context) {
      */
     fun play(effect: SoundEffect) {
         if (!allowed(effect)) return
-        load(effectDirectory, effect.file, SFX_BASE_URL) { runCatching { pool.play(it, 1f, 1f, 1, 0, 1f) } }
+        effects[effect]?.let {
+            runCatching { pool.play(it, 1f, 1f, 1, 0, 1f) }
+            return
+        }
+        val resourceId = context.resources.getIdentifier(
+            effect.resourceName,
+            "raw",
+            context.packageName,
+        )
+        if (resourceId == 0) return
+        val id = runCatching { pool.load(context, resourceId, 1) }.getOrNull() ?: return
+        effects[effect] = id
+        pending.add(id)
     }
 
     /**
@@ -151,13 +165,11 @@ class Gen1Audio(context: Context) {
         return target
     }
 
-    /** Whether a sound effect's recording is actually on the device. */
-    fun has(effect: SoundEffect): Boolean = File(effectDirectory, effect.file).isFile
-
     fun release() {
         scope.cancel()
         runCatching { pool.release() }
         samples.clear()
+        effects.clear()
     }
 
     private companion object {
@@ -168,18 +180,6 @@ class Gen1Audio(context: Context) {
 
         const val CRY_BASE_URL =
             "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/legacy"
-
-        /**
-         * Where the interface sounds come from.
-         *
-         * Null because there is no archive of them to point at yet. The cries
-         * have PokéAPI; the sound effects have nothing comparable that can be
-         * verified, and inventing a URL that returns nothing would be worse
-         * than admitting it. Everything downstream — the settings, the menu,
-         * every trigger — works the moment this has a source, and until then
-         * the effects are silent rather than broken.
-         */
-        val SFX_BASE_URL: String? = null
     }
 }
 

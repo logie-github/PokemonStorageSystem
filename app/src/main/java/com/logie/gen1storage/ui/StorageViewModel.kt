@@ -21,6 +21,7 @@ import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.sync.SyncResult
 import com.logie.gen1storage.transfer.RecoveryReport
+import com.logie.gen1storage.update.UpdateChecker
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.TransferEngine
 import com.logie.gen1storage.transfer.TransferJournal
@@ -72,6 +73,8 @@ sealed interface Prompt {
     data class RenameBox(val index: Int) : Prompt
     /** Naming a cartridge, from the cartridge itself. */
     data class RenameCart(val key: String, val fallback: String) : Prompt
+    /** A newer release exists; saying yes opens it. */
+    data class Update(val version: String, val url: String) : Prompt
     /** Which save to put a withdrawn Pokémon into, before asking where in it. */
     data class ChooseWithdrawSave(val uid: String) : Prompt
     data class ChooseWithdrawTarget(val uid: String, val key: String) : Prompt
@@ -108,6 +111,8 @@ data class UiState(
     val activeSaveKey: String? = null,
     /** Bumped when a cartridge is renamed, so the carts redraw. */
     val cartRevision: Int = 0,
+    /** Bumped by each transfer that went through, so one can be heard. */
+    val transfers: Int = 0,
     /** All sound off, and which individual effects are on under that. */
     val soundOff: Boolean = false,
     val soundsOn: Set<String> = emptySet(),
@@ -581,10 +586,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
         mutable.update { it.copy(storage = storage.state(), busy = false) }
         when (result) {
-            is TransferResult.Success -> message(
-                result.message,
-                "THE GAME WILL PICK THIS UP ON ITS NEXT SYNC.",
-            )
+            is TransferResult.Success -> {
+                mutable.update { it.copy(transfers = it.transfers + 1) }
+                message(
+                    result.message,
+                    "THE GAME WILL PICK THIS UP ON ITS NEXT SYNC.",
+                )
+            }
             is TransferResult.Refused -> message(result.reason)
             is TransferResult.NeedsRecovery -> message(
                 result.reason,
@@ -630,6 +638,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun releasedCount(): Int = storage.releasedCount()
+
+    /**
+     * Looks for a newer release, once, when the app opens.
+     *
+     * Silent about everything except finding one: a failed check is not
+     * something to interrupt anyone with.
+     */
+    fun checkForUpdate(currentVersion: String) = viewModelScope.launch {
+        val update = withContext(Dispatchers.IO) { UpdateChecker.check(currentVersion) } ?: return@launch
+        // Never over something the player is already reading.
+        if (mutable.value.prompt != null) return@launch
+        mutable.update { it.copy(prompt = Prompt.Update(update.version, update.url)) }
+    }
 
     fun cartName(key: String): String? = settings.cartName(key)
 

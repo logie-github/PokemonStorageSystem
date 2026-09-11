@@ -147,7 +147,15 @@ private fun StorageApp(model: StorageViewModel) {
     SideEffect { audio.allowed = { effect -> effect.id in state.soundsOn } }
 
     // Turning the machine on, once.
-    LaunchedEffect(Unit) { audio.play(SoundEffect.OPEN_PC) }
+    LaunchedEffect(Unit) {
+        audio.play(SoundEffect.OPEN_PC)
+        model.checkForUpdate(BuildConfig.VERSION_NAME)
+    }
+
+    // A transfer that went through, heard once.
+    LaunchedEffect(state.transfers) {
+        if (state.transfers > 0) audio.play(SoundEffect.TRANSFER)
+    }
 
     // Backing all the way out to the main menu is logging off. Only on the
     // way down — the app starts at the main menu, and that is turning on.

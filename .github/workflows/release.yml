@@ -62,7 +62,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          echo "apk=Gen1Storage-v$version.apk" >> "$GITHUB_OUTPUT"
+          echo "apk=PokemonStorageSystem-v$version.apk" >> "$GITHUB_OUTPUT"
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
@@ -178,7 +178,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: Pokémon Storage ${{ steps.version.outputs.tag }}
+          name: Pokémon Storage System ${{ steps.version.outputs.tag }} — DEMO
           body_path: release-notes.md
           prerelease: ${{ inputs.prerelease == true }}
           files: |

@@ -22,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -79,21 +78,6 @@ fun Gen1StatusScreen(
         Spacer(Modifier.weight(1f))
     }
 }
-
-/**
- * Whether the screen is wide enough to be a foldable that has been opened.
- *
- * Read off the width rather than from a hinge API, so it is honest about what
- * it actually knows: this is "there is a lot of width here", which is the
- * thing the layout cares about. A tablet and an unfolded phone are treated the
- * same, and a folded one is not.
- */
-@Composable
-private fun isUnfolded(): Boolean =
-    LocalConfiguration.current.screenWidthDp >= UNFOLDED_WIDTH_DP
-
-/** Roughly where a folded phone stops and an opened one begins. */
-private const val UNFOLDED_WIDTH_DP = 600
 
 @Composable
 private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) {

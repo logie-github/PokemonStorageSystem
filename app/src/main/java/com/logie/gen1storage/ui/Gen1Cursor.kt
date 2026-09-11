@@ -6,9 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
@@ -133,4 +135,48 @@ fun Modifier.gen1WindowBounds(): Modifier {
         onDispose { registry.forget(owner) }
     }
     return onGloballyPositioned { registry.set(owner, it.boundsInRoot()) }
+}
+
+/**
+ * Whether the screen is wide enough to be a foldable that has been opened.
+ *
+ * Read off the width rather than from a hinge API, so it is honest about what
+ * it actually knows: this is "there is a lot of width here", which is the thing
+ * every layout decision here cares about. A tablet and an unfolded phone are
+ * treated the same, and a folded one is not.
+ */
+@Composable
+fun isUnfolded(): Boolean =
+    androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= UNFOLDED_WIDTH_DP
+
+/** Roughly where a folded phone stops and an opened one begins. */
+const val UNFOLDED_WIDTH_DP = 600
+
+/**
+ * Which side of the screen the windows sit on.
+ *
+ * Snapshot state rather than a parameter threaded through every screen: this is
+ * one decision that every layout in the app has to agree on, and passing it
+ * around would mean any screen could quietly disagree.
+ */
+object Gen1Layout {
+    var windowsOnRight by mutableStateOf(true)
+
+    /** The horizontal edge menus and lists are pinned to. */
+    val menuSide: Alignment.Horizontal
+        get() = if (windowsOnRight) Alignment.End else Alignment.Start
+
+    /** The opposite edge, for whatever pairs with them. */
+    val otherSide: Alignment.Horizontal
+        get() = if (windowsOnRight) Alignment.Start else Alignment.End
+
+    fun corner(top: Boolean, menuSide: Boolean): Alignment {
+        val right = windowsOnRight == menuSide
+        return when {
+            top && right -> Alignment.TopEnd
+            top -> Alignment.TopStart
+            right -> Alignment.BottomEnd
+            else -> Alignment.BottomStart
+        }
+    }
 }

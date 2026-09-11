@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 
 /**
@@ -116,16 +118,13 @@ fun StorageSystemScreen(
         if (onOptions != null) add("OPTIONS" to onOptions)
     }
 
-    // Laid out as the cartridge lays it out, and layered in that order too.
-    // The menu sits in the top left. A list opens over it from the right,
-    // covering most of it but leaving the first letters of each row showing.
-    // The message window is along the bottom left and the box window bottom
-    // right, both above the list. The window that opens on a chosen Pokémon is
-    // last of all, over the same bottom-right corner.
+    // Four layers, and the order is the whole point: the menu, then whatever
+    // list is open over it, then the message window, then the small window that
+    // opens on a chosen Pokémon over all of it. The message has to stay
+    // readable behind a list, and the action window has to sit above both.
     //
-    // Nothing here is the width of the screen. Every window is sized to what is
-    // in it or to a fraction of the screen, which is what keeps it reading as
-    // a console rather than as a page.
+    // Which edge they sit against is a setting. Everything mirrors together, so
+    // the menu and the list keep overlapping the same way round either way.
     Box(
         Modifier
             .fillMaxSize()
@@ -133,7 +132,11 @@ fun StorageSystemScreen(
             .padding(gen1Dp(2)),
     ) {
         val selected = rememberCursorLayer(rows.size) { rows[it].second() }
-        Gen1Frame(Modifier.align(Alignment.TopStart).fillMaxWidth(MENU_WIDTH)) {
+        Gen1Frame(
+            Modifier
+                .align(Gen1Layout.corner(top = true, menuSide = true))
+                .wrapContentWidth()
+        ) {
             rows.forEachIndexed { index, (label, action) ->
                 Gen1MenuRow(label, selected == index, {}, action)
             }
@@ -141,18 +144,18 @@ fun StorageSystemScreen(
 
         overlay?.invoke()
 
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomStart) {
-            // Sized to its text rather than to the row: a one-word message in a
-            // window most of the screen wide reads as a bug.
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
+        ) {
             Gen1Frame(Modifier.wrapContentWidth()) { GbText(message, style = Gen1Text) }
         }
 
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
-            Gen1Frame(
-                Modifier
-                    .wrapContentWidth()
-                    .gen1Clickable(onClick = onChangeBox)
-            ) {
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
+        ) {
+            Gen1Frame(Modifier.wrapContentWidth().gen1Clickable(onClick = onChangeBox)) {
                 GbText("BOX No. $boxNumber")
                 GbText(boxName.uppercase(), style = Gen1TextSmall)
             }
@@ -162,11 +165,8 @@ fun StorageSystemScreen(
     }
 }
 
-/** Wide enough for the menu's own labels and no wider. */
-private const val MENU_WIDTH = 0.62f
-
-/** How much of the screen a list covers, opening from the right. */
-private const val LIST_WIDTH = 0.74f
+/** How much of the screen a list may cover before it has to scroll sideways. */
+private const val LIST_MAX_WIDTH = 0.78f
 
 /**
  * One row of a Pokémon list. [header] labels the group this row starts, which
@@ -195,8 +195,16 @@ fun MonListOverlay(
     val selected = rememberCursorLayer(entries.size + 1) { index ->
         if (index < entries.size) onConfirm(index) else onCancel()
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
-        Gen1Frame(Modifier.fillMaxWidth(LIST_WIDTH).padding(top = gen1Dp(4))) {
+    Box(
+        Modifier.fillMaxSize(),
+        contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
+    ) {
+        Gen1Frame(
+            Modifier
+                .widthIn(max = (LocalConfiguration.current.screenWidthDp * LIST_MAX_WIDTH).dp)
+                .wrapContentWidth()
+                .padding(top = gen1Dp(5))
+        ) {
             if (entries.isEmpty()) {
                 GbText(emptyMessage)
             }
@@ -246,7 +254,10 @@ fun MonActionOverlay(
         val action = actions.getOrNull(index)
         if (action == null) onCancel() else if (action.enabled) action.onAction()
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+    Box(
+        Modifier.fillMaxSize(),
+        contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
+    ) {
         Gen1Frame(Modifier.wrapContentWidth()) {
             actions.forEachIndexed { index, entry ->
                 Gen1MenuRow(
@@ -274,8 +285,11 @@ fun ChangeBoxOverlay(
         val box = boxes.getOrNull(index)
         if (box == null) onCancel() else onConfirm(box.first)
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
-        Gen1Frame(Modifier.fillMaxWidth(LIST_WIDTH).padding(top = gen1Dp(4))) {
+    Box(
+        Modifier.fillMaxSize(),
+        contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
+    ) {
+        Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5))) {
             LazyColumn(Modifier.heightIn(max = 380.dp)) {
                 itemsIndexed(boxes) { index, (number, name, count) ->
                     Gen1MenuRow(

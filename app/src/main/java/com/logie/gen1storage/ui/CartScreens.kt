@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -67,19 +68,13 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
         Spacer(Modifier.height(gen1Dp(5)))
 
         if (game == null) {
-            Gen1Frame(Modifier.fillMaxWidth(0.8f)) {
-                GbText("WHICH GAME?")
-                GbText("PICK ONE TO SEE ITS SAVES.", style = Gen1TextSmall)
-            }
+            Notice("WHICH GAME?")
             return@Column
         }
 
         val carts = state.saves.filter { it.version.id == game }
         if (carts.isEmpty()) {
-            Gen1Frame(Modifier.fillMaxWidth(0.8f)) {
-                GbText("NO SAVES HERE.")
-                GbText("SAVE IN GEN1RECOMP, THEN SYNC.", style = Gen1TextSmall)
-            }
+            Notice("NO SAVES FOUND.")
             return@Column
         }
 
@@ -105,6 +100,14 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
                 }
             }
         }
+    }
+}
+
+/** One line in a window sized to it, centred on the screen. */
+@Composable
+private fun Notice(text: String) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Gen1Frame(Modifier.wrapContentWidth()) { GbText(text) }
     }
 }
 

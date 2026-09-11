@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -47,8 +48,11 @@ import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
 import com.logie.gen1storage.ui.GbButton
 import com.logie.gen1storage.ui.Gen1Cursor
+import com.logie.gen1storage.ui.Gen1Layout
 import com.logie.gen1storage.ui.Gen1WindowBounds
 import com.logie.gen1storage.ui.LocalGen1Cursor
+import com.logie.gen1storage.ui.UiState
+import com.logie.gen1storage.ui.isUnfolded
 import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.SpritesScreen
@@ -105,6 +109,7 @@ private fun StorageApp(model: StorageViewModel) {
     SideEffect {
         Gen1Palette.palette = GbPalette.fromId(state.paletteId)
         Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
+        Gen1Layout.windowsOnRight = state.windowsOnRight
     }
 
     // The game can save at any moment, and every revision this app is holding
@@ -160,20 +165,19 @@ private fun StorageApp(model: StorageViewModel) {
         Column(Modifier.fillMaxSize()) {
             TopBar()
             Box(Modifier.weight(1f)) {
-                when (val screen = state.screen) {
-                    Screen.Home -> HomeScreen(state, model)
-                    Screen.Link -> LinkScreen(state, model)
-                    is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game)
-                    is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
-                    Screen.Sprites -> SpritesScreen(state, model)
-                    Screen.SaveFiles -> SaveFilesScreen(state, model)
-                    Screen.Credits -> CreditsScreen()
-                    Screen.Options -> OptionsScreen(
-                        state = state,
-                        model = model,
-                        onShareReport = { shareReport(context, model.debugReport()) },
-                    )
+                // Opened up, the status pages take the left half — so the
+                // screen they were opened from stays live on the right rather
+                // than disappearing behind them. Drawn first, in the half the
+                // pages do not cover, so the app is still usable while reading
+                // a Pokémon.
+                val beneath = state.stack.getOrNull(state.stack.size - 2)
+                if (isUnfolded() && state.screen is Screen.Status && beneath != null) {
+                    Row(Modifier.fillMaxSize()) {
+                        Spacer(Modifier.weight(1f))
+                        Box(Modifier.weight(1f)) { ScreenContent(beneath, state, model, context) }
+                    }
                 }
+                ScreenContent(state.screen, state, model, context)
             }
         }
         if (state.prompt != null) PromptWindow(state, model)
@@ -188,6 +192,30 @@ private fun StorageApp(model: StorageViewModel) {
  * its key, and the B button when swipe controls are on — so the bar has no
  * state of its own to get wrong and reads the same on every screen.
  */
+/** One screen, so the unfolded layout can draw two of them side by side. */
+@Composable
+private fun ScreenContent(
+    screen: Screen,
+    state: UiState,
+    model: StorageViewModel,
+    context: android.content.Context,
+) {
+    when (screen) {
+        Screen.Home -> HomeScreen(state, model)
+        Screen.Link -> LinkScreen(state, model)
+        is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game)
+        is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
+        Screen.Sprites -> SpritesScreen(state, model)
+        Screen.SaveFiles -> SaveFilesScreen(state, model)
+        Screen.Credits -> CreditsScreen()
+        Screen.Options -> OptionsScreen(
+            state = state,
+            model = model,
+            onShareReport = { shareReport(context, model.debugReport()) },
+        )
+    }
+}
+
 @Composable
 private fun TopBar() {
     Row(

@@ -164,12 +164,16 @@ straight edges are uniform along their length, so each rule is a single
 rectangle however long the window is, and each corner is a dozen merged runs
 rather than sixty-four pixels.
 
-Nothing is drawn the full width of the screen. The PC screen is laid out and
-layered as the cartridge lays it out: the menu in the top left, a list opening
-over it from the right and leaving the first letters of each menu row showing,
-the message window along the bottom left and the box window bottom right above
-it, and the window that opens on a chosen Pokémon last of all over the same
-corner.
+Every window is sized to what is in it. Nothing reaches both edges of the
+screen, so a strip of the dithered ground always shows down one side.
+
+The PC screen is four layers, and the order is the point: the menu, then
+whatever list is open over it, then the message window, then the small window
+that opens on a chosen Pokémon over all of it. The message has to stay readable
+behind a list, and the action window has to sit above both. Which edge they sit
+against is a setting — WINDOWS ON THE RIGHT in OPTIONS — and everything mirrors
+together, so the menu and the list keep overlapping the same way round either
+way.
 
 ## Screen
 

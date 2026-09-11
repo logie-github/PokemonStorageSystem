@@ -90,6 +90,7 @@ data class UiState(
     /** The [GbPalette] id everything is drawn through. */
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
+    val windowsOnRight: Boolean = true,
     /**
      * The save the top-level PC menu deposits from and withdraws to. Set by
      * opening one, so the menu is never asking which save it means.
@@ -144,6 +145,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 showAllSaves = settings.showAllSaves,
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
+                windowsOnRight = settings.windowsOnRight,
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
             )
         }
@@ -380,6 +382,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.paletteId = palette.id
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
+    }
+
+    fun setWindowsOnRight(enabled: Boolean) {
+        settings.windowsOnRight = enabled
+        mutable.update { it.copy(windowsOnRight = enabled) }
     }
 
     fun setWindowsFollowPalette(enabled: Boolean) {

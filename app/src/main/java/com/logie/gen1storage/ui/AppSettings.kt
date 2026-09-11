@@ -38,9 +38,18 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_WINDOW_PALETTE, false)
         set(value) = prefs.edit().putBoolean(KEY_WINDOW_PALETTE, value).apply()
 
+    /**
+     * Which edge the menus and lists sit against. The games put them right;
+     * a left-handed grip wants them left.
+     */
+    var windowsOnRight: Boolean
+        get() = prefs.getBoolean(KEY_WINDOWS_RIGHT, true)
+        set(value) = prefs.edit().putBoolean(KEY_WINDOWS_RIGHT, value).apply()
+
     private companion object {
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
+        const val KEY_WINDOWS_RIGHT = "windows-on-right"
     }
 }

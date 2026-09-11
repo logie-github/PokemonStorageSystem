@@ -77,11 +77,7 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
         item {
             Gen1Frame {
                 GbText("SAVE SYNC")
-                Spacer(Modifier.height(6.dp))
-                GbText(
-                    "IN GEN1RECOMP, OPEN SAVE SYNC AND READ OFF THE TWO CODES.",
-                    style = Gen1TextSmall,
-                )
+                GbText("READ OFF THE TWO CODES.", style = Gen1TextSmall)
             }
         }
         item {
@@ -102,12 +98,7 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
             }
         }
         item {
-            Gen1Frame {
-                GbText(
-                    "THIS DEVICE WILL APPEAR IN THE GAME'S DEVICE LIST AND CAN READ AND WRITE EVERY SAVE ON THE ACCOUNT. TREAT THE CODES LIKE A PASSWORD.",
-                    style = Gen1TextSmall,
-                )
-            }
+            Gen1Frame { GbText("TREAT THE CODES LIKE A PASSWORD.", style = Gen1TextSmall) }
         }
     }
 }
@@ -395,10 +386,7 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
             Gen1Frame {
                 GbText("POKéMON SPRITES")
                 Spacer(Modifier.height(6.dp))
-                GbText(
-                    "SPRITES ARE SHOWN IN THE ART OF THE GAME A POKéMON CAME FROM. TAP AND HOLD ANY SPRITE TO PICK A DIFFERENT GAME.",
-                    style = Gen1TextSmall,
-                )
+                GbText("TAP AND HOLD A SPRITE TO PICK ITS GAME.", style = Gen1TextSmall)
             }
         }
 
@@ -432,8 +420,7 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
                     if (state.spritesInstalled > 0) {
                         Gen1Field("SPACE USED", "${model.spriteBytesOnDisk() / (1024 * 1024)} MB")
                     } else {
-                        // Full-size art, so the download is worth naming up front.
-                        GbText("ABOUT 25 MB FOR BOTH GAMES.", style = Gen1TextSmall)
+                        GbText("ABOUT 25 MB.", style = Gen1TextSmall)
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -467,17 +454,12 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
     }
 }
 
-
 @Composable
 fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
     ScreenColumn {
         item {
             Gen1Frame {
                 GbText("SAVE FILES")
-                GbText(
-                    "EVERY WRITE UPLOADS AGAINST THE REVISION IT READ, SO THE SERVER REFUSES IT IF THE GAME SAVED FIRST.",
-                    style = Gen1TextSmall,
-                )
             }
         }
         if (state.recoveryNotes.isNotEmpty()) {
@@ -503,10 +485,7 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
                 Gen1Frame {
                     GbText("RELEASED")
                     Gen1Field("RECORDED", released.toString())
-                    GbText(
-                        "A RELEASE LEAVES THE PC, BUT THE ENTRY IS KEPT IN A LOG BESIDE THE STORAGE FILE SO IT IS NOT GONE.",
-                        style = Gen1TextSmall,
-                    )
+                    GbText("KEPT IN A LOG ON THIS DEVICE.", style = Gen1TextSmall)
                 }
             }
         }
@@ -514,9 +493,7 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
             Gen1Frame {
                 GbText("LOCAL BACKUPS")
                 val backups = model.localBackups()
-                if (backups.isEmpty()) {
-                    GbText("NONE YET. ONE IS KEPT EACH TIME A SAVE IS WRITTEN.", style = Gen1TextSmall)
-                }
+                if (backups.isEmpty()) GbText("NONE YET.", style = Gen1TextSmall)
                 // The key is a game and a playthrough id; only the game half
                 // means anything to a player, and the id overran the row.
                 backups.take(20).forEach {
@@ -580,10 +557,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                     on = !state.windowsFollowPalette,
                     onToggle = { model.setWindowsFollowPalette(!state.windowsFollowPalette) },
                 )
-                GbText(
-                    "ON KEEPS EVERY WINDOW BLACK ON WHITE, THE WAY THE GAMES DRAW THEM. OFF LETS THEM TAKE THE PALETTE TOO.",
-                    style = Gen1TextSmall,
-                )
+
             }
         }
         item {
@@ -616,9 +590,14 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                 GbText("CONTROLS")
-                GbText(
-                    "SWIPE TO MOVE THE CURSOR, TAP TO TAKE WHAT IT IS ON, DOUBLE TAP FOR OPTIONS, TAP AND HOLD TO GO BACK. TAPPING A MENU ROW TAKES IT DIRECTLY.",
-                    style = Gen1TextSmall,
+                GbText("SWIPE MOVES, TAP TAKES,", style = Gen1TextSmall)
+                GbText("DOUBLE TAP FOR OPTIONS,", style = Gen1TextSmall)
+                GbText("HOLD GOES BACK.", style = Gen1TextSmall)
+                Spacer(Modifier.height(10.dp))
+                Gen1Toggle(
+                    label = "WINDOWS ON THE RIGHT",
+                    on = state.windowsOnRight,
+                    onToggle = { model.setWindowsOnRight(!state.windowsOnRight) },
                 )
                 Spacer(Modifier.height(10.dp))
                 Gen1Toggle(
@@ -626,10 +605,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                     on = state.showAllSaves,
                     onToggle = { model.setShowAllSaves(!state.showAllSaves) },
                 )
-                GbText(
-                    "PUTS EVERY SAVE'S POKéMON IN THE TRANSFER LISTS AT ONCE, SO THERE IS NO SAVE TO PICK FIRST.",
-                    style = Gen1TextSmall,
-                )
+                GbText("EVERY SAVE IN THE LISTS AT ONCE.", style = Gen1TextSmall)
             }
         }
         item {
@@ -645,11 +621,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
                 GbText("DIAGNOSTICS")
                 Spacer(Modifier.height(8.dp))
                 Gen1Button("SEND REPORT", onShareReport)
-                Spacer(Modifier.height(6.dp))
-                GbText(
-                    "NO SYNC CODES, ACCOUNT DETAILS, POKéMON OR SAVE CONTENTS ARE INCLUDED.",
-                    style = Gen1TextSmall,
-                )
+
             }
         }
         item {
@@ -786,10 +758,9 @@ private fun Gen1Toggle(label: String, on: Boolean, onToggle: () -> Unit) {
 /**
  * A column of windows over the screen.
  *
- * The right inset is deliberately larger than the left: nothing in this
- * interface should reach both edges of the screen at once, and leaving a strip
- * of the dithered ground showing down one side is what keeps a list of windows
- * looking like windows.
+ * Each window is sized to what is in it and pinned to the same edge the PC's
+ * menus use, so a strip of the dithered ground always shows down the other
+ * side. Nothing here reaches both edges at once.
  */
 @Composable
 fun ScreenColumn(content: LazyListScope.() -> Unit) {
@@ -799,11 +770,14 @@ fun ScreenColumn(content: LazyListScope.() -> Unit) {
             .gen1Ground(),
         contentPadding = PaddingValues(
             start = gen1Dp(2),
-            end = gen1Dp(10),
+            end = gen1Dp(2),
             top = gen1Dp(2),
             bottom = gen1Dp(6),
         ),
         verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+        // The same edge the menus use, so a screen of windows and the PC read
+        // as the same machine rather than as two.
+        horizontalAlignment = Gen1Layout.menuSide,
         content = content,
     )
 }

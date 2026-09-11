@@ -60,8 +60,15 @@ sealed interface Screen {
 /** A modal the Generation I menus would draw as a window over everything. */
 sealed interface Prompt {
     data class Message(val lines: List<String>) : Prompt
-    data class Confirm(val lines: List<String>, val confirmLabel: String, val onConfirm: () -> Unit) : Prompt
+    data class Confirm(
+        val lines: List<String>,
+        val confirmLabel: String,
+        val onConfirm: () -> Unit,
+        val cancelLabel: String = "CANCEL",
+    ) : Prompt
     data class ChooseBox(val title: String, val onChoose: (Int) -> Unit) : Prompt
+    /** Naming a box, from the window that shows which one is open. */
+    data class RenameBox(val index: Int) : Prompt
     /** Which save to put a withdrawn Pokémon into, before asking where in it. */
     data class ChooseWithdrawSave(val uid: String) : Prompt
     data class ChooseWithdrawTarget(val uid: String, val key: String) : Prompt
@@ -576,6 +583,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun releasedCount(): Int = storage.releasedCount()
+
+    /** Names a box, or clears the name again when given nothing. */
+    fun renameBox(index: Int, name: String) {
+        storage.renameBox(index, name)
+        mutable.update { it.copy(storage = storage.state(), prompt = null) }
+    }
 
     fun moveStored(uid: String, targetBox: Int) {
         if (!storage.moveTo(uid, targetBox)) {

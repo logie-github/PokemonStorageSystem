@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.pokemon.Gen1Growth
+import com.logie.gen1storage.sound.LocalCryPlayer
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
 import com.logie.gen1storage.sprites.SpriteStore
@@ -52,6 +54,11 @@ fun Gen1StatusScreen(
 ) {
     var page by remember(pokemon.fingerprint) { mutableStateOf(0) }
 
+    // One cry, when a Pokémon is opened — not on every page turn, and not
+    // again when something unrelated recomposes.
+    val cries = LocalCryPlayer.current
+    LaunchedEffect(pokemon.fingerprint) { cries?.cry(pokemon.species?.dexNumber) }
+
     Row(modifier.fillMaxSize().padding(gen1Dp(4))) {
         // Unfolded, the pages keep to the left half in a window of their own
         // rather than turning that half into a white wall — the screen behind
@@ -61,69 +68,80 @@ fun Gen1StatusScreen(
                 .fillMaxWidth(if (isUnfolded()) 0.5f else 1f)
                 .gen1Clickable { page = 1 - page },
         ) {
+            // Drawn here rather than inside either page. Turning the page used
+            // to build a new sprite whose image started empty, and the
+            // bracketed placeholder flashed over it until the file loaded
+            // again; from out here it is the same sprite either way.
             val sprite: @Composable () -> Unit = {
                 // Keyed on the revision so a download or a set change redraws it.
                 key(spriteRevision) {
                     Gen1Sprite(pokemon.speciesId, gameVersionId, store, onLongPress = onSpriteLongPress)
                 }
             }
-            if (page == 0) StatusPageOne(pokemon, sprite) else StatusPageTwo(pokemon, sprite)
+            Row(Modifier.fillMaxWidth()) {
+                Column(Modifier.width(gen1Dp(56))) {
+                    sprite()
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    GbText(pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")
+                }
+                Spacer(Modifier.width(gen1Dp(4)))
+                Gen1CornerRule(Modifier.weight(1f)) {
+                    if (page == 0) StatusHeaderOne(pokemon) else StatusHeaderTwo(pokemon)
+                }
+            }
+            Spacer(Modifier.height(gen1Dp(4)))
+            if (page == 0) StatusPageOne(pokemon) else StatusPageTwo(pokemon)
             Spacer(Modifier.height(gen1Dp(4)))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 GbText(if (page == 0) "▼ MORE" else "▲ BACK", style = Gen1TextSmall)
             }
-            Spacer(Modifier.height(gen1Dp(3)))
-            footer()
         }
         Spacer(Modifier.weight(1f))
+    }
+
+    // Out of the window and into the screen's own corner, on whichever side
+    // the menus are set to: it is a way out of this screen, not a field of it.
+    Box(Modifier.fillMaxSize().padding(gen1Dp(4))) {
+        Box(Modifier.align(Gen1Layout.corner(top = false, menuSide = true))) { footer() }
     }
 }
 
 @Composable
-private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) {
-    Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(gen1Dp(56))) {
-            sprite()
-            Spacer(Modifier.height(gen1Dp(2)))
-            GbText(pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")
-        }
-        Spacer(Modifier.width(gen1Dp(4)))
-        Gen1CornerRule(Modifier.weight(1f)) {
-            GbText(
-                pokemon.displayName.uppercase(),
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
-            GbText(
-                ":L${pokemon.level}",
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
-            Spacer(Modifier.height(4.dp))
-            val maxHp = pokemon.maxHp
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GbText("HP:", style = Gen1TextSmall.copy(color = Gen1Palette.Ink))
-                Spacer(Modifier.width(4.dp))
-                Gen1HpBar(pokemon.currentHp, maxHp ?: 0, Modifier.weight(1f))
-            }
-            GbText(
-                if (maxHp != null) "%d/ %d".format(pokemon.currentHp, maxHp)
-                // A box Pokémon imported from a cartridge save carries no stat
-                // block until it re-enters a party; the game derives it then.
-                else "%d/ ???".format(pokemon.currentHp),
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
-            GbText(
-                "STATUS/${pokemon.status ?: "OK"}",
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
-        }
+private fun StatusHeaderOne(pokemon: Gen1Pokemon) {
+    GbText(
+        pokemon.displayName.uppercase(),
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    GbText(
+        ":L${pokemon.level}",
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    Spacer(Modifier.height(gen1Dp(2)))
+    val maxHp = pokemon.maxHp
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        GbText("HP:", style = Gen1TextSmall.copy(color = Gen1Palette.Ink))
+        Spacer(Modifier.width(gen1Dp(2)))
+        Gen1HpBar(pokemon.currentHp, maxHp ?: 0, Modifier.weight(1f))
     }
+    GbText(
+        if (maxHp != null) "%d/ %d".format(pokemon.currentHp, maxHp)
+        // A box Pokémon imported from a cartridge save carries no stat block
+        // until it re-enters a party; the game derives it then.
+        else "%d/ ???".format(pokemon.currentHp),
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    GbText(
+        "STATUS/${pokemon.status ?: "OK"}",
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+}
 
-    Spacer(Modifier.height(gen1Dp(4)))
-
+@Composable
+private fun StatusPageOne(pokemon: Gen1Pokemon) {
     Row(Modifier.fillMaxWidth()) {
         Gen1Frame(
             Modifier.weight(1f),
@@ -148,7 +166,7 @@ private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) 
                 GbText("TYPE2/")
                 GbText(" ${types[1]}")
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(gen1Dp(3)))
             GbText("IDNo/")
             GbText(" ${pokemon.otId?.let { "%05d".format(it) } ?: "-----"}")
             GbText("OT/")
@@ -158,40 +176,30 @@ private fun StatusPageOne(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) 
 }
 
 @Composable
-private fun StatusPageTwo(pokemon: Gen1Pokemon, sprite: @Composable () -> Unit) {
-    Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(gen1Dp(56))) {
-            sprite()
-            Spacer(Modifier.height(gen1Dp(2)))
-            GbText(pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")
-        }
-        Spacer(Modifier.width(gen1Dp(4)))
-        Gen1CornerRule(Modifier.weight(1f)) {
-            GbText(
-                pokemon.displayName.uppercase(),
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
-            Spacer(Modifier.height(6.dp))
-            GbText("EXP POINTS")
-            GbText(
-                pokemon.exp.toString(),
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
-            GbText("LEVEL UP")
-            val owed = Gen1Growth.expToNextLevel(pokemon)
-            GbText(
-                if (owed == null) "---"
-                else "$owed to :L${pokemon.level + 1}",
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
-        }
-    }
+private fun StatusHeaderTwo(pokemon: Gen1Pokemon) {
+    GbText(
+        pokemon.displayName.uppercase(),
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    Spacer(Modifier.height(gen1Dp(3)))
+    GbText("EXP POINTS")
+    GbText(
+        pokemon.exp.toString(),
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    GbText("LEVEL UP")
+    val owed = Gen1Growth.expToNextLevel(pokemon)
+    GbText(
+        if (owed == null) "---" else "$owed to :L${pokemon.level + 1}",
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+}
 
-    Spacer(Modifier.height(gen1Dp(4)))
-
+@Composable
+private fun StatusPageTwo(pokemon: Gen1Pokemon) {
     Gen1Frame(contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2))) {
         // Always four slots: the games draw an empty move slot as "-".
         for (index in 0 until 4) {

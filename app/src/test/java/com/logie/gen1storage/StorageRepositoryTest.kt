@@ -186,9 +186,38 @@ class StorageRepositoryTest {
         val directory = temporaryFolder.newFolder()
         StorageRepository(directory).renameBox(3, "TRADES FOR LATER")
         assertEquals(
-            "TRADES FOR L",
+            "TRADES FOR",
             StorageRepository(directory).state().boxes[2].name,
         )
+    }
+
+    @Test
+    fun `an unnamed box has no name, and is labelled by its number alone`() {
+        val directory = temporaryFolder.newFolder()
+        val boxes = StorageRepository(directory).state().boxes
+
+        assertNull(boxes[0].name)
+        assertEquals("BOX 1", boxes[0].label)
+    }
+
+    @Test
+    fun `a named box keeps its number in front of the name`() {
+        val directory = temporaryFolder.newFolder()
+        val repository = StorageRepository(directory)
+        repository.renameBox(4, "SHINIES")
+
+        assertEquals("BOX 4 SHINIES", repository.state().boxes[3].label)
+    }
+
+    @Test
+    fun `clearing a name puts the box back to its number`() {
+        val directory = temporaryFolder.newFolder()
+        val repository = StorageRepository(directory)
+        repository.renameBox(2, "TRADES")
+        repository.renameBox(2, "  ")
+
+        assertNull(repository.state().boxes[1].name)
+        assertEquals("BOX 2", repository.state().boxes[1].label)
     }
 
     @Test

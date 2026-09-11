@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -32,6 +34,7 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.storage.StorageLayout
+import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StoredPokemon
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.RemoteSave
@@ -77,7 +80,6 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
         item {
             Gen1Frame {
                 GbText("SAVE SYNC")
-                GbText("READ OFF THE TWO CODES.", style = Gen1TextSmall)
             }
         }
         item {
@@ -93,12 +95,8 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
                 )
                 if (!ready) {
                     Spacer(Modifier.height(6.dp))
-                    GbText("EACH CODE IS EIGHT DIGITS.", style = Gen1TextSmall)
                 }
             }
-        }
-        item {
-            Gen1Frame { GbText("TREAT THE CODES LIKE A PASSWORD.", style = Gen1TextSmall) }
         }
     }
 }
@@ -150,6 +148,7 @@ fun StorageSystemScreen(
     // ALL POKéMON puts every save in the lists at once, so there is nothing
     // to choose; otherwise the PC works with one cartridge at a time.
     val needsCart = !state.showAllSaves && state.save(state.activeSaveKey) == null
+    var refusal by remember(mode) { mutableStateOf<String?>(null) }
 
     val depositRows = buildList {
         val keys = if (state.showAllSaves) {
@@ -167,8 +166,7 @@ fun StorageSystemScreen(
     fun depositHeader(index: Int): String? {
         val row = depositRows[index]
         if (index > 0 && depositRows[index - 1].key == row.key) return null
-        val version = state.remote(row.key)?.version?.label ?: ""
-        return "$version ${row.save.trainerName.uppercase()}'s PARTY".trim()
+        return "${row.save.trainerName.uppercase()}'s PARTY"
     }
 
     // The list and the window that opens on a chosen Pokémon are separate
@@ -179,8 +177,7 @@ fun StorageSystemScreen(
         ?.let { stored.getOrNull(it) }
 
     StorageSystemScreen(
-        boxNumber = state.currentStorageBox,
-        boxName = box?.name ?: "BOX ${state.currentStorageBox}",
+        boxLabel = box?.label ?: "BOX ${state.currentStorageBox}",
         // Both directions need a cartridge in the machine. If there is not one
         // yet, that is the only question worth asking, so it gets the whole
         // screen rather than a window over this one.
@@ -193,12 +190,14 @@ fun StorageSystemScreen(
         onView = { mode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onChangeBox = { mode = PcMode.CHANGE_BOX },
+        onRenameBox = { model.prompt(Prompt.RenameBox(state.currentStorageBox)) },
         onOptions = onOptions,
-        message = when {
-            !state.linked -> "Link this device in OPTIONS."
-            needsCart -> "No cart in the machine."
-            else -> "What?"
-        },
+        message = refusal
+            ?: when {
+                !state.linked -> "Link this device in OPTIONS."
+                needsCart -> "No cart in the machine."
+                else -> "What?"
+            },
         overlay = when (mode) {
             PcMode.MENU -> null
 
@@ -231,7 +230,7 @@ fun StorageSystemScreen(
             PcMode.CHANGE_BOX -> ({
                 ChangeBoxOverlay(
                     boxes = state.storage.boxes.map {
-                        Triple(it.index, it.name, "${it.contents.size}/${StorageLayout.BOX_CAPACITY}")
+                        Triple(it.index, it.label, "${it.contents.size}/${StorageLayout.BOX_CAPACITY}")
                     },
                     onConfirm = { model.setStorageBox(it); mode = PcMode.MENU },
                     onCancel = { mode = PcMode.MENU },
@@ -286,10 +285,11 @@ fun StorageSystemScreen(
                             model.prompt(
                                 Prompt.Confirm(
                                     lines = listOf(
-                                        "RELEASE $name?",
-                                        "IT LEAVES THE PC AND DOES NOT COME BACK.",
+                                        "Once released, $name is",
+                                        "gone forever. Ok?",
                                     ),
-                                    confirmLabel = "RELEASE",
+                                    confirmLabel = "YES",
+                                    cancelLabel = "NO",
                                     onConfirm = {
                                         model.releaseStored(storedPick.uid)
                                         chosen = null
@@ -311,26 +311,31 @@ fun StorageSystemScreen(
                         MonAction(
                             "DEPOSIT",
                             {
-                                model.prompt(
-                                    Prompt.Confirm(
-                                        lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
-                                        confirmLabel = "DEPOSIT",
-                                        onConfirm = {
-                                            model.depositFromSave(
-                                                pick.key,
-                                                SaveLocation.Party(pick.slot + 1),
-                                                state.currentStorageBox,
-                                            )
-                                        },
+                                // Chosen, then refused in the message window,
+                                // which is where the games say it.
+                                if (last) {
+                                    refusal = "You can't deposit the last POKéMON!"
+                                    chosen = null
+                                } else {
+                                    model.prompt(
+                                        Prompt.Confirm(
+                                            lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
+                                            confirmLabel = "DEPOSIT",
+                                            onConfirm = {
+                                                model.depositFromSave(
+                                                    pick.key,
+                                                    SaveLocation.Party(pick.slot + 1),
+                                                    state.currentStorageBox,
+                                                )
+                                            },
+                                        )
                                     )
-                                )
+                                }
                             },
-                            enabled = !last,
                         ),
                         MonAction("STATS", { model.open(Screen.Status(pick.key, 0, pick.slot)) }),
                     ),
                     onCancel = { chosen = null },
-                    note = if (last) "CAN'T DEPOSIT THE LAST ONE" else null,
                 )
             })
 
@@ -386,7 +391,6 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
             Gen1Frame {
                 GbText("POKéMON SPRITES")
                 Spacer(Modifier.height(6.dp))
-                GbText("TAP AND HOLD A SPRITE TO PICK ITS GAME.", style = Gen1TextSmall)
             }
         }
 
@@ -485,7 +489,6 @@ fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
                 Gen1Frame {
                     GbText("RELEASED")
                     Gen1Field("RECORDED", released.toString())
-                    GbText("KEPT IN A LOG ON THIS DEVICE.", style = Gen1TextSmall)
                 }
             }
         }
@@ -590,38 +593,25 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
                 GbText("CONTROLS")
-                GbText("SWIPE MOVES, TAP TAKES,", style = Gen1TextSmall)
-                GbText("DOUBLE TAP FOR OPTIONS,", style = Gen1TextSmall)
-                GbText("HOLD GOES BACK.", style = Gen1TextSmall)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(gen1Dp(2)))
                 Gen1Toggle(
-                    label = "WINDOWS ON THE RIGHT",
+                    label = "ALIGNMENT",
                     on = state.windowsOnRight,
                     onToggle = { model.setWindowsOnRight(!state.windowsOnRight) },
+                    onLabel = "RIGHT",
+                    offLabel = "LEFT",
                 )
-                Spacer(Modifier.height(10.dp))
                 Gen1Toggle(
                     label = "ALL POKéMON",
                     on = state.showAllSaves,
                     onToggle = { model.setShowAllSaves(!state.showAllSaves) },
                 )
-                GbText("EVERY SAVE IN THE LISTS AT ONCE.", style = Gen1TextSmall)
             }
         }
         item {
-            Gen1Frame {
-                GbText("DEVICES ON THE ACCOUNT")
-                val devices = state.account?.devices.orEmpty()
-                if (devices.isEmpty()) GbText("NOT KNOWN YET.", style = Gen1TextSmall)
-                devices.forEach { Gen1Field(it.label, if (it.isThisDevice) "THIS DEVICE" else "") }
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("DIAGNOSTICS")
-                Spacer(Modifier.height(8.dp))
-                Gen1Button("SEND REPORT", onShareReport)
-
+            Gen1Frame(Modifier.wrapContentWidth()) {
+                var cursor by remember { mutableStateOf(false) }
+                Gen1MenuRow("SEND REPORT", cursor, { cursor = true }, onShareReport)
             }
         }
         item {
@@ -633,68 +623,98 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
 }
 
 /**
- * Who made what this app is built out of.
+ * Who made what this app is built out of, and whose the rest of it is.
  *
- * None of it is this project's work, and two of the four ask to be credited in
- * writing, so the app says so where a player can actually read it rather than
- * only in a README they will never open.
+ * Given the whole screen rather than a column of windows: it is the one page
+ * here that is meant to be read rather than used, and breaking it into boxes
+ * would make it harder to.
  */
 @Composable
 fun CreditsScreen() {
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("CREDITS", style = Gen1TextLarge)
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("SPRITES")
-                GbText("THE RBY SPRITES PROJECT", style = Gen1TextSmall)
-                GbText("BY SHIRATHEMOGUL", style = Gen1TextSmall)
-                Spacer(Modifier.height(4.dp))
-                GbText("github.com/ShiraTheMogul/", style = Gen1TextSmall)
-                GbText("rby-sprites-project", style = Gen1TextSmall)
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("FONT")
-                GbText("POKEMON-FONT BY SUPERPENCIL", style = Gen1TextSmall)
-                GbText("SIL OPEN FONT LICENSE 1.1", style = Gen1TextSmall)
-                Spacer(Modifier.height(4.dp))
-                GbText("github.com/cooljeanius/", style = Gen1TextSmall)
-                GbText("pokemon-font", style = Gen1TextSmall)
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("GAME DATA")
-                GbText("SPECIES, MOVES AND THE STAT", style = Gen1TextSmall)
-                GbText("FORMULAS COME FROM PRET/POKERED,", style = Gen1TextSmall)
-                GbText("THE DISASSEMBLY OF THE ORIGINAL", style = Gen1TextSmall)
-                GbText("GAMES.", style = Gen1TextSmall)
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("SAVES")
-                GbText("THE SAVE FORMAT AND THE SYNC", style = Gen1TextSmall)
-                GbText("SERVICE ARE GEN1RECOMP'S. THIS", style = Gen1TextSmall)
-                GbText("APP READS AND WRITES THEM THE", style = Gen1TextSmall)
-                GbText("WAY THE GAME ITSELF DOES.", style = Gen1TextSmall)
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("POKéMON IS NINTENDO, CREATURES", style = Gen1TextSmall)
-                GbText("AND GAME FREAK'S. THIS APP IS", style = Gen1TextSmall)
-                GbText("NOT AFFILIATED WITH THEM AND", style = Gen1TextSmall)
-                GbText("SHIPS NONE OF THEIR CODE OR ART.", style = Gen1TextSmall)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .gen1Ground()
+            .padding(gen1Dp(4)),
+    ) {
+        Gen1Frame(Modifier.fillMaxSize()) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(gen1Dp(4))) {
+                item { GbText("CREDITS", style = Gen1TextLarge) }
+                item {
+                    Credit(
+                        "SPRITES",
+                        "THE RBY SPRITES PROJECT",
+                        "BY SHIRATHEMOGUL",
+                        "github.com/ShiraTheMogul/",
+                        "rby-sprites-project",
+                    )
+                }
+                item {
+                    Credit(
+                        "CRIES",
+                        "POKEAPI/CRIES",
+                        "github.com/PokeAPI/cries",
+                    )
+                }
+                item {
+                    Credit(
+                        "FONT",
+                        "POKEMON-FONT BY SUPERPENCIL",
+                        "SIL OPEN FONT LICENSE 1.1",
+                        "github.com/cooljeanius/",
+                        "pokemon-font",
+                    )
+                }
+                item {
+                    Credit(
+                        "GAME DATA",
+                        "PRET/POKERED",
+                        "github.com/pret/pokered",
+                    )
+                }
+                item {
+                    Credit(
+                        "SAVES",
+                        "GEN1RECOMP",
+                        "github.com/bryanthaboi/",
+                        "gen1recomp",
+                    )
+                }
+                item { Spacer(Modifier.height(gen1Dp(4))) }
+                item {
+                    Column {
+                        GbText("POKEMON")
+                        Spacer(Modifier.height(gen1Dp(2)))
+                        LEGAL.forEach { paragraph ->
+                            GbText(paragraph, style = Gen1TextSmall)
+                            Spacer(Modifier.height(gen1Dp(3)))
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+@Composable
+private fun Credit(heading: String, vararg lines: String) {
+    Column {
+        GbText(heading)
+        lines.forEach { GbText(it, style = Gen1TextSmall) }
+    }
+}
+
+/**
+ * Kept as its own text rather than folded into the layout, so it is obvious
+ * what is a statement and what is furniture.
+ */
+private val LEGAL = listOf(
+    "© THE POKéMON COMPANY, NINTENDO, AND GAME FREAK.",
+    "POKéMON AND ALL RELATED NAMES, CHARACTERS, TRADEMARKS, AND INTELLECTUAL PROPERTY ARE THE PROPERTY OF THEIR RESPECTIVE OWNERS.",
+    "THIS PROJECT IS NOT AFFILIATED WITH, ENDORSED BY, SPONSORED BY, OR OTHERWISE ASSOCIATED WITH THE POKéMON COMPANY, NINTENDO, OR GAME FREAK. THIS PROJECT GRATEFULLY ACKNOWLEDGES THEIR IDEAS, CREATIVE WORK, AND CONTRIBUTIONS TO THE POKéMON FRANCHISE.",
+    "NO COPYRIGHT INFRINGEMENT IS INTENDED.",
+    "NO RIPPED GAME ASSETS ARE DISTRIBUTED IN THIS APK.",
+)
 
 /**
  * The only place a save is named.
@@ -751,8 +771,20 @@ private fun PaletteSwatch(palette: GbPalette) {
 
 /** An on/off row drawn as a menu entry with its state in the right column. */
 @Composable
-private fun Gen1Toggle(label: String, on: Boolean, onToggle: () -> Unit) {
-    Gen1MenuRow(label, selected = on, onSelect = onToggle, onConfirm = onToggle, trailing = if (on) "ON" else "OFF")
+private fun Gen1Toggle(
+    label: String,
+    on: Boolean,
+    onToggle: () -> Unit,
+    onLabel: String = "ON",
+    offLabel: String = "OFF",
+) {
+    Gen1MenuRow(
+        label,
+        selected = on,
+        onSelect = onToggle,
+        onConfirm = onToggle,
+        trailing = if (on) onLabel else offLabel,
+    )
 }
 
 /**
@@ -802,7 +834,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Gen1Button(prompt.confirmLabel, prompt.onConfirm)
-                    Gen1Button("CANCEL", model::dismissPrompt)
+                    Gen1Button(prompt.cancelLabel, model::dismissPrompt)
                 }
             }
 
@@ -812,7 +844,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     itemsIndexed((1..StorageLayout.BOX_COUNT).toList()) { _, index ->
                         val box = state.storage.boxes.getOrNull(index - 1)
                         Gen1MenuRow(
-                            box?.name ?: "BOX $index",
+                            box?.label ?: "BOX $index",
                             selected = false,
                             onSelect = { prompt.onChoose(index) },
                             onConfirm = { prompt.onChoose(index) },
@@ -823,6 +855,41 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Gen1Button("CANCEL", model::dismissPrompt)
+            }
+
+            is Prompt.RenameBox -> {
+                val box = state.storage.boxes.getOrNull(prompt.index - 1)
+                var name by remember(prompt.index) { mutableStateOf(box?.name.orEmpty()) }
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    GbText("BOX ${prompt.index}")
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    OutlinedTextField(
+                        value = name,
+                        // Ten characters, as the games allow, and nothing that
+                        // would not fit the window it is shown in.
+                        onValueChange = { text ->
+                            name = text.filter { it != '\n' }.take(StorageRepository.MAX_BOX_NAME)
+                        },
+                        singleLine = true,
+                        textStyle = Gen1Text,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Gen1Palette.Panel,
+                            unfocusedContainerColor = Gen1Palette.Panel,
+                            focusedTextColor = Gen1Palette.Ink,
+                            unfocusedTextColor = Gen1Palette.Ink,
+                            focusedIndicatorColor = Gen1Palette.Ink,
+                            unfocusedIndicatorColor = Gen1Palette.Shadow,
+                            cursorColor = Gen1Palette.Ink,
+                        ),
+                        modifier = Modifier.width(gen1Dp(90)),
+                    )
+                    Spacer(Modifier.height(gen1Dp(3)))
+                    Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
+                        Gen1Button("OK", { model.renameBox(prompt.index, name) })
+                        Gen1Button("CLEAR", { model.renameBox(prompt.index, "") })
+                        Gen1Button("CANCEL", model::dismissPrompt)
+                    }
+                }
             }
 
             is Prompt.ChooseWithdrawSave -> SavePicker(

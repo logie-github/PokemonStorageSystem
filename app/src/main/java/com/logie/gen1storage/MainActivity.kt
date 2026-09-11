@@ -47,6 +47,8 @@ import com.logie.gen1storage.ui.SaveFilesScreen
 import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
 import com.logie.gen1storage.ui.GbButton
+import com.logie.gen1storage.sound.LocalCryPlayer
+import com.logie.gen1storage.sound.rememberCryPlayer
 import com.logie.gen1storage.ui.Gen1Cursor
 import com.logie.gen1storage.ui.Gen1Layout
 import com.logie.gen1storage.ui.Gen1WindowBounds
@@ -137,6 +139,7 @@ private fun StorageApp(model: StorageViewModel) {
     CompositionLocalProvider(
         LocalGen1Cursor provides cursor,
         LocalGen1WindowBounds provides windows,
+        LocalCryPlayer provides rememberCryPlayer(),
     ) {
     Box(
         Modifier

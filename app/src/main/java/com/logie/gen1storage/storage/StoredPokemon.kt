@@ -94,9 +94,17 @@ data class StoredPokemon(
 /** One of this app's storage boxes. Modelled on Bill's PC: 12 boxes of 20. */
 data class StorageBox(
     val index: Int,
-    val name: String,
+    /** What the player called it, or null if they never did. */
+    val name: String?,
     val contents: List<StoredPokemon>,
 ) {
+    /**
+     * "BOX 4", or "BOX 4 SHINIES" once it has been named. The number always
+     * leads, so a renamed box is still findable by the number it has always
+     * had.
+     */
+    val label: String get() = if (name.isNullOrBlank()) "BOX $index" else "BOX $index $name"
+
     val isFull: Boolean get() = contents.size >= StorageLayout.BOX_CAPACITY
     val freeSlots: Int get() = StorageLayout.BOX_CAPACITY - contents.size
 }

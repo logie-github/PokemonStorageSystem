@@ -2,6 +2,7 @@ package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 
@@ -97,13 +99,13 @@ fun Gen1DialogueBox(
  */
 @Composable
 fun StorageSystemScreen(
-    boxNumber: Int,
-    boxName: String,
+    boxLabel: String,
     onWithdraw: () -> Unit,
     onDeposit: () -> Unit,
     onView: () -> Unit,
     onChangeCart: () -> Unit,
     onChangeBox: () -> Unit,
+    onRenameBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
     message: String = "What?",
     overlay: @Composable (() -> Unit)? = null,
@@ -155,9 +157,20 @@ fun StorageSystemScreen(
             Modifier.fillMaxSize(),
             contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
         ) {
-            Gen1Frame(Modifier.wrapContentWidth().gen1Clickable(onClick = onChangeBox)) {
-                GbText("BOX No. $boxNumber")
-                GbText(boxName.uppercase(), style = Gen1TextSmall)
+            // Tap to change box, hold to rename it — the same window, because
+            // it is the same subject, and there is nowhere better to put a
+            // rename than on the thing being renamed.
+            Gen1Frame(
+                Modifier
+                    .wrapContentWidth()
+                    .pointerInput(onChangeBox, onRenameBox) {
+                        detectTapGestures(
+                            onTap = { onChangeBox() },
+                            onLongPress = { onRenameBox() },
+                        )
+                    }
+            ) {
+                GbText(boxLabel.uppercase())
             }
         }
 
@@ -291,9 +304,9 @@ fun ChangeBoxOverlay(
     ) {
         Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5))) {
             LazyColumn(Modifier.heightIn(max = 380.dp)) {
-                itemsIndexed(boxes) { index, (number, name, count) ->
+                itemsIndexed(boxes) { index, (number, label, count) ->
                     Gen1MenuRow(
-                        "BOX $number $name".trim(),
+                        label,
                         selected == index,
                         {},
                         { onConfirm(number) },

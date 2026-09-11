@@ -184,6 +184,16 @@ itself, so it does not recreate and lose what is on screen, and on a screen at
 least 600dp wide the status and moves pages keep to the left half instead of
 stretching a two-column layout across a tablet's width.
 
+## Cries
+
+A Pokémon's cry plays once when its status page is opened. The recordings are
+lifted from the games, so the app distributes none of them: the first time a
+species is looked at its cry is fetched from
+[PokeAPI/cries](https://github.com/PokeAPI/cries) and kept on the device, the
+same arrangement the sprites use. The first cry for a species arrives a moment
+late and every one after it is immediate, which is the price of the APK
+carrying nothing it has no right to.
+
 ## Choosing a cartridge
 
 WITHDRAW and DEPOSIT both need a save, and this is where one is named. The

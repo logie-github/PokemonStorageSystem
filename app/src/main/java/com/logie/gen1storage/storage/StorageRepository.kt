@@ -60,7 +60,7 @@ class StorageRepository(private val directory: File) {
         ensureLoaded()
         StorageState(
             boxes = (1..StorageLayout.BOX_COUNT).map { index ->
-                StorageBox(index, names[index] ?: "BOX $index", boxes[index - 1].toList())
+                StorageBox(index, names[index], boxes[index - 1].toList())
             },
             revision = revision,
         )
@@ -298,6 +298,6 @@ class StorageRepository(private val directory: File) {
          * its own by the same parser the saves use.
          */
         const val RELEASED_FILE_NAME = "released.lua.log"
-        const val MAX_BOX_NAME = 12
+        const val MAX_BOX_NAME = 10
     }
 }

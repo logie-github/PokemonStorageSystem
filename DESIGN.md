@@ -1,0 +1,335 @@
+# How it is built
+
+The reasoning behind the app — the transfer safety rules, how the save format
+is matched to Gen1Recomp, and how the Generation I interface is drawn. For what
+the app actually does, see the [README](README.md).
+
+## The rule the whole app is built around
+
+**A transfer must never lose, duplicate or silently alter a Pokémon, and must
+never leave a valid Gen1Recomp save corrupted.**
+
+Everything else follows from it:
+
+- **Movement, not copying.** Both directions write the destination first, read
+  it back, re-validate it as a save, and only then remove the source copy.
+- **A journal, not a guess.** Before the first destructive step the app records
+  the save's hash as it is now and as it will be once committed. If the process
+  dies half way, the save's current hash matches one of the two and says
+  whether the write landed. Matching neither means the game wrote the save in
+  between — the app then keeps both copies and says so rather than choosing.
+- **Concurrency is checked twice.** A save is re-read and re-hashed immediately
+  before every commit, and the upload then carries the `baseRev` it was read
+  at, so the *server* rejects a stale write even if the app's own check raced.
+  `force` exists in the protocol and is never sent.
+- **The unknown outcome is a real state.** A network call can fail after the
+  server acted. That is reported as unknown rather than assumed either way, and
+  the journal settles it on the next launch.
+- **Backups stay on this device.** The blob being replaced is written to app
+  storage before any upload, so the previous state of a playthrough is
+  recoverable without the server and without a network.
+- **The one exception is asked for out loud.** RELEASE is the only thing that
+  removes a Pokémon without putting it somewhere, it is reachable only from the
+  window that opens on a chosen Pokémon in this app's own PC, it is confirmed,
+  and the entry is written to `released.lua.log` before it goes. Nothing in the
+  app reads that log back; it exists so the action is undoable by hand.
+- **A failed parse is never a licence to rewrite.** Unreadable saves are
+  classified — malformed, incomplete, wrong generation, unsupported, read-only,
+  readable-only-from-backup — and left as they are.
+
+## How it matches Gen1Recomp
+
+The save format is not guessed anywhere. It is read from upstream:
+
+| This app | Upstream |
+| --- | --- |
+| `lua/LuaParser.kt`, `lua/LuaWriter.kt` | `src/core/SaveSerializer.lua` — the same restricted grammar, the same deterministic key order, `%q` strings and `tostring` numbers, so output is byte-identical to what the game would write |
+| `gen1recomp/Gen1RecompSave.kt` | `src/core/SaveData.lua`, `src/pokemon/Boxes.lua`, `src/pokemon/Party.lua` — `party`, `boxes` (12 × 20), the pre-12-box `box` migration, `currentBox`, `player`, badges from `inventory` |
+| `sync/SyncApi.kt` | `src/sync/SyncClient.lua` — the same endpoints, field names and `x-sync-account` / `x-sync-token` headers |
+| `sync/SaveRepository.kt` | `src/sync/SyncEngine.lua` — a save travels as its own Lua source (`blob = source` from `SaveData.readSlotSource`), identified by `<version>/<meta.playthroughId>` |
+| `pokemon/Gen1Stats.kt` | `src/pokemon/Stats.lua` (pokered `home/move_mon.asm` CalcStat) — run only where `BoxMenu.withdraw` runs `Stats.ensure` |
+| `pokemon/Gen1SpeciesTable.kt`, `Gen1MoveTable.kt` | Generated from pret/pokered by `tools/generate_gen1_data.py`, the same assembly sources upstream's own extractor reads |
+
+Nothing else about a Pokémon is touched. The raw Lua table is what gets stored
+and what gets written back, so fields this app has never heard of — a mod's, an
+importer's `typeBytes`, a future upstream addition — survive a round trip
+untouched. Provenance is kept beside the Pokémon, never inside it.
+
+## Sprites
+
+DOWNLOAD SPRITES fetches the Generation I front sprites once, on request, and
+they are then stored on the device. A Pokémon is drawn in the art of the game
+it came from — a Red or Blue save gets the Red/Blue set, Yellow gets Yellow's —
+and a long press on any sprite pins that species to a different game instead.
+
+The art is kept at the size it is published, and reduced for the screen by
+**point sampling**: one source pixel per destination pixel, never a blend.
+Every ordinary downscale averages neighbouring pixels, which is exactly what
+softens a hard pixel edge, so nothing here uses one. The cost is disk — roughly
+25 MB for both sets — which is the price of the edges staying sharp.
+
+Sprite art comes from [the RBY Sprites Project by
+ShiraTheMogul](https://github.com/ShiraTheMogul/rby-sprites-project), which
+documents the Generation I sprite sets and asks only that the repository be
+credited. This app ships none of that art; it is downloaded on the player's
+request and stored only on their own device.
+
+
+## Type
+
+The interface is set in the Generation I face itself, bundled with the app —
+[pokemon-font](https://github.com/cooljeanius/pokemon-font), an extended
+Unicode clone of the font the Game Boy games shipped with, by Superpencil,
+under the SIL Open Font License 1.1. The licence travels with it, both in
+`third_party/pokemon-font/` and inside the APK.
+
+It is a vector font drawing square pixels, which means it is only crisp when
+one design pixel covers a whole number of device pixels. The project's own
+README says to use multiples of ten; measuring the source says otherwise. The
+em is 320 units and all but a handful of the Latin outline coordinates are
+multiples of 40, so one design pixel is an **eighth** of the em — a capital is
+7 of those pixels tall, the advance is 8, the ascender 10.
+
+So the app does not size type in `sp` by eye. Every size is snapped to a whole
+multiple of eight device pixels for the density it is actually rendering at,
+and line height is snapped up to the same grid so baselines land on pixels too.
+`snapFontPixels` is that arithmetic, kept out of the composable and tested
+across every density Android ships, because it is the one thing the whole
+presentation rests on. Nothing is bold, either: the face has one weight, and
+asking for another has the renderer smear the glyphs sideways to fake it.
+
+## One grid
+
+Everything is measured in Game Boy pixels off a single grid. The type size is
+snapped to a whole multiple of eight device pixels (see **Type** above); an
+eighth of that is one Game Boy pixel, and the window borders, the sprites, the
+status pages and every gap between them are whole numbers of it. There is one
+scale for the whole interface and nothing can drift off it.
+
+## Windows
+
+The window border is not an approximation of the Generation I one. It is tiles
+`$19`-`$1E` of `gfx/font/font_extra.png` in pret/pokered — the set
+`TextBoxGraphics` points at — transcribed a pixel at a time and checked against
+a screenshot of the PC, which it matches exactly.
+
+Every oddity in it is the cartridge's own, and reproducing those is the
+difference between the real frame and something that merely resembles it: the
+horizontal rule is one pixel, a gap, then two, while the vertical rule is one, a
+gap, then one; the left edge sits two and four pixels in while the right sits
+four and six; each corner carries a small ring and jogs its rules a pixel
+sideways to meet it; and no two corners are rotations of each other. A test
+pins all of that, because one wrong pixel still draws a plausible-looking box.
+
+A window is one tile of border on every side, as the games lay it out. The
+straight edges are uniform along their length, so each rule is a single
+rectangle however long the window is, and each corner is a dozen merged runs
+rather than sixty-four pixels.
+
+Every window is sized to what is in it. Nothing reaches both edges of the
+screen, so a strip of the dithered ground always shows down one side.
+
+The PC screen is four layers, and the order is the point: the menu, then
+whatever list is open over it, then the message window, then the small window
+that opens on a chosen Pokémon over all of it. The message has to stay readable
+behind a list, and the action window has to sit above both. Which edge they sit
+against is a setting — WINDOWS ON THE RIGHT in OPTIONS — and everything mirrors
+together, so the menu and the list keep overlapping the same way round either
+way.
+
+## Screen
+
+The app runs full screen in every orientation and every posture. The system
+bars are hidden and stay reachable by a swipe from the edge; only the camera
+cutout is padded around. Unfolding is a configuration the activity handles
+itself, so it does not recreate and lose what is on screen, and on a screen at
+least 600dp wide the status and moves pages keep to the left half instead of
+stretching a two-column layout across a tablet's width.
+
+## Cries
+
+A Pokémon's cry plays once when its status page is opened. The recordings are
+lifted from the games, so the app distributes none of them: the first time a
+species is looked at its cry is fetched from
+[PokeAPI/cries](https://github.com/PokeAPI/cries) and kept on the device, the
+same arrangement the sprites use. The first cry for a species arrives a moment
+late and every one after it is immediate, which is the price of the APK
+carrying nothing it has no right to.
+
+## Choosing a cartridge
+
+WITHDRAW and DEPOSIT both need a save, and this is where one is named. The
+screen opens on the three games and nothing else — no menu behind it, no
+message window — because at that moment there is one decision to make. Picking
+a game keeps the three on screen and lists that game's saves underneath as
+cartridges, three to a row, so changing game is a tap rather than a trip
+backwards. CHANGE CART on the main menu comes back here.
+
+A save stays chosen until it is changed or the app is closed, and is
+deliberately not written to disk: which cartridge is in the machine is a fact
+about this sitting, not a preference, and a stale one silently pointing at a
+playthrough the player has moved on from is worse than asking again.
+
+The title cards and the cartridge ship as four flat greys and are recoloured
+onto a palette ramp when they load, which is how one image each serves Red,
+Blue and Yellow. The cartridge's silhouette is taken from a render — the
+notched corner and the proportions are its — but the label recess, the top
+plate and the ridges are drawn as pixel art, because the render is a flat grey
+throughout and carries no shading to extract.
+
+A trainer's details sit on the label the way they would have been written
+there: the name, the Pokémon at the head of their party, and their badges and
+catches. The text is the palette's lightest over its darkest, drawn as an
+outline rather than on a plate, so it stays readable without hiding the art.
+
+## Controls
+
+Tapping works throughout: one tap on a menu row takes it. The gestures below
+are always on, and are not a setting — none of them competes with tapping,
+because everything but the hold is read only in empty space, off the windows
+and on the screen itself. A toggle would only ever have meant "does empty space
+do anything", which is not a question worth putting to anyone.
+
+| Gesture | |
+| --- | --- |
+| Swipe, in empty space | Moves the cursor |
+| Tap, in empty space | Takes whatever the cursor is on |
+| Double tap, in empty space | OPTIONS |
+| Tap and hold, anywhere | Back |
+
+A tap on a menu row is that row's; a tap on the screen beside it is the
+cursor's, and neither has to guess. The windows report their own bounds for
+this, so nothing has to be kept in sync by hand.
+
+The hold is the exception and works anywhere, because going back should not
+depend on where a finger happens to be. At the top of the menu stack it does
+nothing rather than closing the app.
+
+The cursor is shared. Each menu pushes a layer while it is on screen and pops
+it when it leaves, and the cursor belongs to the topmost — which is the
+innermost thing the player opened, and the only one they could have meant.
+
+## Colour
+
+OPTIONS → COLOUR draws the whole app through one four-shade Game Boy palette:
+ORIGINAL (untinted), RED, BLUE, GREEN and YELLOW, and the pastel mix a Game Boy
+Color applied to an original Game Boy cartridge.
+
+The game palettes are built to each game's identity — white, a light tint, a
+dark tint, black — rather than transcribed from a particular ROM's palette
+table, so treat them as a starting point rather than a reproduction.
+
+Sprites are recoloured through the same ramp. A Generation I sprite was four
+shades to begin with, so each pixel is bucketed by brightness onto exactly one
+palette entry rather than blended towards it — the result is a recoloured
+sprite, not a tinted one, and the transparent surround stays transparent.
+ORIGINAL leaves the art alone.
+
+The windows are the exception: they stay black on white whatever the screen is
+tinted, which is how the cartridge draws its text boxes. BLACK ON WHITE BOXES
+turns that off, and the windows then take the palette too.
+
+The screen behind them is the palette's ramp top to bottom — lightest, light,
+dark — with no gradient and no blending anywhere in it. A Game Boy could not mix
+two colours at all: a designer wanting a tone between them alternated pixels of
+each and let the eye do the mixing, and the density of that alternation is what
+carried the shading. So that is what this does. Every pixel on screen is one of
+the palette's own colours, and only how many of each changes on the way down.
+
+The pattern is an ordered dither against an 8x8 Bayer matrix, the arrangement
+that spreads the minority colour as evenly as it can rather than clumping it —
+sparse dots at each end of a band, a clean checkerboard where two colours meet.
+It is generated as one strip a single Bayer tile wide and the full height tall,
+which a shader repeats sideways, so the whole background is one draw call and
+one small bitmap.
+
+The darkest shade is deliberately not in that ramp. It is the ink the windows
+are drawn in, and a background reaching it would leave their rules nothing to
+sit against.
+
+## Getting access to your saves
+
+1. In Gen1Recomp, open **SAVE SYNC** and make sure the device is linked. Tap
+   **Sync now** so the account has your current saves.
+2. Read off the two eight-digit codes.
+3. In this app: **ACCESS SAVE** → enter both codes → **LINK THIS DEVICE**.
+
+This device then appears in the game's device list, and the app reads and
+writes saves through the same service the game does. A change made here reaches
+the game on its next sync — when its launcher opens, a few seconds after a
+save, or every few minutes while it runs.
+
+**The codes are a credential.** Anyone holding both can link a device and read
+and write every save on the account, so treat them like a password and use
+**Get new sync codes** in the game if they leak. The app stores the account id
+and device token it receives in its own private storage, and keeps all four out
+of the debug report.
+
+Some things follow from saves living on a server rather than on the device:
+
+- The sync service is run by the Gen1Recomp project, not by this app. If it is
+  unreachable, saves cannot be read or written — your storage boxes and local
+  backups stay available regardless.
+- Unlinking this device from the game cuts off access until it is linked again.
+  It does not touch anything already in the app's boxes.
+
+## Building
+
+Requires JDK 17 and the Android SDK (platform 35).
+
+```sh
+./gradlew testDebugUnitTest lintRelease assembleDebug
+```
+
+Regenerating the Generation I data tables:
+
+```sh
+git clone --depth 1 https://github.com/pret/pokered /tmp/pokered
+python3 tools/generate_gen1_data.py /tmp/pokered
+```
+
+## Releases
+
+GitHub Actions is the only thing that builds a release. `.github/workflows/release.yml`
+runs on a `v*` tag or by hand, and produces:
+
+- `Gen1Storage-v<version>.apk`
+- `Gen1Storage-v<version>.apk.sha256`
+
+Signing uses repository secrets and nothing else — no keystore, password or key
+material is in this repository:
+
+| Secret | What it holds |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | The release keystore, base64-encoded |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Key alias |
+| `ANDROID_KEY_PASSWORD` | Key password |
+
+To create a keystore and its secret:
+
+```sh
+keytool -genkeypair -v -keystore release.jks -keyalg RSA -keysize 4096 \
+        -validity 10000 -alias gen1storage
+base64 -w0 release.jks     # paste into ANDROID_KEYSTORE_BASE64
+```
+
+Debug builds sign themselves with the local debug key and need none of this.
+
+## Layout
+
+| Package | Responsibility |
+| --- | --- |
+| `lua` | The Gen1Recomp save grammar: value model, parser, writer, byte-safe text |
+| `sync` | The save-sync client, the linked account's credentials, and the save catalogue with its local backups |
+| `gen1recomp` | Save parsing, classification and validation |
+| `sprites` | Sprite download, storage, per-species art choice |
+| `pokemon` | Generation I Pokémon representation, species and move tables, stat maths |
+| `storage` | The app's own PC and its provenance records |
+| `transfer` | Deposit and withdraw transactions, journalling and crash recovery |
+| `ui` | The Generation I interface |
+
+UI code never touches save bytes; it goes through `transfer`. Everything above
+`sync/SyncTransport.kt` is testable without a network — the test suite drives
+the real client against a fake server that enforces the same revision rules,
+including the case where a write lands but the reply is lost.

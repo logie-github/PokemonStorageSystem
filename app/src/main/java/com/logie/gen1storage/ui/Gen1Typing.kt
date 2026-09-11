@@ -57,15 +57,13 @@ fun Gen1TypedLines(
 @Composable
 private fun TypedLine(line: String, shown: Int, style: TextStyle) {
     Row(Modifier.fillMaxWidth()) {
-        if (shown > 0) GbText(line.take(shown), style = style, maxLines = 1)
+        // No line cap: a question that runs past the window should wrap, not
+        // be cut off mid-word with an ellipsis.
+        if (shown > 0) GbText(line.take(shown), style = style)
         if (shown < line.length) {
             // Invisible, not absent: it reserves the space the letters will
             // land in, so the window is its final size from the start.
-            GbText(
-                line.drop(shown),
-                style = style.copy(color = Gen1Palette.Panel),
-                maxLines = 1,
-            )
+            GbText(line.drop(shown), style = style.copy(color = Gen1Palette.Panel))
         }
     }
 }
@@ -111,3 +109,19 @@ fun Gen1BlinkingArrow(style: TextStyle = Gen1Text) {
 
 private const val BLINK_ON_MILLIS = 420L
 private const val BLINK_OFF_MILLIS = 220L
+
+/**
+ * The choice a window offers, as the games offer one: rows with a cursor
+ * running down them, not words laid side by side.
+ *
+ * They stack rather than sitting in a row because a row of them has no room
+ * for a cursor, and without a cursor there is nothing saying which one the
+ * A button would take.
+ */
+@Composable
+fun Gen1ChoiceRows(choices: List<Pair<String, () -> Unit>>) {
+    val cursor = rememberCursorLayer(choices.size) { choices[it].second() }
+    choices.forEachIndexed { index, (label, action) ->
+        Gen1MenuRow(label, cursor == index, {}, action)
+    }
+}

@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.download.DownloadProgress
+import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Pokemon
@@ -766,6 +767,7 @@ fun DownloadsScreen(state: UiState, model: StorageViewModel) {
         "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
         "DOWNLOAD CRIES" to { model.open(Screen.Cries) },
         "DOWNLOAD FOLLOWERS" to { model.open(Screen.Followers) },
+        "DOWNLOAD ALL" to { model.downloadEverything() },
     )
     val cursor = rememberCursorLayer(entries.size) { entries[it].second() }
 
@@ -782,9 +784,9 @@ fun DownloadsScreen(state: UiState, model: StorageViewModel) {
         }
         item {
             Gen1Frame(Modifier.wrapContentWidth()) {
-                Gen1Field("SPRITES", "${state.spritesInstalled}")
-                Gen1Field("CRIES", "${state.criesInstalled} OF 151")
-                Gen1Field("FOLLOWERS", "${state.followersInstalled} OF 251")
+                Gen1Field("SPRITES", "${percentOf(state.spritesInstalled, SPRITE_TOTAL)}%")
+                Gen1Field("CRIES", "${percentOf(state.criesInstalled, 151)}%")
+                Gen1Field("FOLLOWERS", "${percentOf(state.followersInstalled, 251)}%")
             }
         }
     }
@@ -801,7 +803,8 @@ fun DownloadsScreen(state: UiState, model: StorageViewModel) {
 private fun DownloadPage(
     heading: String,
     progress: DownloadProgress?,
-    installed: String,
+    /** How much of the set is here, as a share of the whole. */
+    installedPercent: Int,
     spaceUsed: String,
     hasSome: Boolean,
     confirmLine: String,
@@ -825,21 +828,21 @@ private fun DownloadPage(
         if (progress != null) {
             item {
                 Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
+                    // The share, and nothing else. A running count of files
+                    // is the machine's business, not the player's.
                     DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     if (progress.finished) {
                         GbText(
                             if (progress.error != null) "STOPPED: ${progress.error.uppercase()}"
-                            else if (progress.failed > 0) "DONE. ${progress.failed} COULD NOT BE FETCHED."
                             else "DONE.",
                             style = Gen1TextSmall,
                         )
                         Spacer(Modifier.height(8.dp))
-                        Gen1Button("OK", onDismiss)
+                        Gen1BoxButton("OK", onDismiss)
                     } else {
-                        GbText("${progress.done} OF ${progress.total}", style = Gen1TextSmall)
                         Spacer(Modifier.height(8.dp))
-                        Gen1Button("STOP", onStop)
+                        Gen1BoxButton("STOP", onStop)
                     }
                 }
             }
@@ -848,17 +851,14 @@ private fun DownloadPage(
         if (!running) {
             item {
                 Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText("ON THIS DEVICE")
-                    GbText(installed, style = Gen1TextSmall)
-                    Spacer(Modifier.height(gen1Dp(2)))
-                    GbText("SPACE USED")
-                    GbText(spaceUsed, style = Gen1TextSmall)
+                    Gen1Field("ON THIS DEVICE", "$installedPercent%")
+                    Gen1Field("SPACE USED", spaceUsed)
                 }
             }
             // Their own buttons rather than a row crammed inside the window,
             // which is what was breaking DELETE across two lines.
             item {
-                Gen1Button(
+                Gen1BoxButton(
                     if (hasSome) "DOWNLOAD MISSING" else "DOWNLOAD",
                     {
                         model.prompt(
@@ -875,7 +875,7 @@ private fun DownloadPage(
             }
             if (hasSome) {
                 item {
-                    Gen1Button(
+                    Gen1BoxButton(
                         "DELETE",
                         {
                             model.prompt(
@@ -895,11 +895,17 @@ private fun DownloadPage(
     }
 }
 
+/** Every sprite the normal download fetches: each set, every species. */
+private val SPRITE_TOTAL = SpriteSet.downloadable.size * 151
+
+private fun percentOf(have: Int, whole: Int): Int =
+    if (whole <= 0) 0 else ((have.coerceAtMost(whole) * 100) / whole)
+
 @Composable
 fun CriesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
     heading = "POKéMON CRIES",
     progress = state.cryProgress,
-    installed = "${state.criesInstalled} OF 151 CRIES",
+    installedPercent = percentOf(state.criesInstalled, 151),
     spaceUsed = if (state.criesInstalled > 0) "${model.cryBytesOnDisk() / 1024} KB"
     else "ABOUT 2 MB TO DOWNLOAD",
     hasSome = state.criesInstalled > 0,
@@ -916,7 +922,7 @@ fun CriesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
 fun FollowersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
     heading = "OVERWORLD FOLLOWERS",
     progress = state.followerProgress,
-    installed = "${state.followersInstalled} OF 251 SHEETS",
+    installedPercent = percentOf(state.followersInstalled, 251),
     spaceUsed = if (state.followersInstalled > 0) "${model.followerBytesOnDisk() / 1024} KB"
     else "ABOUT 1 MB TO DOWNLOAD",
     hasSome = state.followersInstalled > 0,
@@ -933,7 +939,7 @@ fun FollowersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
 fun SpritesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
     heading = "POKéMON SPRITES",
     progress = state.spriteProgress,
-    installed = "${state.spritesInstalled} SPRITES",
+    installedPercent = percentOf(state.spritesInstalled, SPRITE_TOTAL),
     spaceUsed = if (state.spritesInstalled > 0) "${model.spriteBytesOnDisk() / (1024 * 1024)} MB"
     else "ABOUT 25 MB TO DOWNLOAD",
     hasSome = state.spritesInstalled > 0,
@@ -1462,16 +1468,18 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
     ) {
         when (prompt) {
             is Prompt.Message -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
-                Spacer(Modifier.height(10.dp))
-                Gen1Button("OK", model::dismissPrompt)
+                Spacer(Modifier.height(gen1Dp(2)))
+                Gen1ChoiceRows(listOf("OK" to model::dismissPrompt))
             }
 
             is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Gen1Button(prompt.confirmLabel, prompt.onConfirm)
-                    Gen1Button(prompt.cancelLabel, model::dismissPrompt)
-                }
+                Spacer(Modifier.height(gen1Dp(2)))
+                Gen1ChoiceRows(
+                    listOf(
+                        prompt.confirmLabel to prompt.onConfirm,
+                        prompt.cancelLabel to model::dismissPrompt,
+                    )
+                )
             }
 
             is Prompt.ChooseBox -> Gen1Frame(opening = true) {

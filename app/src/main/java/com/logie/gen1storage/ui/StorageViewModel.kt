@@ -750,6 +750,24 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun followerBytesOnDisk(): Long = followers.bytesOnDisk()
 
+    /**
+     * Fetches all three sets, one after another rather than at once.
+     *
+     * Three downloads racing each other over one connection finish no sooner
+     * and each report a percentage that stalls while the others have the
+     * line. In order, each one's bar means what it says.
+     */
+    fun downloadEverything() {
+        viewModelScope.launch {
+            downloadSprites()
+            spriteJob?.join()
+            downloadCries()
+            cryJob?.join()
+            downloadFollowers()
+            followerJob?.join()
+        }
+    }
+
     // ------- export and import
 
     /**

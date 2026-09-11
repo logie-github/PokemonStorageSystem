@@ -43,6 +43,7 @@ fun Gen1Sprite(
     /** Width and height in Game Boy pixels; the games draw a front sprite at 56. */
     sizeInPixels: Int = 56,
     onLongPress: ((String) -> Unit)? = null,
+    onTap: (() -> Unit)? = null,
 ) {
     var image by remember(speciesId, gameVersionId) { mutableStateOf<ImageBitmap?>(null) }
 
@@ -54,9 +55,12 @@ fun Gen1Sprite(
         modifier
             .size(gen1Dp(sizeInPixels))
             .then(
-                if (onLongPress != null && speciesId != null) {
-                    Modifier.pointerInput(speciesId) {
-                        detectTapGestures(onLongPress = { onLongPress(speciesId) })
+                if (speciesId != null && (onLongPress != null || onTap != null)) {
+                    Modifier.pointerInput(speciesId, onTap) {
+                        detectTapGestures(
+                            onTap = onTap?.let { tap -> { _ -> tap() } },
+                            onLongPress = onLongPress?.let { press -> { _ -> press(speciesId) } },
+                        )
                     }
                 } else Modifier
             ),

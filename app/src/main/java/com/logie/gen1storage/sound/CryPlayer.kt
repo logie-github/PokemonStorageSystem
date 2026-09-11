@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.HttpURLConnection
@@ -54,6 +55,9 @@ class CryPlayer(context: Context) {
 
     /** The sample still loading that should play the moment it is ready. */
     @Volatile private var pending: Int? = null
+
+    /** When the cry now sounding should be finished, by the clock. */
+    @Volatile private var busyUntil = 0L
 
     init {
         pool.setOnLoadCompleteListener { _, sampleId, status ->
@@ -116,8 +120,21 @@ class CryPlayer(context: Context) {
         return target
     }
 
+    /**
+     * Plays a sample, waiting out whatever is still sounding first.
+     *
+     * [SoundPool] will not say how long a sample runs, so this holds a fixed
+     * window instead — every Generation I cry is well under it. Waiting rather
+     * than cutting the previous one off is what makes tapping a sprite twice
+     * sound like two cries instead of one interrupted one.
+     */
     private fun play(sampleId: Int) {
-        runCatching { pool.play(sampleId, 1f, 1f, 1, 0, 1f) }
+        scope.launch {
+            val wait = busyUntil - System.currentTimeMillis()
+            if (wait > 0) delay(wait)
+            busyUntil = System.currentTimeMillis() + CRY_LENGTH_MILLIS
+            runCatching { pool.play(sampleId, 1f, 1f, 1, 0, 1f) }
+        }
     }
 
     fun release() {
@@ -129,6 +146,9 @@ class CryPlayer(context: Context) {
     private companion object {
         const val LAST_GEN1 = 151
         const val BASE_URL = "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/legacy"
+
+        /** Longer than any Generation I cry, which is all this has to be. */
+        const val CRY_LENGTH_MILLIS = 1_100L
     }
 }
 

@@ -17,7 +17,7 @@ Generation I only.
 - Twelve boxes of twenty, on top of whatever your saves already hold.
 - Deposit a Pokémon from a save's party, withdraw one back into any save's
   party or PC.
-- Move stored Pokémon between boxes, and rename the boxes.
+- Move stored Pokémon between boxes. Hold a box or a cartridge to rename it.
 - Release a Pokémon, with the entry kept in a log on the device so it is
   recoverable by hand.
 
@@ -36,14 +36,15 @@ Generation I only.
 - The Generation I status screen, both pages — stats, types, OT, moves and PP.
 - Downloadable sprites, shown in the art of the game a Pokémon came from. Hold
   a sprite to pin that species to a different game's art.
-- Cries play when a status page opens.
+- Cries play when a status page opens, and again when the sprite is tapped.
 
 **Interface**
 
 - The real Generation I window border, drawn from the tiles in the games'
   disassembly, and the Game Boy font.
-- Six colour palettes: untinted, Red, Blue, Green, Yellow, and the Game Boy
-  Color pastel mix. Sprites are recoloured to match.
+- Seven colour palettes: untinted, Red, Blue, Green, Yellow, the Game Boy Color
+  pastel mix, and the Super Game Boy route palette. Sprites are recoloured to
+  match.
 - Windows on the left or the right, whichever suits your grip.
 - Full screen in any orientation. On a foldable, the status pages take the left
   half and the menu stays usable on the right.

@@ -418,10 +418,28 @@ fun Gen1Button(
 /** A label/value pair as the status screens lay them out. */
 @Composable
 fun Gen1Field(label: String, value: String, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        GbText(label.uppercase(), style = Gen1TextSmall, modifier = Modifier.width(112.dp))
-        GbText(value.uppercase(), maxLines = 2)
+    // Stacked rather than in two columns: a fixed label column had no way to
+    // be right for both "STATUS" and "ON THIS DEVICE", and wrapped the short
+    // ones onto two lines to make room for the long ones.
+    Column(modifier) {
+        GbText(label.uppercase(), style = Gen1TextSmall, maxLines = 1)
+        GbText(value.uppercase(), maxLines = 1)
     }
+}
+
+/**
+ * The three colours an HP bar is drawn in.
+ *
+ * `PAL_GREENBAR`, `PAL_YELLOWBAR` and `PAL_REDBAR` from pret/pokeyellow's
+ * Super Game Boy table, converted from its five-bit channels the way the
+ * hardware does it (`v shl 3 or v shr 2`). They are fixed rather than taken
+ * from the chosen palette: the bar is the one place in the interface that has
+ * to mean something at a glance, and a red bar that is not red does not.
+ */
+object Gen1HpBarColors {
+    val Green = Color(0xFF00AD00)
+    val Yellow = Color(0xFFE7BD4A)
+    val Red = Color(0xFFD64A31)
 }
 
 /** The HP bar, drawn as the flat three-state bar the games use. */
@@ -441,9 +459,9 @@ fun Gen1HpBar(current: Int, max: Int, modifier: Modifier = Modifier) {
                 .height(10.dp)
                 .background(
                     when {
-                        fraction > 0.5f -> Gen1Palette.Darkest
-                        fraction > 0.2f -> Gen1Palette.Dark
-                        else -> Gen1Palette.Light
+                        fraction > 0.5f -> Gen1HpBarColors.Green
+                        fraction > 0.2f -> Gen1HpBarColors.Yellow
+                        else -> Gen1HpBarColors.Red
                     }
                 )
         )

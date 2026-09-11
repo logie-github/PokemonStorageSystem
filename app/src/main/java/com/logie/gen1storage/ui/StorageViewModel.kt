@@ -52,7 +52,6 @@ sealed interface Screen {
      */
     data class Status(val key: String?, val area: Int, val slot: Int) : Screen
     data object Sprites : Screen
-    data object SaveFiles : Screen
     data object Options : Screen
     data object Credits : Screen
 }
@@ -69,6 +68,8 @@ sealed interface Prompt {
     data class ChooseBox(val title: String, val onChoose: (Int) -> Unit) : Prompt
     /** Naming a box, from the window that shows which one is open. */
     data class RenameBox(val index: Int) : Prompt
+    /** Naming a cartridge, from the cartridge itself. */
+    data class RenameCart(val key: String, val fallback: String) : Prompt
     /** Which save to put a withdrawn Pokémon into, before asking where in it. */
     data class ChooseWithdrawSave(val uid: String) : Prompt
     data class ChooseWithdrawTarget(val uid: String, val key: String) : Prompt
@@ -103,6 +104,8 @@ data class UiState(
      * opening one, so the menu is never asking which save it means.
      */
     val activeSaveKey: String? = null,
+    /** Bumped when a cartridge is renamed, so the carts redraw. */
+    val cartRevision: Int = 0,
     val loadingAll: Boolean = false,
     val spriteProgress: SpriteProgress? = null,
     val spritesInstalled: Int = 0,
@@ -583,6 +586,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun releasedCount(): Int = storage.releasedCount()
+
+    fun cartName(key: String): String? = settings.cartName(key)
+
+    fun renameCart(key: String, name: String) {
+        settings.setCartName(key, name)
+        mutable.update { it.copy(prompt = null, cartRevision = it.cartRevision + 1) }
+    }
 
     /** Names a box, or clears the name again when given nothing. */
     fun renameBox(index: Int, name: String) {

@@ -95,7 +95,30 @@ data class GbPalette(
             tintsSprites = true,
         )
 
-        val ALL = listOf(ORIGINAL, RED, BLUE, GREEN, YELLOW, GBC_PASTEL)
+        /**
+         * `PAL_ROUTE` from pret/pokered's `data/sgb/sgb_palettes.asm`, the
+         * Super Game Boy colours the overworld routes were shown in.
+         *
+         * The two middle shades are swapped from the order the table lists
+         * them in. A Super Game Boy palette is indexed by a tile's shade, not
+         * by how bright the colour is, and here entry 2 (the blue) is very
+         * slightly lighter than entry 1 (the green) — 203 against 198. Left as
+         * written, the background ramp would step backwards and the sprite
+         * recolour would put them in the wrong buckets, so they are ordered by
+         * brightness like every other palette here. At five parts in 256 apart
+         * it is not a difference anyone can see.
+         */
+        val ROUTE = GbPalette(
+            id = "route", label = "ROUTE",
+            lightest = Color(0xFFFFEFFF),
+            light = Color(0xFFA5D6FF),
+            dark = Color(0xFFADE75A),
+            darkest = Color(0xFF181010),
+            surround = Color(0xFF181010),
+            tintsSprites = true,
+        )
+
+        val ALL = listOf(ORIGINAL, RED, BLUE, GREEN, YELLOW, GBC_PASTEL, ROUTE)
 
         fun fromId(id: String?): GbPalette = ALL.firstOrNull { it.id == id } ?: ORIGINAL
     }

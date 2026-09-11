@@ -150,6 +150,7 @@ fun StorageSystemScreen(
     val needsCart = !state.showAllSaves && state.save(state.activeSaveKey) == null
     var refusal by remember(mode) { mutableStateOf<String?>(null) }
 
+
     val depositRows = buildList {
         val keys = if (state.showAllSaves) {
             state.saves.map { it.key }
@@ -160,6 +161,14 @@ fun StorageSystemScreen(
             val save = state.save(key)?.save ?: return@forEach
             save.party.forEachIndexed { index, mon -> add(PartyRow(key, index, mon, save)) }
         }
+    }
+
+// An empty list has nothing to draw a window around, so it speaks through
+    // the message window instead — which is what the cartridge does.
+    val emptiness = when (mode) {
+        PcMode.WITHDRAW, PcMode.VIEW -> "What? There are no POKéMON here!".takeIf { stored.isEmpty() }
+        PcMode.DEPOSIT -> "There are no POKéMON here.".takeIf { depositRows.isEmpty() }
+        else -> null
     }
 
     /** The label a group of party rows sits under, or null once it is open. */
@@ -193,12 +202,13 @@ fun StorageSystemScreen(
         onRenameBox = { model.prompt(Prompt.RenameBox(state.currentStorageBox)) },
         onOptions = onOptions,
         message = refusal
+            ?: emptiness
             ?: when {
                 !state.linked -> "Link this device in OPTIONS."
                 needsCart -> "No cart in the machine."
                 else -> "What?"
             },
-        overlay = when (mode) {
+        overlay = if (emptiness != null) null else when (mode) {
             PcMode.MENU -> null
 
             PcMode.WITHDRAW, PcMode.VIEW -> ({
@@ -419,88 +429,52 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
 
         if (!running) {
             item {
-                Gen1Frame {
-                    Gen1Field("ON THIS DEVICE", "${state.spritesInstalled} SPRITES")
-                    if (state.spritesInstalled > 0) {
-                        Gen1Field("SPACE USED", "${model.spriteBytesOnDisk() / (1024 * 1024)} MB")
-                    } else {
-                        GbText("ABOUT 25 MB.", style = Gen1TextSmall)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Gen1Button(
-                            if (state.spritesInstalled > 0) "DOWNLOAD MISSING" else "DOWNLOAD",
-                            {
-                                model.prompt(
-                                    Prompt.Confirm(
-                                        lines = listOf("Download Pokémon sprites from repo?"),
-                                        confirmLabel = "YES",
-                                        onConfirm = { model.downloadSprites() },
-                                    )
-                                )
-                            },
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    GbText("ON THIS DEVICE")
+                    GbText("${state.spritesInstalled} SPRITES", style = Gen1TextSmall)
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    GbText("SPACE USED")
+                    GbText(
+                        if (state.spritesInstalled > 0) "${model.spriteBytesOnDisk() / (1024 * 1024)} MB"
+                        else "ABOUT 25 MB TO DOWNLOAD",
+                        style = Gen1TextSmall,
+                    )
+                }
+            }
+            // Their own buttons rather than a row crammed inside the window,
+            // which is what was breaking DELETE across two lines.
+            item {
+                Gen1Button(
+                    if (state.spritesInstalled > 0) "DOWNLOAD MISSING" else "DOWNLOAD",
+                    {
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("Download Pokémon sprites from repo?"),
+                                confirmLabel = "YES",
+                                cancelLabel = "NO",
+                                onConfirm = { model.downloadSprites() },
+                            )
                         )
-                        if (state.spritesInstalled > 0) {
-                            Gen1Button("DELETE", {
-                                model.prompt(
-                                    Prompt.Confirm(
-                                        lines = listOf("DELETE EVERY DOWNLOADED SPRITE?"),
-                                        confirmLabel = "DELETE",
-                                        onConfirm = { model.deleteSprites() },
-                                    )
+                    },
+                    Modifier.wrapContentWidth(),
+                )
+            }
+            if (state.spritesInstalled > 0) {
+                item {
+                    Gen1Button(
+                        "DELETE",
+                        {
+                            model.prompt(
+                                Prompt.Confirm(
+                                    lines = listOf("DELETE EVERY DOWNLOADED SPRITE?"),
+                                    confirmLabel = "YES",
+                                    cancelLabel = "NO",
+                                    onConfirm = { model.deleteSprites() },
                                 )
-                            })
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SaveFilesScreen(state: UiState, model: StorageViewModel) {
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("SAVE FILES")
-            }
-        }
-        if (state.recoveryNotes.isNotEmpty()) {
-            item {
-                Gen1Frame {
-                    GbText("RECOVERY")
-                    state.recoveryNotes.forEach { GbText(it.uppercase(), style = Gen1TextSmall) }
-                }
-            }
-        }
-        model.pendingTransferSummary()?.let { pending ->
-            item {
-                Gen1Frame {
-                    GbText("UNFINISHED TRANSFER")
-                    GbText(pending.uppercase(), style = Gen1TextSmall)
-                    Spacer(Modifier.height(8.dp))
-                    Gen1Button("CLEAR RECORD", model::clearPendingTransferRecord)
-                }
-            }
-        }
-        model.releasedCount().takeIf { it > 0 }?.let { released ->
-            item {
-                Gen1Frame {
-                    GbText("RELEASED")
-                    Gen1Field("RECORDED", released.toString())
-                }
-            }
-        }
-        item {
-            Gen1Frame {
-                GbText("LOCAL BACKUPS")
-                val backups = model.localBackups()
-                if (backups.isEmpty()) GbText("NONE YET.", style = Gen1TextSmall)
-                // The key is a game and a playthrough id; only the game half
-                // means anything to a player, and the id overran the row.
-                backups.take(20).forEach {
-                    Gen1Field(it.key.substringBefore('/').uppercase(), "REV ${it.rev}")
+                            )
+                        },
+                        Modifier.wrapContentWidth(),
+                    )
                 }
             }
         }
@@ -519,7 +493,6 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
     var cursor by remember { mutableStateOf(-1) }
     val entries = listOf<Pair<String, () -> Unit>>(
         "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
-        "SAVE FILES" to { model.open(Screen.SaveFiles) },
     )
 
     ScreenColumn {
@@ -532,7 +505,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         }
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                GbText("COLOUR")
+                GbText("COLOR")
                 GbText("THE SCREEN AND THE SPRITES.", style = Gen1TextSmall)
                 Spacer(Modifier.height(4.dp))
                 GbPalette.ALL.forEach { palette ->
@@ -717,6 +690,51 @@ private val LEGAL = listOf(
 )
 
 /**
+ * Naming something — a box, a cartridge — in a window sized to the name.
+ *
+ * Ten characters, which is what the games allow and what the label on a
+ * cartridge has room for. CLEAR puts it back to whatever it was called before
+ * anyone renamed it.
+ */
+@Composable
+private fun NamePrompt(
+    heading: String,
+    initial: String,
+    onDone: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var name by remember(heading) { mutableStateOf(initial) }
+    Gen1Frame(Modifier.wrapContentWidth()) {
+        GbText(heading)
+        Spacer(Modifier.height(gen1Dp(2)))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { text ->
+                name = text.filter { it != '\n' }.take(StorageRepository.MAX_BOX_NAME)
+            },
+            singleLine = true,
+            textStyle = Gen1Text,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Gen1Palette.Panel,
+                unfocusedContainerColor = Gen1Palette.Panel,
+                focusedTextColor = Gen1Palette.Ink,
+                unfocusedTextColor = Gen1Palette.Ink,
+                focusedIndicatorColor = Gen1Palette.Ink,
+                unfocusedIndicatorColor = Gen1Palette.Shadow,
+                cursorColor = Gen1Palette.Ink,
+            ),
+            modifier = Modifier.width(gen1Dp(90)),
+        )
+        Spacer(Modifier.height(gen1Dp(3)))
+        Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
+            Gen1Button("OK", { onDone(name) })
+            Gen1Button("CLEAR", { onDone("") })
+            Gen1Button("CANCEL", onCancel)
+        }
+    }
+}
+
+/**
  * The only place a save is named.
  *
  * A save is shown by its game and trainer — the playthrough id it is really
@@ -857,40 +875,19 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 Gen1Button("CANCEL", model::dismissPrompt)
             }
 
-            is Prompt.RenameBox -> {
-                val box = state.storage.boxes.getOrNull(prompt.index - 1)
-                var name by remember(prompt.index) { mutableStateOf(box?.name.orEmpty()) }
-                Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText("BOX ${prompt.index}")
-                    Spacer(Modifier.height(gen1Dp(2)))
-                    OutlinedTextField(
-                        value = name,
-                        // Ten characters, as the games allow, and nothing that
-                        // would not fit the window it is shown in.
-                        onValueChange = { text ->
-                            name = text.filter { it != '\n' }.take(StorageRepository.MAX_BOX_NAME)
-                        },
-                        singleLine = true,
-                        textStyle = Gen1Text,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Gen1Palette.Panel,
-                            unfocusedContainerColor = Gen1Palette.Panel,
-                            focusedTextColor = Gen1Palette.Ink,
-                            unfocusedTextColor = Gen1Palette.Ink,
-                            focusedIndicatorColor = Gen1Palette.Ink,
-                            unfocusedIndicatorColor = Gen1Palette.Shadow,
-                            cursorColor = Gen1Palette.Ink,
-                        ),
-                        modifier = Modifier.width(gen1Dp(90)),
-                    )
-                    Spacer(Modifier.height(gen1Dp(3)))
-                    Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(3))) {
-                        Gen1Button("OK", { model.renameBox(prompt.index, name) })
-                        Gen1Button("CLEAR", { model.renameBox(prompt.index, "") })
-                        Gen1Button("CANCEL", model::dismissPrompt)
-                    }
-                }
-            }
+            is Prompt.RenameBox -> NamePrompt(
+                heading = "BOX ${prompt.index}",
+                initial = state.storage.boxes.getOrNull(prompt.index - 1)?.name.orEmpty(),
+                onDone = { model.renameBox(prompt.index, it) },
+                onCancel = model::dismissPrompt,
+            )
+
+            is Prompt.RenameCart -> NamePrompt(
+                heading = prompt.fallback,
+                initial = model.cartName(prompt.key).orEmpty(),
+                onDone = { model.renameCart(prompt.key, it) },
+                onCancel = model::dismissPrompt,
+            )
 
             is Prompt.ChooseWithdrawSave -> SavePicker(
                 title = "PUT IT IN WHICH SAVE?",

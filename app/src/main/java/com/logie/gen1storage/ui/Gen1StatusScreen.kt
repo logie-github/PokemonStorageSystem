@@ -75,7 +75,13 @@ fun Gen1StatusScreen(
             val sprite: @Composable () -> Unit = {
                 // Keyed on the revision so a download or a set change redraws it.
                 key(spriteRevision) {
-                    Gen1Sprite(pokemon.speciesId, gameVersionId, store, onLongPress = onSpriteLongPress)
+                    Gen1Sprite(
+                        pokemon.speciesId,
+                        gameVersionId,
+                        store,
+                        onLongPress = onSpriteLongPress,
+                        onTap = { cries?.cry(pokemon.species?.dexNumber) },
+                    )
                 }
             }
             Row(Modifier.fillMaxWidth()) {
@@ -93,7 +99,7 @@ fun Gen1StatusScreen(
             if (page == 0) StatusPageOne(pokemon) else StatusPageTwo(pokemon)
             Spacer(Modifier.height(gen1Dp(4)))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                GbText(if (page == 0) "▼ MORE" else "▲ BACK", style = Gen1TextSmall)
+                GbText(if (page == 0) "▼ MORE" else "▲ BACK")
             }
         }
         Spacer(Modifier.weight(1f))

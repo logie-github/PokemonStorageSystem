@@ -43,7 +43,6 @@ import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.HomeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
-import com.logie.gen1storage.ui.SaveFilesScreen
 import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
 import com.logie.gen1storage.ui.GbButton
@@ -209,7 +208,6 @@ private fun ScreenContent(
         is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game)
         is Screen.Status -> StatusScreen(state, model, screen.key, screen.area, screen.slot)
         Screen.Sprites -> SpritesScreen(state, model)
-        Screen.SaveFiles -> SaveFilesScreen(state, model)
         Screen.Credits -> CreditsScreen()
         Screen.Options -> OptionsScreen(
             state = state,

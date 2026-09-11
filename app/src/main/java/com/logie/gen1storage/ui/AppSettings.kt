@@ -46,10 +46,28 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_WINDOWS_RIGHT, true)
         set(value) = prefs.edit().putBoolean(KEY_WINDOWS_RIGHT, value).apply()
 
+    /**
+     * What a player called a cartridge, if they called it anything. Kept per
+     * save so a renamed cart survives a restart, unlike which one is loaded.
+     */
+    fun cartName(key: String): String? =
+        prefs.getString(KEY_CART_PREFIX + key, null)?.takeIf { it.isNotBlank() }
+
+    fun setCartName(key: String, name: String) {
+        val trimmed = name.trim().take(MAX_CART_NAME)
+        prefs.edit().apply {
+            if (trimmed.isEmpty()) remove(KEY_CART_PREFIX + key)
+            else putString(KEY_CART_PREFIX + key, trimmed)
+        }.apply()
+    }
+
     private companion object {
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
         const val KEY_WINDOWS_RIGHT = "windows-on-right"
+        const val KEY_CART_PREFIX = "cart-name-"
+        /** As long as a name can be and still fit a cartridge label. */
+        const val MAX_CART_NAME = 10
     }
 }

@@ -24,7 +24,24 @@ class GbPaletteTest {
     @Test
     fun `the requested palettes are all present`() {
         val ids = GbPalette.ALL.map { it.id }.toSet()
-        assertEquals(setOf("original", "red", "blue", "green", "yellow", "pastel"), ids)
+        assertEquals(
+            setOf("original", "red", "blue", "green", "yellow", "pastel", "route"),
+            ids,
+        )
+    }
+
+    /**
+     * The route palette is transcribed from the disassembly, so it is worth
+     * pinning: the middle two are deliberately swapped from the order the SGB
+     * table lists them in, and a "correction" back to that order would step
+     * the background ramp backwards.
+     */
+    @Test
+    fun `the route palette is the Super Game Boy one, ordered by brightness`() {
+        assertEquals(Color(0xFFFFEFFF), GbPalette.ROUTE.lightest)
+        assertEquals(Color(0xFFA5D6FF), GbPalette.ROUTE.light)
+        assertEquals(Color(0xFFADE75A), GbPalette.ROUTE.dark)
+        assertEquals(Color(0xFF181010), GbPalette.ROUTE.darkest)
     }
 
     @Test

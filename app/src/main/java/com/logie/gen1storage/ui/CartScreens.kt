@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -88,6 +91,7 @@ fun ChooseCartScreen(state: UiState, model: StorageViewModel, game: String?) {
                     row.forEach { remote ->
                         Cart(
                             remote = remote,
+                            slot = carts.indexOf(remote) + 1,
                             state = state,
                             model = model,
                             palette = palette,
@@ -146,13 +150,18 @@ private fun TitleCard(
 /**
  * One save, drawn on the cartridge.
  *
- * The details sit on the label the way a player would have written them there:
- * the trainer's name, the Pokémon at the head of their party, and what they
- * have to show for it.
+ * Identified by its slot rather than by its trainer — a cartridge is a
+ * cartridge, and two playthroughs by the same trainer are otherwise the same
+ * label twice. A hold renames it to whatever the player would rather call it.
+ *
+ * Nothing here is outlined. On a folded phone a cart is about a third of the
+ * screen, the type on it is at its smallest, and an outline at that size turns
+ * every glyph into a smudge. Flat dark text on the flat label reads.
  */
 @Composable
 private fun Cart(
     remote: RemoteSave,
+    slot: Int,
     state: UiState,
     model: StorageViewModel,
     palette: GbPalette,
@@ -160,31 +169,39 @@ private fun Cart(
     modifier: Modifier,
 ) {
     val save = state.save(remote.key)?.save
-    val trainer = (save?.trainerName ?: remote.summary.trainerName ?: remote.label).uppercase()
+    val trainer = (save?.trainerName ?: remote.summary.trainerName ?: "?").uppercase()
+    val fallback = "SAVE $slot"
+    // Read through the revision so a rename redraws the label.
+    val title = remember(remote.key, state.cartRevision) {
+        model.cartName(remote.key)
+    }?.uppercase() ?: fallback
     val lead = save?.party?.firstOrNull()
-    val badges = save?.badgeCount ?: remote.summary.badges ?: 0
-    val caught = save?.let { it.partyCount + it.storedCount } ?: remote.summary.dexCount ?: 0
 
     Box(
         modifier
             .aspectRatio(CART_WIDTH.toFloat() / CART_HEIGHT)
-            .gen1Clickable { model.chooseCart(remote.key) },
+            .pointerInput(remote.key) {
+                detectTapGestures(
+                    onTap = { model.chooseCart(remote.key) },
+                    onLongPress = { model.prompt(Prompt.RenameCart(remote.key, fallback)) },
+                )
+            },
     ) {
-        Gen1Art(R.drawable.cart, palette, Modifier.fillMaxSize(), trainer)
+        Gen1Art(R.drawable.cart, palette, Modifier.fillMaxSize(), title)
 
         Column(
             Modifier
                 .fillMaxSize()
                 // The label recess the cartridge art leaves for exactly this.
                 .padding(
-                    start = gen1Dp(5),
-                    end = gen1Dp(5),
-                    top = gen1Dp(15),
-                    bottom = gen1Dp(6),
+                    start = gen1Dp(7),
+                    end = gen1Dp(7),
+                    top = gen1Dp(14),
+                    bottom = gen1Dp(7),
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            OutlinedLabel(if (selected) "▶$trainer" else trainer, palette, Gen1TextSmall)
+            Label(if (selected) "▶$title" else title, palette)
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Gen1Sprite(
                     speciesId = lead?.speciesId,
@@ -193,8 +210,7 @@ private fun Cart(
                     sizeInPixels = 20,
                 )
             }
-            OutlinedLabel("$badges BADGES", palette, Gen1TextTiny)
-            OutlinedLabel("$caught CAUGHT", palette, Gen1TextTiny)
+            Label(trainer, palette)
         }
     }
 }
@@ -202,38 +218,12 @@ private fun Cart(
 private const val CART_WIDTH = 48
 private const val CART_HEIGHT = 54
 
-/**
- * Text that stays readable on any shade of the cartridge under it.
- *
- * The palette's lightest over its darkest, drawn as an outline rather than on a
- * plate, because a plate would hide the art it is sitting on. Eight offset
- * copies rather than four: a four-way outline leaves the diagonal corners of
- * each glyph bare against a matching background.
- */
+/** A line on the label: the palette's darkest on the label's own shade. */
 @Composable
-private fun OutlinedLabel(text: String, palette: GbPalette, style: TextStyle) {
-    val step = gen1Dp(1)
-    val outline = style.copy(color = palette.darkest, textAlign = TextAlign.Center)
-    Box(contentAlignment = Alignment.Center) {
-        listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1, -1 to -1, 1 to -1, -1 to 1, 1 to 1)
-            .forEach { (dx, dy) ->
-                GbText(
-                    text,
-                    modifier = Modifier.padding(
-                        start = if (dx > 0) step * 2 else 0.dp,
-                        end = if (dx < 0) step * 2 else 0.dp,
-                        top = if (dy > 0) step * 2 else 0.dp,
-                        bottom = if (dy < 0) step * 2 else 0.dp,
-                    ),
-                    style = outline,
-                    maxLines = 1,
-                )
-            }
-        GbText(
-            text,
-            modifier = Modifier.padding(step),
-            style = style.copy(color = palette.lightest, textAlign = TextAlign.Center),
-            maxLines = 1,
-        )
-    }
+private fun Label(text: String, palette: GbPalette) {
+    GbText(
+        text,
+        style = Gen1TextTiny.copy(color = palette.darkest, textAlign = TextAlign.Center),
+        maxLines = 1,
+    )
 }

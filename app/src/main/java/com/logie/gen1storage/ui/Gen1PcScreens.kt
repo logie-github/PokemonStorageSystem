@@ -121,9 +121,10 @@ fun StorageSystemScreen(
     }
 
     // Four layers, and the order is the whole point: the menu, then whatever
-    // list is open over it, then the message window, then the small window that
-    // opens on a chosen Pokémon over all of it. The message has to stay
-    // readable behind a list, and the action window has to sit above both.
+    // list is open over it, then the box window, then the message over that,
+    // then the small window that opens on a chosen Pokémon above everything.
+    // The message sits over the box window because when a box is empty the
+    // message is the thing that matters.
     //
     // Which edge they sit against is a setting. Everything mirrors together, so
     // the menu and the list keep overlapping the same way round either way.
@@ -148,13 +149,6 @@ fun StorageSystemScreen(
 
         Box(
             Modifier.fillMaxSize(),
-            contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
-        ) {
-            Gen1Frame(Modifier.wrapContentWidth()) { GbText(message, style = Gen1Text) }
-        }
-
-        Box(
-            Modifier.fillMaxSize(),
             contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
         ) {
             // Tap to change box, hold to rename it — the same window, because
@@ -173,6 +167,17 @@ fun StorageSystemScreen(
                 GbText(boxLabel.uppercase())
             }
         }
+
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
+        ) {
+            // Sized to its text, and drawn over the box window rather than
+            // beside it: when a box is empty the message is what matters,
+            // and that is where the cartridge puts it.
+            Gen1Frame(Modifier.wrapContentWidth()) { GbText(message, style = Gen1Text) }
+        }
+
 
         action?.invoke()
     }
@@ -224,8 +229,8 @@ fun MonListOverlay(
             LazyColumn(Modifier.heightIn(max = 320.dp)) {
                 itemsIndexed(entries) { index, row ->
                     if (row.header != null) {
-                        if (index > 0) Spacer(Modifier.height(6.dp))
-                        GbText(row.header, style = Gen1TextSmall)
+                        if (index > 0) Spacer(Modifier.height(gen1Dp(3)))
+                        GbText(row.header)
                     }
                     Gen1MenuRow(
                         row.name,

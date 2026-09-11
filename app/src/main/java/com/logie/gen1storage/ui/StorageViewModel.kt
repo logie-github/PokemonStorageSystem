@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.compose.ui.graphics.toArgb
+import com.logie.gen1storage.sound.CryStore
 import com.logie.gen1storage.sound.SoundEffect
 import androidx.lifecycle.viewModelScope
 import com.logie.gen1storage.storage.StorageRepository
@@ -16,7 +17,7 @@ import com.logie.gen1storage.sync.SaveRepository
 import com.logie.gen1storage.sync.SyncAccount
 import com.logie.gen1storage.sync.SyncApi
 import com.logie.gen1storage.sprites.SpriteDownloader
-import com.logie.gen1storage.sprites.SpriteProgress
+import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.sync.SyncResult
@@ -54,6 +55,9 @@ sealed interface Screen {
      */
     data class Status(val key: String?, val area: Int, val slot: Int) : Screen
     data object Sprites : Screen
+    /** Everything that is fetched rather than shipped: the sprites and the cries. */
+    data object Downloads : Screen
+    data object Cries : Screen
     data object Options : Screen
     data object Credits : Screen
     data object SoundEffects : Screen
@@ -117,8 +121,10 @@ data class UiState(
     val soundOff: Boolean = false,
     val soundsOn: Set<String> = emptySet(),
     val loadingAll: Boolean = false,
-    val spriteProgress: SpriteProgress? = null,
+    val spriteProgress: DownloadProgress? = null,
     val spritesInstalled: Int = 0,
+    val cryProgress: DownloadProgress? = null,
+    val criesInstalled: Int = 0,
     /** Bumped whenever sprites change, so drawn sprites re-read the store. */
     val spriteRevision: Int = 0,
 ) {
@@ -140,6 +146,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     val sprites = SpriteStore(application)
     private val spriteDownloader = SpriteDownloader(sprites)
     private var spriteJob: Job? = null
+    private val cries = CryStore(application)
+    private var cryJob: Job? = null
     private val credentials = SyncAccount(application)
     private val api = SyncApi(credentials = credentials::credentials)
     private val saves = SaveRepository(api, backups)
@@ -169,6 +177,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
+                criesInstalled = cries.count(),
             )
         }
         if (credentials.isLinked) sync()
@@ -496,7 +505,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun downloadSprites() {
         if (spriteJob?.isActive == true) return
         spriteJob = viewModelScope.launch {
-            mutable.update { it.copy(prompt = null, spriteProgress = SpriteProgress(0, 1)) }
+            mutable.update { it.copy(prompt = null, spriteProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
                 spriteDownloader.download(SpriteSet.downloadable) { progress ->
                     mutable.update { it.copy(spriteProgress = progress) }
@@ -508,7 +517,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     spritesInstalled = installed,
                     spriteRevision = state.spriteRevision + 1,
                     spriteProgress = result.getOrNull()
-                        ?: SpriteProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
+                        ?: DownloadProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
                 )
             }
         }
@@ -542,6 +551,47 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun spriteBytesOnDisk(): Long = sprites.bytesOnDisk()
+
+    // ------- cries
+
+    /**
+     * Downloads every Generation I cry that is not already on the device.
+     *
+     * Same shape as the sprites: the cries are the games' own recordings, so
+     * none of them ship here and the player fetches the set once rather than
+     * waiting on one at a time as each Pokémon is opened.
+     */
+    fun downloadCries() {
+        if (cryJob?.isActive == true) return
+        cryJob = viewModelScope.launch {
+            mutable.update { it.copy(prompt = null, cryProgress = DownloadProgress(0, 1)) }
+            val result = runCatching {
+                cries.downloadAll { progress -> mutable.update { it.copy(cryProgress = progress) } }
+            }
+            mutable.update { state ->
+                state.copy(
+                    criesInstalled = cries.count(),
+                    cryProgress = result.getOrNull()
+                        ?: DownloadProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
+                )
+            }
+        }
+    }
+
+    fun cancelCryDownload() {
+        cryJob?.cancel()
+        cryJob = null
+        mutable.update { it.copy(cryProgress = null, criesInstalled = cries.count()) }
+    }
+
+    fun dismissCryProgress() = mutable.update { it.copy(cryProgress = null) }
+
+    fun deleteCries() {
+        cries.clear()
+        mutable.update { it.copy(criesInstalled = 0, prompt = null) }
+    }
+
+    fun cryBytesOnDisk(): Long = cries.bytesOnDisk()
 
     // ------- transfers
 

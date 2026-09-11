@@ -404,6 +404,135 @@ fun StatusScreen(state: UiState, model: StorageViewModel, key: String?, area: In
 }
 
 /**
+ * Everything that is fetched rather than shipped.
+ *
+ * The sprites and the cries are both the games' own material, so neither is in
+ * the APK and both are the player's to download. One menu for the pair keeps
+ * OPTIONS from growing a row per thing that can be fetched.
+ */
+@Composable
+fun DownloadsScreen(state: UiState, model: StorageViewModel) {
+    var cursor by remember { mutableStateOf(-1) }
+    val entries = listOf<Pair<String, () -> Unit>>(
+        "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
+        "DOWNLOAD CRIES" to { model.open(Screen.Cries) },
+    )
+
+    ScreenColumn {
+        item {
+            Gen1Frame(
+                Modifier.wrapContentWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                entries.forEachIndexed { index, (label, action) ->
+                    Gen1MenuRow(label, cursor == index, { cursor = index }, action)
+                }
+            }
+        }
+        item {
+            Gen1Frame(Modifier.wrapContentWidth()) {
+                Gen1Field("SPRITES", "${state.spritesInstalled}")
+                Gen1Field("CRIES", "${state.criesInstalled} OF 151")
+            }
+        }
+    }
+}
+
+/**
+ * The cry download, drawn the same way as the sprites.
+ *
+ * A cry is still fetched on its own the first time a Pokémon is opened, so
+ * this only saves the wait; nothing here is needed for the app to work.
+ */
+@Composable
+fun CriesScreen(state: UiState, model: StorageViewModel) {
+    val progress = state.cryProgress
+    val running = progress != null && !progress.finished
+
+    ScreenColumn {
+        item {
+            Gen1Frame {
+                GbText("POKéMON CRIES")
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+
+        if (progress != null) {
+            item {
+                Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
+                    DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(10.dp))
+                    if (progress.finished) {
+                        GbText(
+                            if (progress.error != null) "STOPPED: ${progress.error.uppercase()}"
+                            else if (progress.failed > 0) "DONE. ${progress.failed} COULD NOT BE FETCHED."
+                            else "DONE.",
+                            style = Gen1TextSmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Gen1Button("OK", model::dismissCryProgress)
+                    } else {
+                        GbText("${progress.done} OF ${progress.total}", style = Gen1TextSmall)
+                        Spacer(Modifier.height(8.dp))
+                        Gen1Button("STOP", model::cancelCryDownload)
+                    }
+                }
+            }
+        }
+
+        if (!running) {
+            item {
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    GbText("ON THIS DEVICE")
+                    GbText("${state.criesInstalled} OF 151 CRIES", style = Gen1TextSmall)
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    GbText("SPACE USED")
+                    GbText(
+                        if (state.criesInstalled > 0) "${model.cryBytesOnDisk() / 1024} KB"
+                        else "ABOUT 2 MB TO DOWNLOAD",
+                        style = Gen1TextSmall,
+                    )
+                }
+            }
+            item {
+                Gen1Button(
+                    if (state.criesInstalled > 0) "DOWNLOAD MISSING" else "DOWNLOAD",
+                    {
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("Download Pokémon cries from repo?"),
+                                confirmLabel = "YES",
+                                cancelLabel = "NO",
+                                onConfirm = { model.downloadCries() },
+                            )
+                        )
+                    },
+                    Modifier.wrapContentWidth(),
+                )
+            }
+            if (state.criesInstalled > 0) {
+                item {
+                    Gen1Button(
+                        "DELETE",
+                        {
+                            model.prompt(
+                                Prompt.Confirm(
+                                    lines = listOf("DELETE EVERY DOWNLOADED CRY?"),
+                                    confirmLabel = "YES",
+                                    cancelLabel = "NO",
+                                    onConfirm = { model.deleteCries() },
+                                )
+                            )
+                        },
+                        Modifier.wrapContentWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * The sprite download. One question, then a percentage and a bar; the player
  * never has to think about where the art comes from or which file is which.
  */
@@ -423,7 +552,7 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
         if (progress != null) {
             item {
                 Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
-                    SpriteProgressBar(progress.percent, Modifier.fillMaxWidth())
+                    DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     if (progress.finished) {
                         GbText(
@@ -508,7 +637,7 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) {
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
     var cursor by remember { mutableStateOf(-1) }
     val entries = listOf<Pair<String, () -> Unit>>(
-        "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
+        "DOWNLOADS" to { model.open(Screen.Downloads) },
         "SOUND FX" to { model.open(Screen.SoundEffects) },
     )
 

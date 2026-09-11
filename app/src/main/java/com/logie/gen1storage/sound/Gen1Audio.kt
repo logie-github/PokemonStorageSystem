@@ -14,9 +14,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Collections
 
 /**
@@ -34,7 +31,7 @@ import java.util.Collections
  */
 class Gen1Audio(private val context: Context) {
 
-    private val cryDirectory = File(context.filesDir, "cries")
+    private val cries = CryStore(context)
 
     private val pool = SoundPool.Builder()
         .setMaxStreams(4)
@@ -103,66 +100,24 @@ class Gen1Audio(private val context: Context) {
      * sound like two cries instead of one interrupted one.
      */
     fun cry(dexNumber: Int?) {
-        if (dexNumber == null || dexNumber !in 1..LAST_GEN1) return
-        load(cryDirectory, "$dexNumber.ogg", CRY_BASE_URL) { sample ->
-            scope.launch {
-                val wait = cryBusyUntil - System.currentTimeMillis()
-                if (wait > 0) delay(wait)
-                cryBusyUntil = System.currentTimeMillis() + CRY_LENGTH_MILLIS
-                runCatching { pool.play(sample, 1f, 1f, 1, 0, 1f) }
-            }
-        }
-    }
-
-    /**
-     * Finds a recording, fetching it once if it is not on the device yet, and
-     * hands its sample to [onReady] — or plays it from the load callback when
-     * it is not decoded yet.
-     *
-     * Everything that can go wrong here ends in silence. Sound is decoration,
-     * and nothing in this app should fail because a file did not arrive.
-     */
-    private fun load(directory: File, name: String, baseUrl: String?, onReady: (Int) -> Unit) {
-        samples[name]?.let {
-            onReady(it)
+        if (dexNumber == null) return
+        samples["$dexNumber"]?.let { sample ->
+            scope.launch { soundAfterTheLast(sample) }
             return
         }
         scope.launch {
-            val file = runCatching { fetch(directory, name, baseUrl) }.getOrNull() ?: return@launch
+            val file = runCatching { cries.fetch(dexNumber) }.getOrNull() ?: return@launch
             val id = runCatching { pool.load(file.path, 1) }.getOrNull() ?: return@launch
-            samples[name] = id
+            samples["$dexNumber"] = id
             pending.add(id)
         }
     }
 
-    private fun fetch(directory: File, name: String, baseUrl: String?): File? {
-        val target = File(directory, name)
-        if (target.isFile && target.length() > 0) return target
-        if (baseUrl == null) return null
-
-        val connection = (URL("$baseUrl/$name").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 20_000
-            instanceFollowRedirects = true
-        }
-        val bytes = try {
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-            connection.inputStream.use { it.readBytes() }
-        } finally {
-            connection.disconnect()
-        }
-        if (bytes.isEmpty()) return null
-
-        directory.mkdirs()
-        // Staged and renamed, so an interrupted download cannot leave half a
-        // file behind that later looks like a complete one.
-        val staged = File(directory, "$name.part")
-        staged.writeBytes(bytes)
-        if (!staged.renameTo(target)) {
-            staged.delete()
-            return null
-        }
-        return target
+    private suspend fun soundAfterTheLast(sampleId: Int) {
+        val wait = cryBusyUntil - System.currentTimeMillis()
+        if (wait > 0) delay(wait)
+        cryBusyUntil = System.currentTimeMillis() + CRY_LENGTH_MILLIS
+        runCatching { pool.play(sampleId, 1f, 1f, 1, 0, 1f) }
     }
 
     fun release() {
@@ -173,13 +128,10 @@ class Gen1Audio(private val context: Context) {
     }
 
     private companion object {
-        const val LAST_GEN1 = 151
 
         /** Longer than any Generation I cry, which is all this has to be. */
         const val CRY_LENGTH_MILLIS = 1_100L
 
-        const val CRY_BASE_URL =
-            "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/legacy"
     }
 }
 

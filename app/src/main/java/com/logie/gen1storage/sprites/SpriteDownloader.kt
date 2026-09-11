@@ -1,6 +1,7 @@
 package com.logie.gen1storage.sprites
 
 import android.graphics.BitmapFactory
+import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.pokemon.Gen1Data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -9,17 +10,6 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.coroutines.coroutineContext
-
-/** How far a sprite download has got. */
-data class SpriteProgress(
-    val done: Int,
-    val total: Int,
-    val failed: Int = 0,
-    val finished: Boolean = false,
-    val error: String? = null,
-) {
-    val percent: Int get() = if (total <= 0) 0 else (done * 100) / total
-}
 
 /**
  * Fetches the Generation I front sprites and stores them exactly as downloaded.
@@ -44,14 +34,14 @@ class SpriteDownloader(private val store: SpriteStore) {
      */
     suspend fun download(
         sets: List<SpriteSet> = SpriteSet.downloadable,
-        onProgress: (SpriteProgress) -> Unit,
-    ): SpriteProgress = withContext(Dispatchers.IO) {
+        onProgress: (DownloadProgress) -> Unit,
+    ): DownloadProgress = withContext(Dispatchers.IO) {
         val species = Gen1Data.species.map { it.id }
         val total = sets.size * species.size
         var done = 0
         var failed = 0
 
-        onProgress(SpriteProgress(0, total))
+        onProgress(DownloadProgress(0, total))
 
         for (set in sets) {
             File(store.fileFor(set, species.first()).parent!!).mkdirs()
@@ -63,10 +53,10 @@ class SpriteDownloader(private val store: SpriteStore) {
                     if (!ok) failed++
                 }
                 done++
-                onProgress(SpriteProgress(done, total, failed))
+                onProgress(DownloadProgress(done, total, failed))
             }
         }
-        SpriteProgress(done, total, failed, finished = true).also(onProgress)
+        DownloadProgress(done, total, failed, finished = true).also(onProgress)
     }
 
     private fun fetch(set: SpriteSet, speciesId: String, target: File): Boolean {

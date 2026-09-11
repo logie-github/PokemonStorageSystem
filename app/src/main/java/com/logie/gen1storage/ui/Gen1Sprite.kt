@@ -134,7 +134,7 @@ fun SpriteSetPicker(
         Spacer(Modifier.height(4.dp))
         if (installed.isEmpty()) {
             GbText("NO SPRITES FOR THIS ONE YET.", style = Gen1TextSmall)
-            GbText("OPTIONS → DOWNLOAD SPRITES.", style = Gen1TextSmall)
+            GbText("OPTIONS → DOWNLOADS.", style = Gen1TextSmall)
             Spacer(Modifier.height(4.dp))
         }
         Gen1MenuRow(
@@ -158,10 +158,10 @@ fun SpriteSetPicker(
 
 /**
  * The download progress readout: the percentage, then a bar that fills the
- * width inside its own frame.
+ * width inside its own frame. Shared by the sprites and the cries.
  */
 @Composable
-fun SpriteProgressBar(percent: Int, modifier: Modifier = Modifier) {
+fun DownloadProgressBar(percent: Int, modifier: Modifier = Modifier) {
     Box(modifier) {
         androidx.compose.foundation.layout.Column {
             GbText("$percent%", style = Gen1TextLarge)

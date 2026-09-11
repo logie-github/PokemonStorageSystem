@@ -1053,7 +1053,7 @@ private fun OptionsDrawerContent(
         item { Gen1Frame(Modifier.wrapContentWidth()) { GbText(drawer.label) } }
         when (drawer) {
             OptionsDrawer.VISUAL -> visualDrawer(state, model)
-            OptionsDrawer.AUDIO -> audioDrawer(model)
+            OptionsDrawer.AUDIO -> audioDrawer(state, model)
             OptionsDrawer.LAYOUT -> layoutDrawer(state, model)
             OptionsDrawer.SAVES -> savesDrawer(state, model)
             OptionsDrawer.THE_PC -> pcDrawer(state, model)
@@ -1093,8 +1093,34 @@ private fun LazyListScope.visualDrawer(state: UiState, model: StorageViewModel) 
     item { Gen1BoxButton("DOWNLOADS", { model.open(Screen.Downloads) }) }
 }
 
-private fun LazyListScope.audioDrawer(model: StorageViewModel) {
-    item { Gen1BoxButton("SOUND FX", { model.open(Screen.SoundEffects) }) }
+private fun LazyListScope.audioDrawer(state: UiState, model: StorageViewModel) {
+    // The switches themselves rather than a door to them. There are eight of
+    // them and nothing else in here, so a screen of their own was a trip to
+    // make for one list.
+    item {
+        Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+            Gen1Toggle(
+                label = "DISABLE ALL",
+                on = state.soundOff,
+                onToggle = { model.setSoundOff(!state.soundOff) },
+            )
+        }
+    }
+    if (!state.soundOff) {
+        item {
+            Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                SoundEffect.entries.forEach { effect ->
+                    Gen1Toggle(
+                        label = effect.label,
+                        on = effect.id in state.soundsOn,
+                        onToggle = {
+                            model.setSoundEnabled(effect, effect.id !in state.soundsOn)
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun LazyListScope.layoutDrawer(state: UiState, model: StorageViewModel) {
@@ -1548,49 +1574,6 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 onChoose = { model.chooseSpriteSet(prompt.speciesId, it) },
                 onCancel = model::dismissPrompt,
             )
-
-        }
-    }
-}
-
-/**
- * Which of the interface's sounds may be heard.
- *
- * One switch over the lot, and under it one per sound. A recording that is not
- * on the device is marked so, because a switch that is on and silent is worse
- * than one that says why.
- */
-@Composable
-fun SoundEffectsScreen(state: UiState, model: StorageViewModel) {
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("SOUND FX", style = Gen1TextLarge)
-            }
-        }
-        item {
-            Gen1Frame {
-                Gen1Toggle(
-                    label = "DISABLE ALL",
-                    on = state.soundOff,
-                    onToggle = { model.setSoundOff(!state.soundOff) },
-                )
-            }
-        }
-        if (!state.soundOff) {
-            item {
-                Gen1Frame {
-                    SoundEffect.entries.forEach { effect ->
-                        Gen1Toggle(
-                            label = effect.label,
-                            on = effect.id in state.soundsOn,
-                            onToggle = {
-                                model.setSoundEnabled(effect, effect.id !in state.soundsOn)
-                            },
-                        )
-                    }
-                }
-            }
         }
     }
 }

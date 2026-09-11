@@ -49,7 +49,6 @@ import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
-import com.logie.gen1storage.ui.SoundEffectsScreen
 import com.logie.gen1storage.ui.GbButton
 import com.logie.gen1storage.sound.Gen1Audio
 import com.logie.gen1storage.sound.LocalGen1Audio
@@ -286,7 +285,6 @@ private fun ScreenContent(
         Screen.Cries -> CriesScreen(state, model)
         Screen.Followers -> FollowersScreen(state, model)
         Screen.Credits -> CreditsScreen()
-        Screen.SoundEffects -> SoundEffectsScreen(state, model)
         Screen.Options -> OptionsScreen(
             state = state,
             model = model,

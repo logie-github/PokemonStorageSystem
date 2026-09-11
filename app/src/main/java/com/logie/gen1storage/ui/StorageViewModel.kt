@@ -98,7 +98,6 @@ sealed interface Screen {
     data object Followers : Screen
     data object Options : Screen
     data object Credits : Screen
-    data object SoundEffects : Screen
 }
 
 /** Which way the ball scene runs. */

@@ -153,6 +153,17 @@ fun Gen1BoxGrid(
     var dragFrom by remember(box.index) { mutableIntStateOf(-1) }
     var dragAt by remember(box.index) { mutableStateOf<Offset?>(null) }
 
+    // A new box arrives a column at a time rather than all at once, which is
+    // how the games change anything that fills the screen.
+    var revealed by remember(box.index) { mutableIntStateOf(0) }
+    LaunchedEffect(box.index) {
+        revealed = 0
+        while (revealed < columns) {
+            delay(COLUMN_MILLIS)
+            revealed++
+        }
+    }
+
     Box(
         modifier
             .size(width = cell * columns, height = cell * rows)
@@ -198,7 +209,7 @@ fun Gen1BoxGrid(
                         Box(Modifier.size(cell), contentAlignment = Alignment.Center) {
                             // The one being carried is not drawn in its old
                             // spot: it is under the finger.
-                            if (stored != null && slot != dragFrom) {
+                            if (stored != null && slot != dragFrom && column < revealed) {
                                 FollowerSprite(
                                     stored.pokemon.species?.dexNumber,
                                     followers,
@@ -285,6 +296,9 @@ fun BoxGridOverlay(
         }
     }
 }
+
+/** How long each column of a new box waits for the one before it. */
+private const val COLUMN_MILLIS = 26L
 
 /** A spot's side, in game pixels: the sprite with a little air around it. */
 private const val CELL_PIXELS = 18

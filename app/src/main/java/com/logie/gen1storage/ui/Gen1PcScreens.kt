@@ -21,6 +21,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sound.SoundEffect
 import androidx.compose.ui.Alignment
@@ -90,14 +94,17 @@ fun Gen1DialogueBox(
     more: Boolean = false,
     actions: @Composable () -> Unit = {},
 ) {
-    Gen1Frame(modifier.fillMaxWidth()) {
-        lines.forEach { line ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                GbText(line, modifier = Modifier.weight(1f))
-                if (more && line == lines.last()) GbText("▼", style = Gen1Text)
+    var finished by remember(lines) { mutableStateOf(false) }
+    Gen1Frame(modifier.fillMaxWidth(), opening = true) {
+        Gen1TypedLines(lines, onFinished = { finished = true })
+        if (finished) {
+            if (more) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Gen1BlinkingArrow()
+                }
             }
+            actions()
         }
-        actions()
     }
 }
 
@@ -201,7 +208,9 @@ fun StorageSystemScreen(
             // Sized to its text, and drawn over the box window rather than
             // beside it: when a box is empty the message is what matters,
             // and that is where the cartridge puts it.
-            Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) { GbText(message, style = Gen1Text) }
+            Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) {
+                Gen1TypedLines(listOf(message))
+            }
         }
 
 
@@ -264,7 +273,8 @@ fun MonListOverlay(
             Modifier
                 .gen1MaxWidth()
                 .wrapContentWidth()
-                .padding(top = gen1Dp(5))
+                .padding(top = gen1Dp(5)),
+            opening = true,
         ) {
             if (entries.isEmpty()) {
                 GbText(emptyMessage)
@@ -326,7 +336,7 @@ fun MonActionOverlay(
         Modifier.fillMaxSize(),
         contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
     ) {
-        Gen1Frame(Modifier.wrapContentWidth()) {
+        Gen1Frame(Modifier.wrapContentWidth(), opening = true) {
             actions.forEachIndexed { index, entry ->
                 Gen1MenuRow(
                     entry.label,
@@ -359,7 +369,7 @@ fun ChangeBoxOverlay(
         Modifier.fillMaxSize(),
         contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
     ) {
-        Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5))) {
+        Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5)), opening = true) {
             LazyColumn(Modifier.heightIn(max = 380.dp), state = scroll) {
                 itemsIndexed(boxes) { index, (number, label, count) ->
                     Gen1MenuRow(

@@ -8,7 +8,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -29,11 +35,19 @@ fun Gen1Frame(
     fill: Color = Gen1Palette.Panel,
     ink: Color = Gen1Palette.Ink,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
+     * Whether this window is one that opens. The games draw a text box by
+     * running its border outward over about three frames, so a window that
+     * arrives in answer to something opens; one that is simply part of a
+     * screen's furniture does not, or every screen would flinch on arrival.
+     */
+    opening: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val pixel = gen1PixelPx().toFloat()
     Column(
         modifier
+            .then(if (opening) Modifier.gen1Opening() else Modifier)
             // Half an opened screen at most. A window that runs the width of
             // an unfolded phone stops reading as a window.
             .gen1MaxWidth()
@@ -53,11 +67,13 @@ fun Gen1FrameBox(
     fill: Color = Gen1Palette.Panel,
     ink: Color = Gen1Palette.Ink,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    opening: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val pixel = gen1PixelPx().toFloat()
     Box(
         modifier
+            .then(if (opening) Modifier.gen1Opening() else Modifier)
             .gen1WindowBounds()
             .background(fill)
             .drawBehind { drawGen1Border(ink, pixel) }
@@ -119,3 +135,25 @@ fun Gen1SelectionArrow(visible: Boolean, modifier: Modifier = Modifier) {
             }
     )
 }
+
+/**
+ * The three frames a window takes to open.
+ *
+ * Scaled out from its own middle rather than drawn border-row by border-row:
+ * at this size and this speed the two are indistinguishable, and one of them
+ * does not need the window measured twice.
+ */
+@Composable
+private fun Modifier.gen1Opening(): Modifier {
+    val grown = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { grown.animateTo(1f, tween(OPEN_MILLIS, easing = LinearEasing)) }
+    return graphicsLayer {
+        // Wider before it is tall, which is the order the games draw it in.
+        scaleX = (grown.value * 2f).coerceAtMost(1f)
+        scaleY = grown.value
+        alpha = if (grown.value > 0f) 1f else 0f
+    }
+}
+
+/** Three frames at sixty, near enough. */
+private const val OPEN_MILLIS = 50

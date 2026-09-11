@@ -1318,7 +1318,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 }
             }
 
-            is Prompt.ChooseBox -> Gen1Frame {
+            is Prompt.ChooseBox -> Gen1Frame(opening = true) {
                 GbText(prompt.title)
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     itemsIndexed((1..StorageLayout.BOX_COUNT).toList()) { _, index ->
@@ -1353,7 +1353,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
 
             is Prompt.Update -> {
                 val context = LocalContext.current
-                Gen1Frame(Modifier.wrapContentWidth()) {
+                Gen1Frame(Modifier.wrapContentWidth(), opening = true) {
                     GbText("VERSION ${prompt.version} IS OUT.")
                     GbText("UPDATE?", style = Gen1TextSmall)
                     Spacer(Modifier.height(gen1Dp(3)))

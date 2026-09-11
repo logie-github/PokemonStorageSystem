@@ -101,15 +101,20 @@ sealed interface Screen {
     data object SoundEffects : Screen
 }
 
+/** Which way the ball scene runs. */
+enum class TransferMotion { OUT, IN, RELEASE }
+
 /** The Pokémon a transfer is moving, and where it is going. */
 data class TransferScene(
     val speciesId: String?,
     val gameVersionId: String?,
     val name: String,
     val destination: String,
-    /** Coming into this PC rather than leaving it, which is a different word. */
-    val arriving: Boolean,
-)
+    val motion: TransferMotion,
+) {
+    /** Whether the Pokémon is the last thing on screen rather than the first. */
+    val arriving: Boolean get() = motion != TransferMotion.OUT
+}
 
 /** The transfer a status screen was opened from, and can finish. */
 enum class StatusTransfer { WITHDRAW, DEPOSIT }
@@ -822,7 +827,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                             gameVersionId = loaded.remote.version.id,
                             name = mon.displayName.uppercase(),
                             destination = boxLabel(targetBox),
-                            arriving = true,
+                            motion = TransferMotion.IN,
                         )
                     },
                 )
@@ -865,7 +870,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                             gameVersionId = stored.provenance.gameVersion,
                             name = stored.pokemon.displayName.uppercase(),
                             destination = loaded.save?.trainerName?.uppercase() ?: "THE SAVE",
-                            arriving = false,
+                            motion = TransferMotion.OUT,
                         )
                     },
                 )
@@ -926,7 +931,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     private suspend fun awaitScene() {
         val scene = mutable.value.transferScene ?: return
-        val left = Gen1TransferTiming.forScene(scene.arriving) -
+        val left = Gen1TransferTiming.forScene(scene.motion) -
             (System.currentTimeMillis() - sceneStartedAt)
         if (left > 0) delay(left)
     }
@@ -1046,13 +1051,34 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * app's own PC — nothing in a save is touched outside a transfer.
      */
     fun releaseStored(uid: String) {
-        val name = storage.get(uid)?.pokemon?.displayName?.uppercase() ?: "IT"
+        val stored = storage.get(uid)
+        val name = stored?.pokemon?.displayName?.uppercase() ?: "IT"
         if (storage.release(uid) == null) {
             message("THAT POKéMON IS NO LONGER THERE.")
             return
         }
-        mutable.update { it.copy(storage = storage.state(), prompt = null) }
-        message("$name was released.", "BYE BYE, $name!")
+        sceneStartedAt = System.currentTimeMillis()
+        mutable.update {
+            it.copy(
+                storage = storage.state(),
+                prompt = null,
+                transferScene = stored?.let { gone ->
+                    TransferScene(
+                        speciesId = gone.pokemon.speciesId,
+                        gameVersionId = gone.provenance.gameVersion,
+                        name = name,
+                        destination = "",
+                        motion = TransferMotion.RELEASE,
+                    )
+                },
+            )
+        }
+        // The ball opens, it goes, and only then is it said out loud.
+        viewModelScope.launch {
+            awaitScene()
+            mutable.update { it.copy(transferScene = null) }
+            message("$name was released.", "BYE BYE, $name!")
+        }
     }
 
     fun releasedCount(): Int = storage.releasedCount()

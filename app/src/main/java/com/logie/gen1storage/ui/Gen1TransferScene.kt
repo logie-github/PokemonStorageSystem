@@ -22,7 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -49,6 +51,8 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
     // only difference between the two directions.
     val shown = remember(scene) { Animatable(if (scene.arriving) 0f else 1f) }
     var puff by remember(scene) { mutableFloatStateOf(0f) }
+    // How far a released Pokémon has drifted off the top, nought to one.
+    val leaving = remember(scene) { Animatable(0f) }
 
     LaunchedEffect(scene) {
         if (scene.arriving) {
@@ -58,6 +62,10 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
             delay(PUFF_MILLIS)
             puff = 2f
             shown.animateTo(1f, tween(GROW_MILLIS.toInt(), easing = LinearEasing))
+            if (scene.motion == TransferMotion.RELEASE) {
+                delay(FREED_HOLD_MILLIS)
+                leaving.animateTo(1f, tween(LEAVE_MILLIS, easing = LinearEasing))
+            }
         } else {
             shown.animateTo(0f, tween(GROW_MILLIS.toInt(), easing = LinearEasing))
             puff = 1f
@@ -73,13 +81,19 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
             .padding(gen1Dp(4)),
         contentAlignment = Alignment.Center,
     ) {
+        val spriteSide = gen1Dp(SPRITE_PIXELS)
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(gen1Dp(SPRITE_PIXELS)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(spriteSide), contentAlignment = Alignment.Center) {
                 if (shown.value > 0f) {
                     Box(
                         Modifier
+                            .offset {
+                                // Up and clear of where the sprite was, which
+                                // at this size is its own height twice over.
+                                IntOffset(0, -(leaving.value * spriteSide.toPx() * 2f).toInt())
+                            }
                             .scale(shown.value)
-                            .alpha(shown.value)
+                            .alpha(shown.value * (1f - leaving.value))
                     ) {
                         key(revision) {
                             Gen1Sprite(
@@ -97,13 +111,21 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
             }
 
             Spacer(Modifier.height(gen1Dp(6)))
-            Gen1Frame(Modifier.wrapContentWidth()) {
-                GbText("Sending ${scene.name} to")
-                GbText("${scene.destination}.")
-                Spacer(Modifier.height(gen1Dp(2)))
-                // One is arriving and the other is leaving, and the same
-                // word cannot be right for both.
-                GbText(if (scene.arriving) "Hello, ${scene.name}!" else "Goodbye, ${scene.name}!")
+            // A release says its piece afterwards, in the message window every
+            // other outcome uses, so there is nothing to put here.
+            if (scene.motion != TransferMotion.RELEASE) {
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    Gen1TypedLines(
+                        listOf(
+                            "Sending ${scene.name} to",
+                            "${scene.destination}.",
+                            // One is arriving and the other is leaving, and
+                            // the same word cannot be right for both.
+                            if (scene.arriving) "Hello, ${scene.name}!"
+                            else "Goodbye, ${scene.name}!",
+                        )
+                    )
+                }
             }
         }
     }
@@ -168,8 +190,13 @@ private fun Puff(modifier: Modifier = Modifier) {
 object Gen1TransferTiming {
     const val OUT_MILLIS = GROW_MILLIS + PUFF_MILLIS + HOLD_MILLIS
     const val IN_MILLIS = BALL_HOLD_MILLIS + PUFF_MILLIS + GROW_MILLIS + HOLD_MILLIS
+    const val RELEASE_MILLIS = IN_MILLIS + FREED_HOLD_MILLIS + LEAVE_MILLIS
 
-    fun forScene(arriving: Boolean): Long = if (arriving) IN_MILLIS else OUT_MILLIS
+    fun forScene(motion: TransferMotion): Long = when (motion) {
+        TransferMotion.OUT -> OUT_MILLIS
+        TransferMotion.IN -> IN_MILLIS
+        TransferMotion.RELEASE -> RELEASE_MILLIS
+    }
 }
 
 /** The front sprite's size, and the ball's, in game pixels. */
@@ -183,6 +210,10 @@ private const val BALL_HOLD_MILLIS = 260L
 
 /** A beat on whatever the scene ends on, so it is seen rather than glimpsed. */
 private const val HOLD_MILLIS = 320L
+
+/** A released Pokémon stands there a moment before it goes. */
+private const val FREED_HOLD_MILLIS = 420L
+private const val LEAVE_MILLIS = 560
 private const val PUFF_MILLIS = 180L
 private const val PUFF_MOTES = 8
 

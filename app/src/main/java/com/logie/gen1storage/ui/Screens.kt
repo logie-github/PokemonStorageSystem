@@ -628,12 +628,12 @@ fun StatusScreen(
  */
 @Composable
 fun DownloadsScreen(state: UiState, model: StorageViewModel) {
-    var cursor by remember { mutableStateOf(-1) }
     val entries = listOf<Pair<String, () -> Unit>>(
         "DOWNLOAD SPRITES" to { model.open(Screen.Sprites) },
         "DOWNLOAD CRIES" to { model.open(Screen.Cries) },
         "DOWNLOAD FOLLOWERS" to { model.open(Screen.Followers) },
     )
+    val cursor = rememberCursorLayer(entries.size) { entries[it].second() }
 
     ScreenColumn {
         item {
@@ -642,7 +642,7 @@ fun DownloadsScreen(state: UiState, model: StorageViewModel) {
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 entries.forEachIndexed { index, (label, action) ->
-                    Gen1MenuRow(label, cursor == index, { cursor = index }, action)
+                    Gen1MenuRow(label, cursor == index, {}, action)
                 }
             }
         }
@@ -821,7 +821,6 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
  */
 @Composable
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
-    var cursor by remember { mutableStateOf(-1) }
     // The system's own pickers. Nothing is read or written outside the one
     // file the player points at, and the app asks for no storage permission.
     val exportFile = rememberLauncherForActivityResult(
@@ -834,12 +833,13 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
         "DOWNLOADS" to { model.open(Screen.Downloads) },
         "SOUND FX" to { model.open(Screen.SoundEffects) },
     )
+    val cursor = rememberCursorLayer(entries.size) { entries[it].second() }
 
     ScreenColumn {
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
                 entries.forEachIndexed { index, (label, action) ->
-                    Gen1MenuRow(label, cursor == index, { cursor = index }, action)
+                    Gen1MenuRow(label, cursor == index, {}, action)
                 }
             }
         }

@@ -35,8 +35,6 @@ import com.logie.gen1storage.gen1recomp.ItemStack
 fun MainMenuScreen(state: UiState, model: StorageViewModel) {
     val save = state.save(state.activeSaveKey)?.save
     val player = save?.trainerName?.uppercase()
-    var cursor by remember { mutableStateOf(-1) }
-
     val entries = listOf<Pair<String, () -> Unit>>(
         "LOGIE'S PC" to { model.open(Screen.Storage) },
         "${player ?: "PLAYER"}'S PC" to {
@@ -46,6 +44,9 @@ fun MainMenuScreen(state: UiState, model: StorageViewModel) {
         },
         "OPTIONS" to { model.open(Screen.Options) },
     )
+    // The shared cursor rather than a count of its own, so the arrow is on a
+    // row from the moment the menu opens and a swipe moves it.
+    val cursor = rememberCursorLayer(entries.size) { entries[it].second() }
 
     ScreenColumn {
         item {
@@ -54,7 +55,7 @@ fun MainMenuScreen(state: UiState, model: StorageViewModel) {
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 entries.forEachIndexed { index, (label, action) ->
-                    Gen1MenuRow(label, cursor == index, { cursor = index }, action)
+                    Gen1MenuRow(label, cursor == index, {}, action)
                 }
             }
         }
@@ -83,6 +84,11 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
 
     val here = save.pcItems
     val stored = state.items
+    val rows = listOf<Pair<String, () -> Unit>>(
+        "WITHDRAW" to { mode = ItemMode.WITHDRAW },
+        "DEPOSIT" to { mode = ItemMode.DEPOSIT },
+    )
+    val cursor = rememberCursorLayer(rows.size) { rows[it].second() }
 
     Box(Modifier.fillMaxSize()) {
         ScreenColumn {
@@ -93,20 +99,15 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
                 ) {
                     GbText("${save.trainerName.uppercase()}'S PC")
                     Spacer(Modifier.height(gen1Dp(2)))
-                    Gen1MenuRow(
-                        "WITHDRAW",
-                        selected = mode == ItemMode.WITHDRAW,
-                        onSelect = {},
-                        onConfirm = { mode = ItemMode.WITHDRAW },
-                        enabled = stored.isNotEmpty(),
-                    )
-                    Gen1MenuRow(
-                        "DEPOSIT",
-                        selected = mode == ItemMode.DEPOSIT,
-                        onSelect = {},
-                        onConfirm = { mode = ItemMode.DEPOSIT },
-                        enabled = here.isNotEmpty(),
-                    )
+                    rows.forEachIndexed { index, (label, take) ->
+                        Gen1MenuRow(
+                            label,
+                            selected = cursor == index,
+                            onSelect = {},
+                            onConfirm = take,
+                            enabled = if (index == 0) stored.isNotEmpty() else here.isNotEmpty(),
+                        )
+                    }
                 }
             }
             item {

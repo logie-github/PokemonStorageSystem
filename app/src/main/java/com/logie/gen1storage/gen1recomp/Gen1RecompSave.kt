@@ -93,6 +93,18 @@ class Gen1RecompSave(val root: LuaValue.Table) {
     val playthroughId: String? get() = root["meta"].asTable()?.get("playthroughId").asString()
     val saveFormat: Int? get() = root["meta"].asTable()?.get("format").asInt()
 
+    // ------- items
+
+    /** The bag the player is carrying, badges left out of it. */
+    val bag: List<ItemStack> get() = Gen1Items.read(root["inventory"].asTable())
+
+    /** The PC in the player's bedroom, which is what this app talks to. */
+    val pcItems: List<ItemStack> get() = Gen1Items.read(root["pcItems"].asTable())
+
+    /** The PC's item table, made if the save has never had one. */
+    fun ensurePcItems(): LuaValue.Table =
+        root["pcItems"].asTable() ?: LuaValue.Table().also { root["pcItems"] = it }
+
     // ------- party
 
     private val partyTable: LuaValue.Table? get() = root["party"].asTable()

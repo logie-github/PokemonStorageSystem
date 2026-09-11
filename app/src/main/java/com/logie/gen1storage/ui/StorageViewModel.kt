@@ -8,6 +8,8 @@ import androidx.compose.ui.graphics.toArgb
 import com.logie.gen1storage.sound.CryStore
 import com.logie.gen1storage.sound.SoundEffect
 import androidx.lifecycle.viewModelScope
+import com.logie.gen1storage.gen1recomp.ItemStack
+import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
@@ -27,6 +29,7 @@ import com.logie.gen1storage.sync.SyncResult
 import com.logie.gen1storage.transfer.RecoveryReport
 import com.logie.gen1storage.update.UpdateChecker
 import com.logie.gen1storage.transfer.SaveLocation
+import com.logie.gen1storage.transfer.ItemTransferEngine
 import com.logie.gen1storage.transfer.TransferEngine
 import com.logie.gen1storage.transfer.TransferJournal
 import com.logie.gen1storage.transfer.TransferResult
@@ -43,8 +46,12 @@ import java.time.Instant
 
 /** Where the player currently is. The back stack is a plain list of these. */
 sealed interface Screen {
-    /** The PC's own storage menu. There is nothing above it. */
+    /** The two PCs, the way the games boot one. */
     data object Home : Screen
+    /** This app's Pokémon storage — what used to be the top level. */
+    data object Storage : Screen
+    /** The loaded save's item PC, and this app's. */
+    data object ItemPc : Screen
     data object Link : Screen
     /**
      * Choosing a cartridge. A null [game] shows only the three games; once one
@@ -109,6 +116,12 @@ sealed interface Prompt {
     data class ChooseDepositSave(val title: String) : Prompt
     /** The long-press sprite picker for one species. */
     data class ChooseSpriteSet(val speciesId: String) : Prompt
+    /** How many of a stack to move. */
+    data class ChooseQuantity(
+        val title: String,
+        val max: Int,
+        val onChoose: (Int) -> Unit,
+    ) : Prompt
 }
 
 data class UiState(
@@ -150,6 +163,8 @@ data class UiState(
     val criesInstalled: Int = 0,
     val followerProgress: DownloadProgress? = null,
     val followersInstalled: Int = 0,
+    /** This app's own item PC. */
+    val items: List<ItemStack> = emptyList(),
     /** Bumped whenever sprites change, so drawn sprites re-read the store. */
     val spriteRevision: Int = 0,
 ) {
@@ -179,6 +194,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val api = SyncApi(credentials = credentials::credentials)
     private val saves = SaveRepository(api, backups)
     private val engine = TransferEngine(saves, storage, journal)
+    private val itemStorage = ItemRepository(storageDir)
+    private val itemEngine = ItemTransferEngine(saves, itemStorage)
 
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
@@ -196,6 +213,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update {
             it.copy(
                 storage = storage.state(),
+                items = itemStorage.state(),
                 linked = credentials.isLinked,
                 showAllSaves = settings.showAllSaves,
                 paletteId = settings.paletteId,
@@ -984,6 +1002,62 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         mutable.update { it.copy(storage = storage.state(), prompt = null) }
+    }
+
+    // ------- items
+
+    /**
+     * Moves an item between the save's PC and this app's.
+     *
+     * Both directions go through the same confirmation as a Pokémon transfer
+     * and re-read the account afterwards, because an item transfer writes the
+     * save and so moves its revision exactly as a deposit does.
+     */
+    fun transferItem(key: String, id: String, count: Int, intoApp: Boolean) {
+        if (mutable.value.save(key) == null) return message("OPEN THE SAVE FIRST.")
+        viewModelScope.launch {
+            mutable.update { it.copy(busy = true, prompt = null) }
+            val loaded = freshSave(key)
+            if (loaded == null) {
+                mutable.update { it.copy(busy = false) }
+                return@launch message("THE SAVE COULD NOT BE READ.")
+            }
+            val result = runTransfer {
+                if (intoApp) itemEngine.deposit(loaded, id, count)
+                else itemEngine.withdraw(loaded, id, count)
+            }
+            mutable.update { it.copy(items = itemStorage.state()) }
+            finish(result)
+        }
+    }
+
+    /**
+     * Takes what a stored Pokémon is carrying and puts it in this app's PC.
+     *
+     * Nothing leaves the device, so there is no save to commit and nothing to
+     * roll back: the item is added before the Pokémon is written back without
+     * it, which is the same ordering the save transfers use.
+     */
+    fun takeHeldItem(uid: String) {
+        val stored = storage.get(uid)
+        val item = stored?.pokemon?.heldItem
+        if (item == null) {
+            message("IT IS NOT HOLDING ANYTHING.")
+            return
+        }
+        if (itemStorage.add(item, 1) <= 0) {
+            message("THERE IS NO ROOM FOR IT.")
+            return
+        }
+        if (storage.takeHeldItem(uid) == null) {
+            itemStorage.remove(item, 1)
+            message("IT IS NOT HOLDING ANYTHING.")
+            return
+        }
+        mutable.update {
+            it.copy(storage = storage.state(), items = itemStorage.state(), prompt = null)
+        }
+        message("TOOK THE ${item.replace('_', ' ')}.")
     }
 
     fun moveStored(uid: String, targetBox: Int) {

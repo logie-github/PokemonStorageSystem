@@ -51,7 +51,7 @@ class FollowerStore(private val directory: File) {
 
     fun has(dexNumber: Int): Boolean = file(dexNumber).let { it.isFile && it.length() > 0 }
 
-    fun count(): Int = (1..LAST_GEN1).count(::has)
+    fun count(): Int = (1..LAST_SHEET).count(::has)
 
     fun bytesOnDisk(): Long =
         directory.walkTopDown().filter { it.isFile }.sumOf { it.length() }
@@ -69,7 +69,7 @@ class FollowerStore(private val directory: File) {
      * half-downloaded or unexpected file would otherwise crop to nonsense.
      */
     fun frame(dexNumber: Int, frame: Int): ImageBitmap? {
-        if (dexNumber !in 1..LAST_GEN1 || frame !in 1..FRAMES) return null
+        if (dexNumber !in 1..LAST_SHEET || frame !in 1..FRAMES) return null
         val key = "$tintId/$dexNumber/$frame"
         memory[key]?.let { return it }
 
@@ -95,7 +95,7 @@ class FollowerStore(private val directory: File) {
 
     /** Fetches one sheet if it is not here yet. */
     fun fetch(dexNumber: Int): File? {
-        if (dexNumber !in 1..LAST_GEN1) return null
+        if (dexNumber !in 1..LAST_SHEET) return null
         val target = file(dexNumber)
         if (target.isFile && target.length() > 0) return target
 
@@ -134,15 +134,15 @@ class FollowerStore(private val directory: File) {
         withContext(Dispatchers.IO) {
             var done = 0
             var failed = 0
-            onProgress(DownloadProgress(0, LAST_GEN1))
-            for (dex in 1..LAST_GEN1) {
+            onProgress(DownloadProgress(0, LAST_SHEET))
+            for (dex in 1..LAST_SHEET) {
                 coroutineContext.ensureActive()
                 if (!has(dex) && runCatching { fetch(dex) }.getOrNull() == null) failed++
                 done++
-                onProgress(DownloadProgress(done, LAST_GEN1, failed))
+                onProgress(DownloadProgress(done, LAST_SHEET, failed))
             }
             memory.clear()
-            DownloadProgress(done, LAST_GEN1, failed, finished = true).also(onProgress)
+            DownloadProgress(done, LAST_SHEET, failed, finished = true).also(onProgress)
         }
 
     companion object {
@@ -156,7 +156,12 @@ class FollowerStore(private val directory: File) {
         const val FRAME_IDLE = 1
         const val FRAME_TURNED = 3
 
-        private const val LAST_GEN1 = 151
+        /**
+         * Every sheet the pack has. Only the first 151 can be shown today —
+         * nothing in this app reads a Generation II save's boxes — but the
+         * download takes the lot, so the art is already here when it can.
+         */
+        const val LAST_SHEET = 251
 
         /**
          * burgerslayer7's fork at the release these frames were read from.

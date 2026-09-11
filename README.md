@@ -8,7 +8,11 @@ no Shizuku, no file permissions.
 
 ## Features
 
+- **Two PCs**: LOGIE'S PC holds Pokémon, PLAYER'S PC holds items from the cart
+  in the machine.
 - **12 boxes of 30**, on top of what your saves already hold.
+- **Items** in and out of the save's item PC, and taken off a Pokémon that is
+  holding one.
 - **Deposit** from a save's boxes. **Withdraw** back into the cart in the
   machine. Parties are never touched.
 - **Select** one Pokémon or several: SELECT in the window that opens on one

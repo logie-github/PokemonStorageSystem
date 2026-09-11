@@ -75,7 +75,7 @@ fun pokemonRowLevel(pokemon: Gen1Pokemon): String = ":L${pokemon.level}"
  * diagnostics — sits behind OPTIONS.
  */
 @Composable
-fun HomeScreen(state: UiState, model: StorageViewModel) {
+fun StorageHomeScreen(state: UiState, model: StorageViewModel) {
     StorageSystemScreen(
         state = state,
         model = model,
@@ -452,6 +452,18 @@ fun StorageSystemScreen(
                         MonAction("STATS", {
                             statusOf(storedPick.uid, null)?.let(model::open)
                         }),
+                        // Only when there is something to take. Generation I
+                        // Pokémon hold nothing, so this row simply never
+                        // appears for one out of Red, Blue or Yellow.
+                        *storedPick.pokemon.heldItem?.let { item ->
+                            arrayOf(
+                                MonAction("TAKE ${item.replace('_', ' ')}", {
+                                    model.takeHeldItem(storedPick.uid)
+                                    chosen = null
+                                    gridSlot = null
+                                })
+                            )
+                        }.orEmpty(),
                         MonAction("RELEASE", {
                             model.prompt(
                                 Prompt.Confirm(
@@ -629,7 +641,7 @@ fun DownloadsScreen(state: UiState, model: StorageViewModel) {
             Gen1Frame(Modifier.wrapContentWidth()) {
                 Gen1Field("SPRITES", "${state.spritesInstalled}")
                 Gen1Field("CRIES", "${state.criesInstalled} OF 151")
-                Gen1Field("FOLLOWERS", "${state.followersInstalled} OF 151")
+                Gen1Field("FOLLOWERS", "${state.followersInstalled} OF 251")
             }
         }
     }
@@ -761,9 +773,9 @@ fun CriesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
 fun FollowersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
     heading = "OVERWORLD FOLLOWERS",
     progress = state.followerProgress,
-    installed = "${state.followersInstalled} OF 151 SHEETS",
+    installed = "${state.followersInstalled} OF 251 SHEETS",
     spaceUsed = if (state.followersInstalled > 0) "${model.followerBytesOnDisk() / 1024} KB"
-    else "UNDER 1 MB TO DOWNLOAD",
+    else "ABOUT 1 MB TO DOWNLOAD",
     hasSome = state.followersInstalled > 0,
     confirmLine = "Download follower sprites from repo?",
     deleteLine = "DELETE EVERY FOLLOWER SHEET?",
@@ -1308,6 +1320,13 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 title = prompt.title,
                 state = state,
                 onChoose = { key -> model.selectSave(key) },
+                onCancel = model::dismissPrompt,
+            )
+
+            is Prompt.ChooseQuantity -> QuantityPrompt(
+                title = prompt.title,
+                max = prompt.max,
+                onChoose = { count -> model.dismissPrompt(); prompt.onChoose(count) },
                 onCancel = model::dismissPrompt,
             )
 

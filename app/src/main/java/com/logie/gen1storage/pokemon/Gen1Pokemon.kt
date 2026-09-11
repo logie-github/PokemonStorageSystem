@@ -37,6 +37,17 @@ class Gen1Pokemon(val raw: LuaValue.Table) {
     val status: String? get() = raw["status"].asString()
     val catchRate: Int? get() = raw["catchRate"].asInt()
 
+    /**
+     * What it is carrying, if anything.
+     *
+     * Generation I has no held items, so this is empty for every Pokémon from
+     * a Red, Blue or Yellow save. It is read anyway because Gen1Recomp saves
+     * a Pokémon as a table rather than as the cartridge's fixed bytes: a
+     * Generation II save, or a mod that gives one something to hold, writes
+     * the field and the app should see it rather than step over it.
+     */
+    val heldItem: String? get() = raw["item"].asString()?.takeIf { it.isNotBlank() }
+
     /** OT name and 16-bit trainer id, as `mon.ot` / `mon.otId`. */
     val otName: String? get() = raw["ot"].asString()?.let(LuaText::displayText)
     val otId: Int? get() = raw["otId"].asInt()

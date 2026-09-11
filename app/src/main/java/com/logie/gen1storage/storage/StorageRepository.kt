@@ -266,6 +266,30 @@ class StorageRepository(private val directory: File) {
         ImportReport(added, skipped, unplaced, archive.unreadable)
     }
 
+    /**
+     * Takes what a stored Pokémon is carrying, at the player's request.
+     *
+     * Returns the item's id, or null when it was not holding one. The only
+     * field touched is the one being removed: everything else about the
+     * Pokémon, including anything this app has never heard of, is written
+     * back exactly as it was read.
+     */
+    fun takeHeldItem(uid: String): String? = synchronized(lock) {
+        ensureLoaded()
+        for (box in boxes) {
+            val position = box.indexOfFirst { it?.uid == uid }
+            if (position < 0) continue
+            val stored = box[position] ?: return null
+            val item = stored.pokemon.heldItem ?: return null
+            val data = stored.data.deepCopy()
+            data.remove(com.logie.gen1storage.lua.LuaKey.Name("item"))
+            box[position] = stored.copy(data = data)
+            persist()
+            return item
+        }
+        null
+    }
+
     /** Forces a re-read from disk; used after an external repair. */
     fun reload() = synchronized(lock) {
         loaded = false

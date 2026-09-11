@@ -42,7 +42,6 @@ import com.logie.gen1storage.ui.GbText
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
-import com.logie.gen1storage.ui.HomeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
@@ -62,6 +61,9 @@ import com.logie.gen1storage.ui.isUnfolded
 import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.CriesScreen
+import com.logie.gen1storage.ui.ItemPcScreen
+import com.logie.gen1storage.ui.MainMenuScreen
+import com.logie.gen1storage.ui.StorageHomeScreen
 import com.logie.gen1storage.ui.FollowersScreen
 import com.logie.gen1storage.ui.DownloadsScreen
 import com.logie.gen1storage.ui.SpritesScreen
@@ -242,7 +244,9 @@ private fun ScreenContent(
     context: android.content.Context,
 ) {
     when (screen) {
-        Screen.Home -> HomeScreen(state, model)
+        Screen.Home -> MainMenuScreen(state, model)
+        Screen.Storage -> StorageHomeScreen(state, model)
+        Screen.ItemPc -> ItemPcScreen(state, model)
         Screen.Link -> LinkScreen(state, model)
         is Screen.ChooseCart -> ChooseCartScreen(state, model, screen.game, screen.sendUids)
         is Screen.Status ->

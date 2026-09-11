@@ -134,7 +134,10 @@ class TransferEngine(
                 if (!holdsExactlyOne(uid)) {
                     TransferResult.NeedsRecovery("THE PC DID NOT END UP WITH EXACTLY ONE COPY. CHECK STORAGE BOXES.")
                 } else {
-                    TransferResult.Success("${Gen1Pokemon(removed).displayName} WAS STORED IN THE PC.", uid)
+                    TransferResult.Success(
+                        "${Gen1Pokemon(removed).displayName.uppercase()} was stored in BOX $targetBox.",
+                        uid,
+                    )
                 }
             }
             // Refused and Conflict both mean the server did not take the write,
@@ -206,7 +209,10 @@ class TransferEngine(
                 journal.write(entry.copy(stage = TransferStage.SAVED))
                 storage.withdraw(uid)
                 journal.clear()
-                TransferResult.Success("${stored.pokemon.displayName} WAS TAKEN OUT.", null)
+                TransferResult.Success(
+                    "${stored.pokemon.displayName.uppercase()} is taken out.",
+                    null,
+                )
             }
             is CommitOutcome.Refused -> { journal.clear(); TransferResult.Refused(outcome.reason) }
             is CommitOutcome.Conflict -> { journal.clear(); TransferResult.Refused(outcome.reason) }

@@ -238,19 +238,19 @@ fun StorageSystemScreen(
     }
 
     /**
-     * Asks where a withdrawal lands. The save is only asked for when there is
-     * not one in the machine already — the player chose that cartridge, and
-     * asking again on every withdrawal was the slowest part of the trip.
+     * Takes them out, the way the cartridge does: no question about where.
+     *
+     * A withdrawal goes to the box the save has open, exactly as a deposit
+     * goes to the box this PC has open. The cartridge is only asked for when
+     * there is not one in the machine at all.
      */
     fun startWithdraw(uids: List<String>) {
         chosen = null
         val active = state.activeSaveKey
-        if (active != null && state.save(active) != null) {
-            model.prompt(Prompt.ChooseWithdrawTarget(uids, active))
+        val loaded = state.save(active)?.save
+        if (active != null && loaded != null) {
+            model.withdrawToSave(uids, active, WithdrawTarget.Box(loaded.currentBox))
         } else {
-            // The same cartridge screen the deposit uses, asking a different
-            // question: it already shows the trainer, the lead and the badges,
-            // which is what a player is picking between.
             model.open(Screen.ChooseCart(null, uids))
         }
     }
@@ -274,11 +274,28 @@ fun StorageSystemScreen(
         // Both directions need a cartridge in the machine. If there is not one
         // yet, that is the only question worth asking, so it gets the whole
         // screen rather than a window over this one.
+        // The cartridge checks before it opens a list, not after: a list you
+        // cannot act on is worse than being told so on the menu you are
+        // standing on. Both guards are `BillsPCWithdraw` and `BillsPCDeposit`
+        // in pokered, in the same order.
         onWithdraw = {
-            if (needsCart) model.open(Screen.ChooseCart(null)) else mode = PcMode.WITHDRAW
+            refusal = null
+            val target = state.save(state.activeSaveKey)?.save
+            when {
+                target == null -> model.open(Screen.ChooseCart(null))
+                state.storage.total == 0 -> refusal = "What? There are no POKéMON here!"
+                target.boxFreeSlots(target.currentBox) <= 0 ->
+                    refusal = "You can't take any more POKéMON."
+                else -> mode = PcMode.WITHDRAW
+            }
         },
         onDeposit = {
-            if (needsCart) model.open(Screen.ChooseCart(null)) else mode = PcMode.DEPOSIT
+            refusal = null
+            when {
+                needsCart -> model.open(Screen.ChooseCart(null))
+                (box?.freeSlots ?: 0) <= 0 -> refusal = "Oops! This Box is full of POKéMON."
+                else -> mode = PcMode.DEPOSIT
+            }
         },
         onView = { mode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
@@ -390,15 +407,7 @@ fun StorageSystemScreen(
                             depositRows.getOrNull(index)?.let { it.key to it.location }
                         }
                         chosen = null
-                        model.prompt(
-                            Prompt.Confirm(
-                                lines = listOf("DEPOSIT ${picks.size} POKéMON?"),
-                                confirmLabel = "DEPOSIT",
-                                onConfirm = {
-                                    model.depositFromSave(picks, state.currentStorageBox)
-                                },
-                            )
-                        )
+                        model.depositFromSave(picks, state.currentStorageBox)
                     },
                 )
             })
@@ -502,18 +511,11 @@ fun StorageSystemScreen(
                         MonAction(
                             "DEPOSIT",
                             {
-                                model.prompt(
-                                    Prompt.Confirm(
-                                        lines = listOf("DEPOSIT ${pick.mon.displayName.uppercase()}?"),
-                                        confirmLabel = "DEPOSIT",
-                                        onConfirm = {
-                                            model.depositFromSave(
-                                                pick.key,
-                                                pick.location,
-                                                state.currentStorageBox,
-                                            )
-                                        },
-                                    )
+                                chosen = null
+                                model.depositFromSave(
+                                    pick.key,
+                                    pick.location,
+                                    state.currentStorageBox,
                                 )
                             },
                         ),
@@ -584,8 +586,13 @@ fun StatusScreen(
                         Gen1Button("WITHDRAW", {
                             model.back()
                             val active = state.activeSaveKey
-                            if (active != null && state.save(active) != null) {
-                                model.prompt(Prompt.ChooseWithdrawTarget(listOf(uid), active))
+                            val loaded = state.save(active)?.save
+                            if (active != null && loaded != null) {
+                                model.withdrawToSave(
+                                    listOf(uid),
+                                    active,
+                                    WithdrawTarget.Box(loaded.currentBox),
+                                )
                             } else {
                                 model.open(Screen.ChooseCart(null, listOf(uid)))
                             }
@@ -596,18 +603,10 @@ fun StatusScreen(
                 StatusTransfer.DEPOSIT -> if (key != null && area > 0) {
                     Gen1Button("DEPOSIT", {
                         model.back()
-                        model.prompt(
-                            Prompt.Confirm(
-                                lines = listOf("DEPOSIT ${pokemon.displayName.uppercase()}?"),
-                                confirmLabel = "DEPOSIT",
-                                onConfirm = {
-                                    model.depositFromSave(
-                                        key,
-                                        SaveLocation.Box(area, slot + 1),
-                                        state.currentStorageBox,
-                                    )
-                                },
-                            )
+                        model.depositFromSave(
+                            key,
+                            SaveLocation.Box(area, slot + 1),
+                            state.currentStorageBox,
                         )
                     }, Modifier.wrapContentWidth())
                 }
@@ -1346,44 +1345,6 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 onCancel = model::dismissPrompt,
             )
 
-            is Prompt.ChooseWithdrawTarget -> {
-                val save = state.save(prompt.key)?.save
-                val many = prompt.uids.size
-                Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText(if (many == 1) "PUT IT IN WHICH BOX?" else "PUT $many IN WHICH BOX?")
-                    // Says which cartridge, because the save is no longer
-                    // asked for when one is already in the machine.
-                    save?.let { GbText(it.trainerName.uppercase(), style = Gen1TextSmall) }
-                    if (save == null) {
-                        GbText("THAT SAVE IS NOT OPEN.")
-                    } else {
-                        // Boxes only. A withdrawal never joins a party — that
-                        // is the player's to arrange in the game.
-                        LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                            itemsIndexed(save.boxes) { index, box ->
-                                val number = index + 1
-                                Gen1MenuRow(
-                                    save.boxName(number),
-                                    selected = false,
-                                    onSelect = {
-                                        model.withdrawToSave(prompt.uids, prompt.key, WithdrawTarget.Box(number))
-                                    },
-                                    onConfirm = {
-                                        model.withdrawToSave(prompt.uids, prompt.key, WithdrawTarget.Box(number))
-                                    },
-                                    trailing = "${box.size}/${Gen1RecompSave.BOX_CAPACITY}",
-                                    // Room for every one of them, not just the
-                                    // first: a box that fills partway through
-                                    // would refuse the rest.
-                                    enabled = box.size + many <= Gen1RecompSave.BOX_CAPACITY,
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(gen1Dp(3)))
-                    Gen1Button("CANCEL", model::dismissPrompt)
-                }
-            }
         }
     }
 }

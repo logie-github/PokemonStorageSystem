@@ -111,7 +111,6 @@ sealed interface Prompt {
     data class RenameCart(val key: String, val fallback: String) : Prompt
     /** A newer release exists; saying yes opens it. */
     data class Update(val version: String, val url: String) : Prompt
-    data class ChooseWithdrawTarget(val uids: List<String>, val key: String) : Prompt
     /** Which save to take a deposit from, when the lists are not showing all. */
     data class ChooseDepositSave(val title: String) : Prompt
     /** The long-press sprite picker for one species. */
@@ -454,21 +453,20 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun chooseCart(key: String) = selectSave(key) { back() }
 
     /**
-     * Picks the save a withdrawal lands in, then asks where inside it.
+     * Picks the save a withdrawal lands in, and does it.
      *
-     * The cartridge screen is left behind first: the box question belongs to
-     * the PC the Pokémon is leaving, and a window opening over the cartridges
-     * would read as another question about them.
+     * No question about where inside: it goes to the box that save has open,
+     * exactly as a deposit goes to the box this PC has open. The cartridge
+     * screen is left behind first so the result is read against the PC.
      */
     fun chooseWithdrawSave(uids: List<String>, key: String) =
         selectSave(key) { ready ->
             mutable.update { state ->
                 val stack = state.stack.dropLastWhile { it is Screen.ChooseCart }
-                state.copy(
-                    stack = stack.ifEmpty { listOf(Screen.Home) },
-                    prompt = Prompt.ChooseWithdrawTarget(uids, ready),
-                )
+                state.copy(stack = stack.ifEmpty { listOf(Screen.Home) }, prompt = null)
             }
+            val box = mutable.value.save(ready)?.save?.currentBox ?: 1
+            withdrawToSave(uids, ready, WithdrawTarget.Box(box))
         }
 
     // ------- settings
@@ -886,16 +884,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val lines = buildList {
             if (done > 0) add("$verb $done POKéMON.")
             when (stopped) {
-                null -> add("THE GAME WILL PICK THIS UP ON ITS NEXT SYNC.")
+                null, is TransferResult.Success -> Unit
                 is TransferResult.Refused -> add(stopped.reason)
                 is TransferResult.NeedsRecovery -> {
                     add(stopped.reason)
                     add("NOTHING WAS LOST. OPEN SAVE FILES TO FINISH IT.")
                 }
-                is TransferResult.Success -> add("THE GAME WILL PICK THIS UP ON ITS NEXT SYNC.")
             }
         }
-        message(*lines.toTypedArray())
+        if (lines.isNotEmpty()) message(*lines.toTypedArray())
         refreshTransferSources()
     }
 
@@ -914,10 +911,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         when (result) {
             is TransferResult.Success -> {
                 mutable.update { it.copy(transfers = it.transfers + 1) }
-                message(
-                    result.message,
-                    "THE GAME WILL PICK THIS UP ON ITS NEXT SYNC.",
-                )
+                message(result.message)
             }
             is TransferResult.Refused -> message(result.reason)
             is TransferResult.NeedsRecovery -> message(

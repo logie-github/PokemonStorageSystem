@@ -32,9 +32,11 @@ import kotlinx.coroutines.delay
 /**
  * What a transfer looks like while it is happening.
  *
- * The Pokémon shrinks into a ball and is gone in a puff — the capture without
- * the throw or the shake, because nothing is being caught here and a ball
- * rocking three times would be saying something untrue about the outcome.
+ * One going out shrinks into a ball and is gone in a puff — the capture
+ * without the throw or the shake, because nothing is being caught here and a
+ * ball rocking three times would be saying something untrue about the
+ * outcome. One coming in runs the same thing backwards: the ball is what is
+ * there first, it opens, and the Pokémon comes out of the puff.
  *
  * It stays up until the transfer answers. That is deliberate: a save lives on
  * a server, so the wait is real, and a ball sitting there reads as the thing
@@ -42,16 +44,26 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
-    // One clock for the whole thing. The sprite shrinks, the puff opens out of
-    // where it was, and the ball is what is left.
-    val shrink = remember(scene) { Animatable(1f) }
+    // One number for the whole thing: how much Pokémon is on screen. At zero
+    // it is a ball, at one it is the Pokémon, and which way it travels is the
+    // only difference between the two directions.
+    val shown = remember(scene) { Animatable(if (scene.arriving) 0f else 1f) }
     var puff by remember(scene) { mutableFloatStateOf(0f) }
 
     LaunchedEffect(scene) {
-        shrink.animateTo(0f, tween(SHRINK_MILLIS, easing = LinearEasing))
-        puff = 1f
-        delay(PUFF_MILLIS.toLong())
-        puff = 2f
+        if (scene.arriving) {
+            // The ball is there to be looked at before it opens.
+            delay(BALL_HOLD_MILLIS)
+            puff = 1f
+            delay(PUFF_MILLIS.toLong())
+            puff = 2f
+            shown.animateTo(1f, tween(GROW_MILLIS, easing = LinearEasing))
+        } else {
+            shown.animateTo(0f, tween(GROW_MILLIS, easing = LinearEasing))
+            puff = 1f
+            delay(PUFF_MILLIS.toLong())
+            puff = 2f
+        }
     }
 
     Box(
@@ -63,11 +75,11 @@ fun Gen1TransferScene(scene: TransferScene, store: SpriteStore, revision: Int) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(gen1Dp(SPRITE_PIXELS)), contentAlignment = Alignment.Center) {
-                if (shrink.value > 0f) {
+                if (shown.value > 0f) {
                     Box(
                         Modifier
-                            .scale(shrink.value)
-                            .alpha(shrink.value)
+                            .scale(shown.value)
+                            .alpha(shown.value)
                     ) {
                         key(revision) {
                             Gen1Sprite(
@@ -148,7 +160,11 @@ private fun Puff(modifier: Modifier = Modifier) {
 /** The front sprite's size, and the ball's, in game pixels. */
 private const val SPRITE_PIXELS = 56
 private const val BALL_PIXELS = 16
-private const val SHRINK_MILLIS = 320
+/** How long the Pokémon takes to go into the ball, or to come out of it. */
+private const val GROW_MILLIS = 320
+
+/** How long a ball is on screen before it opens, on the way in. */
+private const val BALL_HOLD_MILLIS = 260L
 private const val PUFF_MILLIS = 180
 private const val PUFF_MOTES = 8
 

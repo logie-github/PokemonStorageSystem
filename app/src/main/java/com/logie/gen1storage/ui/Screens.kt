@@ -960,6 +960,10 @@ fun SpritesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
 @Composable
 fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> Unit) {
     var drawer by remember { mutableStateOf<OptionsDrawer?>(null) }
+    // Back closes the drawer before it leaves OPTIONS. Without this the
+    // drawer is a screen the back stack has never heard of, and one press
+    // walked straight out of the settings the player was in the middle of.
+    androidx.activity.compose.BackHandler(enabled = drawer != null) { drawer = null }
 
     if (drawer != null && !isUnfolded()) {
         OptionsDrawerContent(drawer!!, state, model, onShareReport) { drawer = null }

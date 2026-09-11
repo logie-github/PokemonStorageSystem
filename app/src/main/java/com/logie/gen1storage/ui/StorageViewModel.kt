@@ -808,7 +808,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 val result = runTransfer { engine.withdraw(loaded, uid, target) }
                 if (result is TransferResult.Success) done++ else { stopped = result; break }
             }
-            finishMany(done, stopped, "WITHDREW")
+            finishMany(done, stopped, "TRANSFERRED OUT")
         }
     }
 
@@ -840,7 +840,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 val result = runTransfer { engine.deposit(loaded, location, targetBox) }
                 if (result is TransferResult.Success) done++ else { stopped = result; break }
             }
-            finishMany(done, stopped, "DEPOSITED")
+            finishMany(done, stopped, "TRANSFERRED IN")
         }
     }
 

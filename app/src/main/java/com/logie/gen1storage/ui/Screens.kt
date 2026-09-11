@@ -380,7 +380,7 @@ fun StorageSystemScreen(
                     emptyMessage = "What? There are no POKéMON here!",
                     marked = marked,
                     onToggle = ::toggle,
-                    actionLabel = "WITHDRAW ${marked.size}".takeIf {
+                    actionLabel = "TRANSFER OUT ${marked.size}".takeIf {
                         mode == PcMode.WITHDRAW && marked.isNotEmpty() && state.saves.isNotEmpty()
                     },
                     onAction = { startWithdraw(marked.mapNotNull { stored.getOrNull(it)?.uid }) },
@@ -401,7 +401,7 @@ fun StorageSystemScreen(
                     emptyMessage = "There are no POKéMON here.",
                     marked = marked,
                     onToggle = ::toggle,
-                    actionLabel = "DEPOSIT ${marked.size}".takeIf { marked.isNotEmpty() },
+                    actionLabel = "TRANSFER IN ${marked.size}".takeIf { marked.isNotEmpty() },
                     onAction = {
                         val picks = marked.mapNotNull { index ->
                             depositRows.getOrNull(index)?.let { it.key to it.location }
@@ -431,7 +431,7 @@ fun StorageSystemScreen(
                         // that is not something to infer from what happens to
                         // be loaded.
                         MonAction(
-                            "WITHDRAW",
+                            "TRANSFER OUT",
                             { startWithdraw(listOf(storedPick.uid)) },
                             enabled = state.saves.isNotEmpty(),
                         ),
@@ -509,7 +509,7 @@ fun StorageSystemScreen(
                 MonActionOverlay(
                     actions = listOf(
                         MonAction(
-                            "DEPOSIT",
+                            "TRANSFER IN",
                             {
                                 chosen = null
                                 model.depositFromSave(
@@ -583,7 +583,7 @@ fun StatusScreen(
                     val uid = state.storage.boxes.getOrNull(area - 1)
                         ?.contents?.getOrNull(slot)?.uid
                     if (uid != null) {
-                        Gen1Button("WITHDRAW", {
+                        Gen1Button("TRANSFER OUT", {
                             model.back()
                             val active = state.activeSaveKey
                             val loaded = state.save(active)?.save
@@ -601,7 +601,7 @@ fun StatusScreen(
                 }
 
                 StatusTransfer.DEPOSIT -> if (key != null && area > 0) {
-                    Gen1Button("DEPOSIT", {
+                    Gen1Button("TRANSFER IN", {
                         model.back()
                         model.depositFromSave(
                             key,

@@ -129,8 +129,11 @@ fun StorageSystemScreen(
     action: @Composable (() -> Unit)? = null,
 ) {
     val rows: List<Triple<String, () -> Unit, SoundEffect>> = buildList {
-        add(Triple("WITHDRAW PKMN", onWithdraw, SoundEffect.SELECT))
-        add(Triple("DEPOSIT PKMN", onDeposit, SoundEffect.SELECT))
+        // Named for which way the Pokémon is going, not for which side of
+        // the machine is doing it: OUT leaves this PC for the cartridge, IN
+        // comes the other way.
+        add(Triple("TRANSFER OUT PKMN", onWithdraw, SoundEffect.SELECT))
+        add(Triple("TRANSFER IN PKMN", onDeposit, SoundEffect.SELECT))
         add(Triple("VIEW BOXES", onView, SoundEffect.SELECT))
         add(Triple("CHANGE CART", onChangeCart, SoundEffect.CURSOR))
         // Everything the cartridge's PC does not have lives behind this row.

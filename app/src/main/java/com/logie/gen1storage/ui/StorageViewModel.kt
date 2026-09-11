@@ -53,7 +53,17 @@ sealed interface Screen {
      * [area] is its box; otherwise [area] 0 is the save's party and 1..12 its
      * boxes.
      */
-    data class Status(val key: String?, val area: Int, val slot: Int) : Screen
+    data class Status(
+        val key: String?,
+        val area: Int,
+        val slot: Int,
+        /**
+         * The transfer this was opened from, if any. A status screen reached
+         * mid-transfer carries the button for it, so looking a Pokémon over
+         * before moving it does not mean walking back out to the list.
+         */
+        val transfer: StatusTransfer? = null,
+    ) : Screen
     data object Sprites : Screen
     /** Everything that is fetched rather than shipped: the sprites and the cries. */
     data object Downloads : Screen
@@ -62,6 +72,9 @@ sealed interface Screen {
     data object Credits : Screen
     data object SoundEffects : Screen
 }
+
+/** The transfer a status screen was opened from, and can finish. */
+enum class StatusTransfer { WITHDRAW, DEPOSIT }
 
 /** A modal the Generation I menus would draw as a window over everything. */
 sealed interface Prompt {
@@ -79,9 +92,9 @@ sealed interface Prompt {
     data class RenameCart(val key: String, val fallback: String) : Prompt
     /** A newer release exists; saying yes opens it. */
     data class Update(val version: String, val url: String) : Prompt
-    /** Which save to put a withdrawn Pokémon into, before asking where in it. */
-    data class ChooseWithdrawSave(val uid: String) : Prompt
-    data class ChooseWithdrawTarget(val uid: String, val key: String) : Prompt
+    /** Which save to put withdrawn Pokémon into, before asking where in it. */
+    data class ChooseWithdrawSave(val uids: List<String>) : Prompt
+    data class ChooseWithdrawTarget(val uids: List<String>, val key: String) : Prompt
     /** Which save to take a deposit from, when the lists are not showing all. */
     data class ChooseDepositSave(val title: String) : Prompt
     /** The long-press sprite picker for one species. */
@@ -408,9 +421,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun chooseCart(key: String) = selectSave(key) { back() }
 
     /** Picks the save a withdrawal lands in, then asks where inside it. */
-    fun chooseWithdrawSave(uid: String, key: String) =
+    fun chooseWithdrawSave(uids: List<String>, key: String) =
         selectSave(key) { ready ->
-            mutable.update { it.copy(prompt = Prompt.ChooseWithdrawTarget(uid, ready)) }
+            mutable.update { it.copy(prompt = Prompt.ChooseWithdrawTarget(uids, ready)) }
         }
 
     // ------- settings
@@ -609,18 +622,121 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun withdrawToSave(uid: String, key: String, target: WithdrawTarget) {
-        val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
+    fun withdrawToSave(uid: String, key: String, target: WithdrawTarget) =
+        withdrawToSave(listOf(uid), key, target)
+
+    /**
+     * Withdraws one Pokémon or several into the same save.
+     *
+     * Each one is its own transfer, journalled and committed on its own, so a
+     * refusal partway leaves everything before it already in the save and
+     * everything after it still in the PC — never a half-written one. The save
+     * is re-read between steps because each commit moves its revision, and the
+     * engine refuses a transfer aimed at a revision that has moved.
+     */
+    fun withdrawToSave(uids: List<String>, key: String, target: WithdrawTarget) {
+        if (uids.isEmpty()) return
+        if (mutable.value.save(key) == null) return message("OPEN THE SAVE FIRST.")
         viewModelScope.launch {
             mutable.update { it.copy(busy = true, prompt = null) }
-            val result = try {
-                withContext(Dispatchers.IO) { engine.withdraw(loaded, uid, target) }
-            } catch (e: Exception) {
-                mutable.update { it.copy(busy = false) }
-                return@launch message("THE TRANSFER COULD NOT START.", e.message.orEmpty().uppercase())
+            var done = 0
+            var stopped: TransferResult? = null
+            for (uid in uids) {
+                val loaded = freshSave(key)
+                if (loaded == null) {
+                    stopped = TransferResult.Refused("THE SAVE COULD NOT BE READ")
+                    break
+                }
+                val result = runTransfer { engine.withdraw(loaded, uid, target) }
+                if (result is TransferResult.Success) done++ else { stopped = result; break }
             }
-            finish(result)
+            finishMany(done, stopped, "WITHDREW")
         }
+    }
+
+    /**
+     * Deposits one Pokémon or several out of the same save.
+     *
+     * Worked from the bottom of the save up: taking a Pokémon out closes the
+     * gap behind it, so a slot below the one being taken would shift while the
+     * list still pointed at where it used to be. Going downwards means every
+     * slot not yet reached is untouched by the ones already done.
+     */
+    fun depositFromSave(picks: List<Pair<String, SaveLocation>>, targetBox: Int) {
+        if (picks.isEmpty()) return
+        viewModelScope.launch {
+            mutable.update { it.copy(busy = true, prompt = null) }
+            val ordered = picks.sortedWith(
+                compareBy<Pair<String, SaveLocation>> { it.first }
+                    .thenByDescending { (it.second as? SaveLocation.Box)?.box ?: 0 }
+                    .thenByDescending { slotOf(it.second) }
+            )
+            var done = 0
+            var stopped: TransferResult? = null
+            for ((key, location) in ordered) {
+                val loaded = freshSave(key)
+                if (loaded == null) {
+                    stopped = TransferResult.Refused("THE SAVE COULD NOT BE READ")
+                    break
+                }
+                val result = runTransfer { engine.deposit(loaded, location, targetBox) }
+                if (result is TransferResult.Success) done++ else { stopped = result; break }
+            }
+            finishMany(done, stopped, "DEPOSITED")
+        }
+    }
+
+    private fun slotOf(location: SaveLocation): Int = when (location) {
+        is SaveLocation.Party -> location.slot
+        is SaveLocation.Box -> location.slot
+    }
+
+    private suspend fun runTransfer(block: suspend () -> TransferResult): TransferResult =
+        try {
+            withContext(Dispatchers.IO) { block() }
+        } catch (e: Exception) {
+            TransferResult.Refused(
+                e.message.orEmpty().uppercase().ifBlank { "THE TRANSFER COULD NOT START" }
+            )
+        }
+
+    /** Re-reads a save from the account, so a transfer is aimed at its current revision. */
+    private suspend fun freshSave(key: String): LoadedSave? {
+        val remote = mutable.value.remote(key) ?: return null
+        val result = withContext(Dispatchers.IO) { saves.load(remote) }
+        return (result as? SyncResult.Ok)?.value?.takeIf { it.isUsable }
+    }
+
+    /**
+     * Closes a run of transfers: what went through, then what stopped it.
+     *
+     * Both are said, and in that order, because a run that moved four and was
+     * refused on the fifth has genuinely moved four — a bare refusal would
+     * read as though nothing had happened.
+     */
+    private suspend fun finishMany(done: Int, stopped: TransferResult?, verb: String) {
+        mutable.update { it.copy(loaded = emptyMap()) }
+        val refreshed = withContext(Dispatchers.IO) { saves.listSaves() }
+        if (refreshed is SyncResult.Ok) {
+            mutable.update { it.copy(account = refreshed.value) }
+        }
+        mutable.update { it.copy(storage = storage.state(), busy = false) }
+        if (done > 0) mutable.update { it.copy(transfers = it.transfers + done) }
+
+        val lines = buildList {
+            if (done > 0) add("$verb $done POKéMON.")
+            when (stopped) {
+                null -> add("THE GAME WILL PICK THIS UP ON ITS NEXT SYNC.")
+                is TransferResult.Refused -> add(stopped.reason)
+                is TransferResult.NeedsRecovery -> {
+                    add(stopped.reason)
+                    add("NOTHING WAS LOST. OPEN SAVE FILES TO FINISH IT.")
+                }
+                is TransferResult.Success -> add("THE GAME WILL PICK THIS UP ON ITS NEXT SYNC.")
+            }
+        }
+        message(*lines.toTypedArray())
+        refreshTransferSources()
     }
 
     /**

@@ -26,6 +26,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -150,6 +151,16 @@ fun StorageSystemScreen(
 ) {
     var mode by remember { mutableStateOf(PcMode.MENU) }
     var chosen by remember(mode) { mutableStateOf<Int?>(null) }
+    // Which rows of the open list a transfer will act on. Empty is the plain
+    // one-at-a-time PC: a tap opens the window on that Pokémon, and SELECT in
+    // that window is what turns the list into a set.
+    var marked by remember(mode) { mutableStateOf(emptySet<Int>()) }
+    // Cleared after a transfer, so the ticks do not outlive what they pointed
+    // at — every index shifts the moment something leaves a list.
+    LaunchedEffect(state.transfers) { marked = emptySet(); chosen = null }
+    fun toggle(index: Int) {
+        marked = if (index in marked) marked - index else marked + index
+    }
 
     val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
     val boxContents = box?.contents.orEmpty()
@@ -200,6 +211,35 @@ fun StorageSystemScreen(
         else -> null
     }
 
+    /**
+     * The status screen for a stored Pokémon, found by uid.
+     *
+     * WITHDRAW lists every box at once, so the row's position in the list is
+     * not its slot in the open box — looking one up by where it actually lives
+     * is the only reading that holds for both lists.
+     */
+    fun statusOf(uid: String, transfer: StatusTransfer?): Screen.Status? {
+        val boxIndex = state.storage.find(uid)?.first ?: return null
+        val slot = state.storage.boxes.getOrNull(boxIndex - 1)
+            ?.contents?.indexOfFirst { it.uid == uid }
+            ?.takeIf { it >= 0 } ?: return null
+        return Screen.Status(null, boxIndex, slot, transfer)
+    }
+
+    /**
+     * Asks where a withdrawal lands. The save is only asked for when there is
+     * not one in the machine already — the player chose that cartridge, and
+     * asking again on every withdrawal was the slowest part of the trip.
+     */
+    fun startWithdraw(uids: List<String>) {
+        chosen = null
+        val active = state.activeSaveKey
+        model.prompt(
+            if (active != null && state.save(active) != null) Prompt.ChooseWithdrawTarget(uids, active)
+            else Prompt.ChooseWithdrawSave(uids)
+        )
+    }
+
     // The list and the window that opens on a chosen Pokémon are separate
     // layers on the screen, so they are built as separate slots here rather
     // than nested — the message window belongs between them.
@@ -243,6 +283,12 @@ fun StorageSystemScreen(
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "What? There are no POKéMON here!",
+                    marked = marked,
+                    onToggle = ::toggle,
+                    actionLabel = "WITHDRAW ${marked.size}".takeIf {
+                        mode == PcMode.WITHDRAW && marked.isNotEmpty() && state.saves.isNotEmpty()
+                    },
+                    onAction = { startWithdraw(marked.mapNotNull { stored.getOrNull(it)?.uid }) },
                 )
             })
 
@@ -258,6 +304,24 @@ fun StorageSystemScreen(
                     onConfirm = { chosen = it },
                     onCancel = { mode = PcMode.MENU },
                     emptyMessage = "There are no POKéMON here.",
+                    marked = marked,
+                    onToggle = ::toggle,
+                    actionLabel = "DEPOSIT ${marked.size}".takeIf { marked.isNotEmpty() },
+                    onAction = {
+                        val picks = marked.mapNotNull { index ->
+                            depositRows.getOrNull(index)?.let { it.key to it.location }
+                        }
+                        chosen = null
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("DEPOSIT ${picks.size} POKéMON?"),
+                                confirmLabel = "DEPOSIT",
+                                onConfirm = {
+                                    model.depositFromSave(picks, state.currentStorageBox)
+                                },
+                            )
+                        )
+                    },
                 )
             })
 
@@ -281,13 +345,18 @@ fun StorageSystemScreen(
                         // be loaded.
                         MonAction(
                             "WITHDRAW",
-                            { model.prompt(Prompt.ChooseWithdrawSave(storedPick.uid)) },
+                            { startWithdraw(listOf(storedPick.uid)) },
                             enabled = state.saves.isNotEmpty(),
                         ),
                         MonAction("STATS", {
-                            model.open(
-                                Screen.Status(null, state.currentStorageBox, boxContents.indexOf(storedPick))
-                            )
+                            statusOf(storedPick.uid, StatusTransfer.WITHDRAW)?.let(model::open)
+                        }),
+                        // Ticks this one and hands the list back. From here a
+                        // tap on any row ticks it too, so several go in one
+                        // trip without a mode to switch into first.
+                        MonAction("SELECT", {
+                            chosen?.let { toggle(it) }
+                            chosen = null
                         }),
                     ),
                     onCancel = { chosen = null },
@@ -311,9 +380,7 @@ fun StorageSystemScreen(
                             )
                         }),
                         MonAction("STATS", {
-                            model.open(
-                                Screen.Status(null, state.currentStorageBox, boxContents.indexOf(storedPick))
-                            )
+                            statusOf(storedPick.uid, null)?.let(model::open)
                         }),
                         MonAction("RELEASE", {
                             model.prompt(
@@ -359,7 +426,15 @@ fun StorageSystemScreen(
                                 )
                             },
                         ),
-                        MonAction("STATS", { model.open(Screen.Status(pick.key, pick.area, pick.slot)) }),
+                        MonAction("STATS", {
+                            model.open(
+                                Screen.Status(pick.key, pick.area, pick.slot, StatusTransfer.DEPOSIT)
+                            )
+                        }),
+                        MonAction("SELECT", {
+                            chosen?.let { toggle(it) }
+                            chosen = null
+                        }),
                     ),
                     onCancel = { chosen = null },
                 )
@@ -374,7 +449,14 @@ private enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW, CHANGE_BOX }
 
 /** The full status screen for one Pokémon, wherever it lives. */
 @Composable
-fun StatusScreen(state: UiState, model: StorageViewModel, key: String?, area: Int, slot: Int) {
+fun StatusScreen(
+    state: UiState,
+    model: StorageViewModel,
+    key: String?,
+    area: Int,
+    slot: Int,
+    transfer: StatusTransfer? = null,
+) {
     val pokemon = if (key == null) {
         state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.pokemon
     } else {
@@ -398,9 +480,51 @@ fun StatusScreen(state: UiState, model: StorageViewModel, key: String?, area: In
         store = model.sprites,
         spriteRevision = state.spriteRevision,
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
-    ) {
-        Gen1Button("BACK", { model.back() })
-    }
+        footer = { Gen1Button("BACK", { model.back() }) },
+        underBox = {
+            // Only the transfer this screen was opened from. Looking a
+            // Pokémon over is most of why a transfer stalls here, so the way
+            // on is under it rather than back through the list.
+            when (transfer) {
+                StatusTransfer.WITHDRAW -> if (key == null) {
+                    val uid = state.storage.boxes.getOrNull(area - 1)
+                        ?.contents?.getOrNull(slot)?.uid
+                    if (uid != null) {
+                        Gen1Button("WITHDRAW", {
+                            model.back()
+                            val active = state.activeSaveKey
+                            model.prompt(
+                                if (active != null && state.save(active) != null)
+                                    Prompt.ChooseWithdrawTarget(listOf(uid), active)
+                                else Prompt.ChooseWithdrawSave(listOf(uid))
+                            )
+                        }, Modifier.wrapContentWidth())
+                    }
+                }
+
+                StatusTransfer.DEPOSIT -> if (key != null && area > 0) {
+                    Gen1Button("DEPOSIT", {
+                        model.back()
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("DEPOSIT ${pokemon.displayName.uppercase()}?"),
+                                confirmLabel = "DEPOSIT",
+                                onConfirm = {
+                                    model.depositFromSave(
+                                        key,
+                                        SaveLocation.Box(area, slot + 1),
+                                        state.currentStorageBox,
+                                    )
+                                },
+                            )
+                        )
+                    }, Modifier.wrapContentWidth())
+                }
+
+                null -> Unit
+            }
+        },
+    )
 }
 
 /**
@@ -1088,9 +1212,10 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
             }
 
             is Prompt.ChooseWithdrawSave -> SavePicker(
-                title = "PUT IT IN WHICH SAVE?",
+                title = if (prompt.uids.size == 1) "PUT IT IN WHICH SAVE?"
+                else "PUT THEM IN WHICH SAVE?",
                 state = state,
-                onChoose = { key -> model.chooseWithdrawSave(prompt.uid, key) },
+                onChoose = { key -> model.chooseWithdrawSave(prompt.uids, key) },
                 onCancel = model::dismissPrompt,
             )
 
@@ -1110,8 +1235,12 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
 
             is Prompt.ChooseWithdrawTarget -> {
                 val save = state.save(prompt.key)?.save
+                val many = prompt.uids.size
                 Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText("PUT IT IN WHICH BOX?")
+                    GbText(if (many == 1) "PUT IT IN WHICH BOX?" else "PUT $many IN WHICH BOX?")
+                    // Says which cartridge, because the save is no longer
+                    // asked for when one is already in the machine.
+                    save?.let { GbText(it.trainerName.uppercase(), style = Gen1TextSmall) }
                     if (save == null) {
                         GbText("THAT SAVE IS NOT OPEN.")
                     } else {
@@ -1124,13 +1253,16 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                                     save.boxName(number),
                                     selected = false,
                                     onSelect = {
-                                        model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Box(number))
+                                        model.withdrawToSave(prompt.uids, prompt.key, WithdrawTarget.Box(number))
                                     },
                                     onConfirm = {
-                                        model.withdrawToSave(prompt.uid, prompt.key, WithdrawTarget.Box(number))
+                                        model.withdrawToSave(prompt.uids, prompt.key, WithdrawTarget.Box(number))
                                     },
                                     trailing = "${box.size}/${Gen1RecompSave.BOX_CAPACITY}",
-                                    enabled = box.size < Gen1RecompSave.BOX_CAPACITY,
+                                    // Room for every one of them, not just the
+                                    // first: a box that fills partway through
+                                    // would refuse the rest.
+                                    enabled = box.size + many <= Gen1RecompSave.BOX_CAPACITY,
                                 )
                             }
                         }

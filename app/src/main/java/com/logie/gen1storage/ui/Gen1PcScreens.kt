@@ -44,6 +44,8 @@ fun Gen1MenuRow(
     trailing: String? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    /** Ticked, for a row that is one of several the next action will act on. */
+    mark: Boolean = false,
     /** What taking this row sounds like. Null for rows that are not a choice. */
     sound: SoundEffect? = SoundEffect.CURSOR,
 ) {
@@ -64,6 +66,9 @@ fun Gen1MenuRow(
         Box(Modifier.width(20.dp)) {
             if (selected && enabled) GbText("▶", style = Gen1Text)
         }
+        // Its own column rather than part of the label, so the names still
+        // line up whether or not anything in the list is ticked.
+        if (mark) Box(Modifier.width(gen1Dp(6))) { GbText("*", style = Gen1Text) }
         GbText(
             label.uppercase(),
             modifier = Modifier.weight(1f),
@@ -220,10 +225,26 @@ fun MonListOverlay(
     onConfirm: (Int) -> Unit,
     onCancel: () -> Unit,
     emptyMessage: String,
+    /** The rows ticked for a transfer of several at once. */
+    marked: Set<Int> = emptySet(),
+    onToggle: (Int) -> Unit = {},
+    /** The row that acts on everything ticked. Absent while nothing is. */
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
 ) {
+    // Once anything is ticked the list is choosing a set, so a row toggles
+    // rather than opening the window on one Pokémon. That window is where a
+    // set is started from, so there is no mode to find and none to leave.
+    val choosingMany = marked.isNotEmpty()
+    val take: (Int) -> Unit = { index -> if (choosingMany) onToggle(index) else onConfirm(index) }
+    val extras = if (actionLabel != null) 2 else 1
     // One past the end is CANCEL, so the cursor can reach it like any row.
-    val selected = rememberCursorLayer(entries.size + 1) { index ->
-        if (index < entries.size) onConfirm(index) else onCancel()
+    val selected = rememberCursorLayer(entries.size + extras) { index ->
+        when {
+            index < entries.size -> take(index)
+            actionLabel != null && index == entries.size -> onAction()
+            else -> onCancel()
+        }
     }
     // The cursor can walk past the bottom of what is drawn, so the list has to
     // follow it. Without this a swipe moves a cursor nobody can see.
@@ -252,12 +273,19 @@ fun MonListOverlay(
                         row.name,
                         selected == index,
                         {},
-                        { onConfirm(index) },
+                        { take(index) },
                         trailing = row.trailing,
+                        mark = index in marked,
                     )
                 }
+                if (actionLabel != null) {
+                    item {
+                        Spacer(Modifier.height(gen1Dp(3)))
+                        Gen1MenuRow(actionLabel, selected == entries.size, {}, onAction)
+                    }
+                }
                 item {
-                    Gen1MenuRow("CANCEL", selected == entries.size, {}, onCancel)
+                    Gen1MenuRow("CANCEL", selected == entries.size + extras - 1, {}, onCancel)
                 }
             }
         }

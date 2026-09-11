@@ -51,6 +51,12 @@ fun Gen1StatusScreen(
     modifier: Modifier = Modifier,
     onSpriteLongPress: ((String) -> Unit)? = null,
     footer: @Composable () -> Unit = {},
+    /**
+     * Drawn directly under the box, for the transfer this screen was opened
+     * from. Under the box rather than in the corner with BACK: it acts on the
+     * Pokémon above it, so it belongs to it.
+     */
+    underBox: @Composable () -> Unit = {},
 ) {
     var page by remember(pokemon.fingerprint) { mutableStateOf(0) }
 
@@ -63,9 +69,10 @@ fun Gen1StatusScreen(
         // Unfolded, the pages keep to the left half in a window of their own
         // rather than turning that half into a white wall — the screen behind
         // stays visible around it, as it does everywhere else.
+        Column(Modifier.fillMaxWidth(if (isUnfolded()) 0.5f else 1f)) {
         Gen1Frame(
             Modifier
-                .fillMaxWidth(if (isUnfolded()) 0.5f else 1f)
+                .fillMaxWidth()
                 .gen1Clickable { page = 1 - page },
         ) {
             // Drawn here rather than inside either page. Turning the page used
@@ -101,6 +108,9 @@ fun Gen1StatusScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 GbText(if (page == 0) "▼ MORE" else "▲ BACK")
             }
+        }
+            Spacer(Modifier.height(gen1Dp(3)))
+            underBox()
         }
         Spacer(Modifier.weight(1f))
     }

@@ -899,19 +899,26 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun withdrawToSave(uids: List<String>, key: String, target: WithdrawTarget) {
         if (uids.isEmpty()) return
         val loaded = mutable.value.save(key) ?: return message("OPEN THE SAVE FIRST.")
-        val moving = uids.singleOrNull()?.let { storage.get(it) }
+        // The lead one carries the scene and the rest stand beside it. This
+        // used to ask for the single one and get nothing when there were
+        // several, so a run of three went out with no ball at all — the
+        // sprites vanished the moment the question was answered.
+        val lead = uids.firstOrNull()?.let { storage.get(it) }
+        val rest = uids.drop(1).mapNotNull { storage.get(it)?.pokemon?.speciesId }
         sceneStartedAt = System.currentTimeMillis()
         viewModelScope.launch {
             mutable.update {
                 it.copy(
                     busy = true,
                     prompt = null,
-                    transferScene = moving?.let { stored ->
+                    transferScene = lead?.let { stored ->
                         TransferScene(
                             speciesId = stored.pokemon.speciesId,
                             gameVersionId = stored.provenance.gameVersion,
-                            name = stored.pokemon.displayName.uppercase(),
+                            name = if (uids.size == 1) stored.pokemon.displayName.uppercase()
+                            else "${uids.size} POKéMON",
                             destination = loaded.save?.trainerName?.uppercase() ?: "THE SAVE",
+                            alsoSpeciesIds = rest,
                             motion = TransferMotion.OUT,
                         )
                     },
@@ -942,8 +949,30 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun depositFromSave(picks: List<Pair<String, SaveLocation>>, targetBox: Int) {
         if (picks.isEmpty()) return
+        // Same scene as one on its own, with the rest standing beside it.
+        // Several used to arrive with no ball at all.
+        val shown = picks.mapNotNull { (key, location) ->
+            mutable.value.save(key)?.save?.let { pokemonAt(it, location) }
+        }
+        sceneStartedAt = System.currentTimeMillis()
         viewModelScope.launch {
-            mutable.update { it.copy(busy = true, prompt = null) }
+            mutable.update {
+                it.copy(
+                    busy = true,
+                    prompt = null,
+                    transferScene = shown.firstOrNull()?.let { lead ->
+                        TransferScene(
+                            speciesId = lead.speciesId,
+                            gameVersionId = mutable.value.remote(picks.first().first)?.version?.id,
+                            name = if (picks.size == 1) lead.displayName.uppercase()
+                            else "${picks.size} POKéMON",
+                            destination = boxLabel(targetBox),
+                            alsoSpeciesIds = shown.drop(1).map { mon -> mon.speciesId },
+                            motion = TransferMotion.IN,
+                        )
+                    },
+                )
+            }
             val ordered = picks.sortedWith(
                 compareBy<Pair<String, SaveLocation>> { it.first }
                     .thenByDescending { (it.second as? SaveLocation.Box)?.box ?: 0 }

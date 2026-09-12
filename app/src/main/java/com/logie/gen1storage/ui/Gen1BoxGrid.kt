@@ -447,19 +447,39 @@ fun BoxGridOverlay(
     val cursorSlot = layer.index
     LaunchedEffect(cursorSlot) { onHighlight(cursorSlot) }
 
+
+    // Folded there is one column and the box is the whole of what is on
+    // screen, so it takes the screen: the alignment setting is about which
+    // edge a window sits against when something else is sharing the screen
+    // with it, and here nothing is. Opened up it goes back to its edge and
+    // leaves the other half to the pane.
+    val unfolded = isUnfolded()
     Box(
         Modifier.fillMaxSize(),
-        contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
+        contentAlignment =
+            if (unfolded) Gen1Layout.corner(top = true, menuSide = true)
+            else Alignment.TopCenter,
     ) {
-        Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5))) {
-            BoxHead(
-                stored = box.slots.getOrNull(cursorSlot),
-                sprites = sprites,
-                spriteRevision = revision,
-                modifier = Modifier.width(gen1Dp(HEAD_PIXELS)),
-            )
-            Spacer(Modifier.height(gen1Dp(3)))
-            GbText(box.label, modifier = Modifier.width(gen1Dp(HEAD_PIXELS)), maxLines = 1)
+        Gen1Frame(
+            modifier =
+                if (unfolded) Modifier.wrapContentWidth().padding(top = gen1Dp(5))
+                else Modifier.fillMaxSize().padding(gen1Dp(2)),
+            fillsScreen = !unfolded,
+        ) {
+            // Only where there is nothing beside the box to say it. Opened up
+            // the pane is already showing this Pokémon at full size, and the
+            // box repeating it in miniature is the same thing twice over —
+            // and the room it took is room the grid could have had.
+            if (!unfolded) {
+                BoxHead(
+                    stored = box.slots.getOrNull(cursorSlot),
+                    sprites = sprites,
+                    spriteRevision = revision,
+                    modifier = Modifier.width(gen1Dp(HEAD_PIXELS)),
+                )
+                Spacer(Modifier.height(gen1Dp(3)))
+            }
+            GbText(box.label, maxLines = 1)
             GbText(
                 when {
                     heldName != null -> "PUT $heldName WHERE?"
@@ -479,12 +499,17 @@ fun BoxGridOverlay(
                     onTap(slot)
                 },
                 onMove = onMove,
-                // Whole rows, and never taller than the screen can hold: the
-                // box is a hundred rows deep and the window has to end
-                // somewhere above CANCEL.
+                // Given the screen, it takes whatever is left after the lines
+                // above it and CANCEL below — the box is a hundred rows deep
+                // and will fill anything it is handed. Where the window wraps
+                // instead, it is told how many rows to be, because a lazy list
+                // in a column that wraps has no height to work from.
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .height(gen1Dp(CELL_PIXELS * visibleRows())),
+                    .then(
+                        if (unfolded) Modifier.height(gen1Dp(CELL_PIXELS * visibleRows()))
+                        else Modifier.weight(1f)
+                    ),
             )
             Spacer(Modifier.height(gen1Dp(2)))
             Gen1MenuRow("CANCEL", selected = false, onSelect = {}, onConfirm = onCancel)
@@ -493,23 +518,27 @@ fun BoxGridOverlay(
 }
 
 /**
- * How many rows of the box the window shows at once.
+ * How many rows of the box the window shows at once, where the window is
+ * sized to its contents rather than handed the screen.
  *
  * Worked out from the screen rather than fixed, so the box fills a tall phone
- * and still leaves room for the block above it and CANCEL below on a short
- * one. In whole rows: half a row of Pokémon along the bottom edge reads as the
+ * and still leaves room for the name above it and CANCEL below on a short one.
+ * In whole rows: half a row of Pokémon along the bottom edge reads as the
  * window having been cut off.
+ *
+ * Only the opened-up layout asks, and there the block naming the Pokémon has
+ * moved out to the pane, so the only room to keep back is for those two lines.
  */
 @Composable
 private fun visibleRows(): Int {
     val screen = LocalConfiguration.current.screenHeightDp
     val cell = gen1Dp(CELL_PIXELS).value
-    val forTheRest = gen1Dp(HEAD_SPRITE_PIXELS + ROOM_AROUND_THE_GRID).value
+    val forTheRest = gen1Dp(ROOM_AROUND_THE_GRID).value
     return (((screen - forTheRest) / cell).toInt()).coerceIn(MIN_ROWS_SHOWN, StorageLayout.BOX_ROWS)
 }
 
-/** The block above the grid and CANCEL below it, in game pixels. */
-private const val ROOM_AROUND_THE_GRID = 60
+/** The name and count above the grid, and CANCEL below it, in game pixels. */
+private const val ROOM_AROUND_THE_GRID = 48
 private const val MIN_ROWS_SHOWN = 3
 
 /** How long each column of the box waits for the one before it. */

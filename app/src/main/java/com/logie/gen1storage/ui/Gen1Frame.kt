@@ -42,6 +42,18 @@ fun Gen1Frame(
      * screen's furniture does not, or every screen would flinch on arrival.
      */
     opening: Boolean = false,
+    /**
+     * Whether this window *is* the screen rather than a window on it.
+     *
+     * Two things follow from that and they are the same thought. It is not
+     * held to a readable width, because the cap would leave a band of ground
+     * down one side of something meant to fill. And it does not register as
+     * furniture, because the gesture layer reads a swipe as the cursor's only
+     * where it lands off a window — a window covering everything would leave
+     * nowhere for a swipe to mean anything, and the box on a folded phone is
+     * driven by swiping.
+     */
+    fillsScreen: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val pixel = gen1PixelPx().toFloat()
@@ -50,8 +62,8 @@ fun Gen1Frame(
             .then(if (opening) Modifier.gen1Opening() else Modifier)
             // Half an opened screen at most. A window that runs the width of
             // an unfolded phone stops reading as a window.
-            .gen1MaxWidth()
-            .gen1WindowBounds()
+            .then(if (fillsScreen) Modifier else Modifier.gen1MaxWidth())
+            .then(if (fillsScreen) Modifier else Modifier.gen1WindowBounds())
             .background(fill)
             .drawBehind { drawGen1Border(ink, pixel) }
             .padding(gen1Dp(GEN1_TILE - 2))

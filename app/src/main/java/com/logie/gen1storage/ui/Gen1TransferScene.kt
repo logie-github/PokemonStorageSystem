@@ -166,7 +166,6 @@ fun Gen1TransferScene(
                 }
             } else if (scene.motion != TransferMotion.RELEASE) {
                 Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText("${scene.motion.gerund} ${scene.name} to ${inSentence(scene.destination)}.")
                     // One is arriving and the other is leaving, and the same
                     // word cannot be right for both.
                     //
@@ -174,13 +173,18 @@ fun Gen1TransferScene(
                     // several is greeted without a name: "Hello, 3 POKéMON!" is
                     // addressed to nothing.
                     val several = scene.alsoSpeciesIds.isNotEmpty()
+                    val greeting = when {
+                        several && scene.arriving -> "Hello!"
+                        several -> "Goodbye!"
+                        scene.arriving -> "Hello, ${scene.name}!"
+                        else -> "Goodbye, ${scene.name}!"
+                    }
+                    // One run of text rather than two stacked lines, so it
+                    // wraps where the words run out instead of where the
+                    // sentences do.
                     GbText(
-                        when {
-                            several && scene.arriving -> "Hello!"
-                            several -> "Goodbye!"
-                            scene.arriving -> "Hello, ${scene.name}!"
-                            else -> "Goodbye, ${scene.name}!"
-                        }
+                        "${scene.motion.gerund} ${scene.name} to " +
+                            "${inSentence(scene.destination)}. $greeting"
                     )
                 }
             }

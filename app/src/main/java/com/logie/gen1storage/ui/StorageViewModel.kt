@@ -498,6 +498,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         add("Saves on the account: ${account.saves.size}")
         account.saves.forEach {
             add("- ${it.version.id} rev ${it.rev}, badges ${it.summary.badges ?: "?"}, readable summary=${it.summary.trainerName != null}")
+            // What the save says is running on it, and what this app made of
+            // its boxes. Names only: no trainer, no contents, because this
+            // list is what the debug report ships into a public issue.
+            mutable.value.save(it.key)?.save?.let { save ->
+                add("  boxes ${save.boxCount} x ${save.boxCapacity}")
+                save.mods.forEach { mod ->
+                    add("  mod ${mod.id}${mod.version?.let { v -> " $v" } ?: ""}")
+                }
+            }
         }
         account.unsupported.forEach { add("- a non-Generation-I save on the account was ignored") }
         add("Devices linked: ${account.devices.size}")

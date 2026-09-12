@@ -94,6 +94,63 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         get() = root["pokedex"].asTable()?.get("owned").asTable()
             ?.entries().orEmpty().count { it.second.asBoolean() != false }
 
+    // ------- mods
+
+    /**
+     * A mod that has said who it is in the save.
+     *
+     * Gen1Recomp gives a mod no way to introduce itself to anything outside
+     * the game, so the introduction goes where both sides can reach it: the
+     * save's own `meta.mods`. A mod that writes a table there naming itself
+     * and what it changed is one this app can work with knowingly rather than
+     * by inference.
+     *
+     * Nothing here is trusted over the save itself. What a mod says about the
+     * boxes is a description of what it did; how many boxes there actually are
+     * is still counted off the file. A declaration that disagrees with the
+     * data loses.
+     */
+    data class SaveMod(
+        val id: String,
+        val name: String,
+        val version: String?,
+        /** How many boxes the mod says it makes, if it says. */
+        val boxCount: Int?,
+        /** How many fit in one, if it says. */
+        val boxCapacity: Int?,
+    )
+
+    /**
+     * Every mod the save names, however it names them.
+     *
+     * `meta.mods` is read three ways because a mod list can reasonably be
+     * written three ways — a list of ids, a set of id-to-true, or a map of id
+     * to a table describing it — and refusing the two shapes that carry less
+     * information would mean reporting nothing rather than reporting a name.
+     */
+    val mods: List<SaveMod>
+        get() {
+            val table = root["meta"].asTable()?.get("mods").asTable() ?: return emptyList()
+            return table.entries().mapNotNull { (key, value) ->
+                val id = when (key) {
+                    is LuaKey.Name -> key.value
+                    // A plain list of ids: the key is the position, the value
+                    // is the name.
+                    is LuaKey.Index -> value.asString()
+                    else -> null
+                } ?: return@mapNotNull null
+                val described = value.asTable()
+                if (described == null && value.asBoolean() == false) return@mapNotNull null
+                SaveMod(
+                    id = id,
+                    name = described?.get("name").asString() ?: id,
+                    version = described?.get("version").asString(),
+                    boxCount = described?.get("boxCount").asInt(),
+                    boxCapacity = described?.get("boxCapacity").asInt(),
+                )
+            }
+        }
+
     val playthroughId: String? get() = root["meta"].asTable()?.get("playthroughId").asString()
     val saveFormat: Int? get() = root["meta"].asTable()?.get("format").asInt()
 
@@ -245,14 +302,26 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         val boxesTable = ensureBoxes()
         val box = boxesTable[boxIndex].asTable() ?: return false
         val list = box.array().toMutableList()
-        if (list.size >= BOX_CAPACITY) return false
+        if (list.size >= boxCapacity) return false
         list.add(mon)
         box.setArray(list)
         return true
     }
 
+    /**
+     * How many fit in one box.
+     *
+     * Twenty as the game ships, or whatever a mod has said it made them: a
+     * mod that doubles a box and says so is one this app can fill to the top
+     * rather than stopping at twenty and calling the rest full. Where two
+     * mods disagree the larger wins, which is the one that can actually hold
+     * what is already there.
+     */
+    val boxCapacity: Int
+        get() = mods.mapNotNull { it.boxCapacity }.filter { it > 0 }.maxOrNull() ?: BOX_CAPACITY
+
     fun boxFreeSlots(boxIndex: Int): Int =
-        BOX_CAPACITY - (boxes.getOrNull(boxIndex - 1)?.size ?: BOX_CAPACITY)
+        boxCapacity - (boxes.getOrNull(boxIndex - 1)?.size ?: boxCapacity)
 
     fun deepCopy(): Gen1RecompSave = Gen1RecompSave(root.deepCopy())
 

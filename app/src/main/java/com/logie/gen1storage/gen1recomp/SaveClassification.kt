@@ -116,9 +116,13 @@ object SaveClassifier {
             problems += "PARTY HOLDS ${partyEntries.size} (MAX ${Gen1RecompSave.PARTY_MAX})"
         }
 
+        // Against what this save's boxes actually hold, which a mod may have
+        // said is more than twenty. Judging a modded save by the stock number
+        // would report every one of its boxes as broken.
+        val capacity = save.boxCapacity
         save.boxes.forEachIndexed { index, box ->
-            if (box.size > Gen1RecompSave.BOX_CAPACITY) {
-                problems += "BOX ${index + 1} HOLDS ${box.size} (MAX ${Gen1RecompSave.BOX_CAPACITY})"
+            if (box.size > capacity) {
+                problems += "BOX ${index + 1} HOLDS ${box.size} (MAX $capacity)"
             }
         }
 

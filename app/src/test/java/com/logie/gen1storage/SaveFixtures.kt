@@ -107,13 +107,27 @@ object SaveFixtures {
         badges: List<String> = listOf("BOULDERBADGE", "CASCADEBADGE"),
         playTime: Double = 7265.5,
         playthroughId: String? = "quiet-forest-dawn",
+        /** Mod cards, as a mod writes them into `meta.mods`. */
+        mods: Map<String, Map<String, Any>>? = null,
     ): LuaValue.Table {
         val root = LuaValue.Table()
         root["version"] = luaStr(version)
         root["meta"] = LuaValue.Table().apply {
             this["format"] = luaNum(5)
             playthroughId?.let { this["playthroughId"] = luaStr(it) }
-            this["mods"] = LuaValue.Table()
+            this["mods"] = LuaValue.Table().apply {
+                mods.orEmpty().forEach { (id, fields) ->
+                    this[id] = LuaValue.Table().apply {
+                        fields.forEach { (key, value) ->
+                            this[key] = when (value) {
+                                is Int -> luaNum(value)
+                                is Number -> luaNum(value.toDouble())
+                                else -> luaStr(value.toString())
+                            }
+                        }
+                    }
+                }
+            }
         }
         root["player"] = LuaValue.Table().apply {
             this["name"] = luaStr(trainer)

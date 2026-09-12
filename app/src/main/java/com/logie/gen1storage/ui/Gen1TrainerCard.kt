@@ -1,8 +1,14 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import com.logie.gen1storage.pokemon.Gen1Pokemon
+import kotlin.math.floor
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -81,8 +87,22 @@ fun Gen1TrainerCard(
         fill = palette.lightest,
         ink = palette.darkest,
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
+        // The badge case is eight tiles and the seven gaps between them, and
+        // it is the one thing on the card with a size of its own: a badge is
+        // sixteen pixels because that is how it was drawn. So it is measured
+        // first and the portrait takes what is left over.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val cased = gen1Dp(
+                TrainerStore.BADGES * BADGE_PIXELS + (TrainerStore.BADGES - 1) * BADGE_GAP
+            )
+            val spare = maxWidth - cased
+            // Beside the badges where there is room for a portrait bigger than
+            // the one that used to sit above them, and above them where there
+            // is not. A narrow phone would otherwise hand the portrait a strip
+            // two Pokémon wide and call it a photograph.
+            val beside = spare >= gen1Dp(SMALL_PORTRAIT_PIXELS)
+
+            val header: @Composable ColumnScope.() -> Unit = {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     GbText(
                         if (cursor) "▶$title" else title,
@@ -95,52 +115,53 @@ fun Gen1TrainerCard(
                 Field("MONEY", save?.money?.let { "¥$it" } ?: " ")
                 Field("TIME", save?.playTimeText ?: " ")
             }
+            val badges: @Composable () -> Unit = {
+                Badges(
+                    save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
+                    trainers,
+                    spriteRevision,
+                )
+            }
+            val portrait: @Composable (Modifier, Dp) -> Unit = { portraitModifier, width ->
+                Portrait(
+                    modifier = portraitModifier,
+                    width = width,
+                    trainerSprite = trainerSprite,
+                    trainers = trainers,
+                    lead = if (read) lead else null,
+                    gameVersionId = remote.version.id,
+                    sprites = sprites,
+                    spriteRevision = spriteRevision,
+                )
+            }
 
-            // The card's own corner, as the games put the player there.
-            //
-            // The trainer fills the corner with a little air around them, and
-            // the first Pokémon in the party stands over their shoulder in the
-            // bottom right — overlapping, the way a photograph of the two of
-            // them would be, rather than set out side by side as a pair of
-            // equal exhibits.
-            //
-            // Both are cut out of the white field the decomps draw them on:
-            // on a Game Boy the lightest of the four shades *is* the
-            // background, and painted onto a tinted card it reads as a white
-            // plate with somebody standing on it.
-            val side = if (full) FULL_PORTRAIT_PIXELS else SMALL_PORTRAIT_PIXELS
-            Box(Modifier.size(gen1Dp(side))) {
-                if (trainerSprite != null) {
-                    Gen1TrainerSprite(
-                        id = trainerSprite,
-                        store = trainers,
-                        revision = spriteRevision,
-                        modifier = Modifier.fillMaxSize().padding(gen1Dp(2)),
-                        sizeInPixels = null,
-                        cutout = true,
-                    )
+            if (beside) {
+                // The portrait runs the whole height of the card beside both
+                // the name and the case, rather than sitting in the corner
+                // over the case with the card's own height to itself. Drawn
+                // with `matchParentSize` so it takes the height the rest of
+                // the card settles on without being one of the things that
+                // decides it.
+                Box(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(end = spare)) {
+                        header()
+                        Spacer(Modifier.weight(1f))
+                        badges()
+                    }
+                    Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+                        portrait(Modifier.fillMaxHeight(), spare)
+                    }
                 }
-                if (read && lead != null) {
-                    Gen1Sprite(
-                        speciesId = lead.speciesId,
-                        gameVersionId = remote.version.id,
-                        store = sprites,
-                        revision = spriteRevision,
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                        // Half the corner, so it reads as standing with the
-                        // trainer rather than as a second portrait.
-                        sizeInPixels = side / 2,
-                        cutout = true,
-                    )
+            } else {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f), content = header)
+                        portrait(Modifier, gen1Dp(SMALL_PORTRAIT_PIXELS))
+                    }
+                    badges()
                 }
             }
         }
-
-        Badges(
-            save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
-            trainers,
-            spriteRevision,
-        )
 
         if (full) {
             Spacer(Modifier.height(gen1Dp(3)))
@@ -151,6 +172,74 @@ fun Gen1TrainerCard(
             )
             Field("SEEN", save?.let { "${it.dexOwnedCount}" } ?: " ")
             Field("BOXES", save?.let { "${it.boxCount}" } ?: " ")
+        }
+    }
+}
+
+/**
+ * The card's own corner: the trainer, with the party's lead over their
+ * shoulder.
+ *
+ * The trainer fills the corner and the first Pokémon in the party stands in
+ * the bottom right of it — overlapping, the way a photograph of the two of
+ * them would be, rather than set out side by side as a pair of equal exhibits.
+ *
+ * Both are cut out of the white field the decomps draw them on: on a Game Boy
+ * the lightest of the four shades *is* the background, and painted onto a
+ * tinted card it reads as a white plate with somebody standing on it.
+ *
+ * Sized in whole multiples of the art's own resolution rather than to the
+ * space available. A trainer is fifty-six pixels square and nothing else: at
+ * three times that every pixel of it is a clean three-by-three block, and at
+ * three and a half some pixels are three across and some are four, which on a
+ * picture with a one-pixel outline is a picture with a wobbly outline. So the
+ * portrait takes the largest whole multiple that fits what it has been given
+ * and leaves the remainder as air around itself.
+ */
+@Composable
+private fun Portrait(
+    modifier: Modifier,
+    /** How wide a column the card has handed over. */
+    width: Dp,
+    trainerSprite: String?,
+    trainers: TrainerStore,
+    lead: Gen1Pokemon?,
+    gameVersionId: String?,
+    sprites: SpriteStore,
+    spriteRevision: Int,
+) {
+    BoxWithConstraints(modifier.width(width)) {
+        val density = LocalDensity.current
+        val room = with(density) { minOf(maxWidth, maxHeight).toPx() }
+        val scale = floor(room / ART_PIXELS).toInt().coerceAtLeast(1)
+        val side = with(density) { (scale * ART_PIXELS).toDp() }
+        // Half the trainer, near enough, in whole multiples of its own art:
+        // enough to read as standing with them rather than as a second
+        // portrait, and never a smeared one.
+        val leadSide = with(density) { (((scale + 1) / 2) * ART_PIXELS).toDp() }
+
+        Box(Modifier.size(side).align(Alignment.Center)) {
+            if (trainerSprite != null) {
+                Gen1TrainerSprite(
+                    id = trainerSprite,
+                    store = trainers,
+                    revision = spriteRevision,
+                    modifier = Modifier.fillMaxSize(),
+                    sizeInPixels = null,
+                    cutout = true,
+                )
+            }
+            if (lead != null) {
+                Gen1Sprite(
+                    speciesId = lead.speciesId,
+                    gameVersionId = gameVersionId,
+                    store = sprites,
+                    revision = spriteRevision,
+                    modifier = Modifier.align(Alignment.BottomEnd).size(leadSide),
+                    sizeInPixels = null,
+                    cutout = true,
+                )
+            }
         }
     }
 }
@@ -217,13 +306,14 @@ private fun Field(label: String, value: String) {
  * nothing drawn where a badge has not been won — which is exactly what the
  * card does: the case is there, and it fills up as the player earns them.
  *
- * Unlabelled and unspaced on purpose. The badges are recognisable on sight, so
- * a word over them and air between them only cost the row its resemblance to
- * the thing it is copying.
+ * Unlabelled on purpose: the badges are recognisable on sight, and a word over
+ * them would only cost the row its resemblance to the thing it is copying. One
+ * pixel between them, which is enough to keep two badges that meet at the edge
+ * from reading as one shape now that they are cut out of their own field.
  */
 @Composable
 private fun Badges(won: List<Boolean>, trainers: TrainerStore, revision: Int) {
-    Row {
+    Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(BADGE_GAP))) {
         for (gym in 0 until TrainerStore.BADGES) {
             Badge(gym, won.getOrElse(gym) { false }, trainers, revision)
         }
@@ -256,12 +346,23 @@ private fun Badge(gym: Int, earned: Boolean, trainers: TrainerStore, revision: I
     }
 }
 
-/** How wide the portrait's corner is, in game pixels. */
-private const val FULL_PORTRAIT_PIXELS = 56
+/**
+ * The narrowest column worth giving the portrait, in game pixels.
+ *
+ * What the corner used to be. Below this the card falls back to the old
+ * arrangement — portrait beside the name, badges on their own line — rather
+ * than squeezing the pair into whatever a narrow screen has left over.
+ */
 private const val SMALL_PORTRAIT_PIXELS = 32
 
 /** One badge's side, in game pixels — the sheet's own tile, scaled whole. */
 private const val BADGE_PIXELS = 16
+
+/** The air between two badges, in game pixels. */
+private const val BADGE_GAP = 1
+
+/** What a decomp's sprite is drawn at, and the unit the portrait scales by. */
+private const val ART_PIXELS = 56f
 
 /**
  * Which trainer a card wears.

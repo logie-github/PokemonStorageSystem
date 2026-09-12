@@ -130,7 +130,10 @@ object SaveFixtures {
         }
         if (boxes != null) {
             root["boxes"] = LuaValue.Table().apply {
-                (1..12).forEach { index ->
+                // However many were asked for, and never fewer than the twelve
+                // the game ships with — which is what a modded save looks
+                // like: the twelve, and then some.
+                (1..maxOf(12, boxes.size)).forEach { index ->
                     this[index] = LuaValue.Table.ofArray(boxes.getOrElse(index - 1) { emptyList() })
                 }
             }

@@ -35,8 +35,12 @@ enum class GameVersion(val id: String, val label: String, val saveSuffix: String
  *
  * Structure per upstream `src/core/SaveData.lua` and `src/pokemon/Boxes.lua`:
  * `party` is a 1..n array of Pokémon tables (max 6), PC storage is `boxes`
- * (12 arrays of up to 20) with pre-12-box saves carrying a single `box` list,
- * `currentBox` selects the active box, and `player` holds the trainer.
+ * (arrays of up to 20, twelve of them as the game ships) with pre-12-box saves
+ * carrying a single `box` list, `currentBox` selects the active box, and
+ * `player` holds the trainer.
+ *
+ * How many boxes there are is read off each save rather than assumed: mods add
+ * them, and a save that has more than twelve is not a broken save.
  *
  * A Pokémon table is the *same shape* in the party and in a box: upstream
  * deposit is `table.remove(party, i)` followed by `table.insert(box, mon)`
@@ -117,15 +121,36 @@ class Gen1RecompSave(val root: LuaValue.Table) {
     // ------- boxes
 
     /**
-     * The PC as the game presents it after `Boxes.ensure` runs on load: always
-     * 12 boxes, with a pre-12-box save's single `box` list showing as box 1.
-     * Reading never mutates the save; see [ensureBoxes].
+     * How many boxes this save actually has.
+     *
+     * The game ships with twelve and a mod can add more, so this counts what
+     * the file carries rather than taking the twelve on faith: the boxes
+     * running from one upwards, and never fewer than the twelve
+     * `Boxes.ensure` would make on load.
+     *
+     * Counted from one rather than by the highest number present, because
+     * that is how a Lua array is shaped and how the game walks it. A stray
+     * high-numbered key past a gap is left alone rather than treated as a
+     * box — and left alone means left in the file untouched.
+     */
+    val boxCount: Int
+        get() {
+            val boxesTable = root["boxes"].asTable() ?: return BOX_COUNT
+            var found = 0
+            while (boxesTable[found + 1].asTable() != null) found++
+            return maxOf(found, BOX_COUNT)
+        }
+
+    /**
+     * The PC as the game presents it after `Boxes.ensure` runs on load: every
+     * box the save has, with a pre-12-box save's single `box` list showing as
+     * box 1. Reading never mutates the save; see [ensureBoxes].
      */
     val boxes: List<List<Gen1Pokemon>>
         get() {
             val boxesTable = root["boxes"].asTable()
             if (boxesTable != null) {
-                return (1..BOX_COUNT).map { index ->
+                return (1..boxCount).map { index ->
                     boxesTable[index].asTable()?.array().orEmpty()
                         .mapNotNull { it.asTable()?.let(::Gen1Pokemon) }
                 }
@@ -137,17 +162,29 @@ class Gen1RecompSave(val root: LuaValue.Table) {
 
     val storedCount: Int get() = boxes.sumOf { it.size }
 
-    val currentBox: Int get() = (root["currentBox"].asInt() ?: 1).coerceIn(1, BOX_COUNT)
+    /**
+     * Which box the game has open, clamped to the boxes this save has.
+     *
+     * Clamping to twelve was the dangerous half of assuming twelve: a modded
+     * player sitting on box twenty would have had it moved to twelve the
+     * first time this app wrote the save, because [ensureBoxes] writes this
+     * value back.
+     */
+    val currentBox: Int get() = (root["currentBox"].asInt() ?: 1).coerceIn(1, boxCount)
 
     fun boxName(index: Int): String =
         root["boxNames"].asTable()?.get(index).asString()?.let(LuaText::displayText)
             ?: "BOX $index"
 
     /**
-     * Upstream `Boxes.ensure`: materialise the 12 box arrays, migrate a
+     * Upstream `Boxes.ensure`: materialise the box arrays, migrate a
      * pre-12-box `box` list into box 1, and clamp `currentBox`. Called only
      * before a box is written, so a save this app merely reads is never
      * rewritten into a newer shape behind the player's back.
+     *
+     * A save with more boxes than the game ships with keeps every one of
+     * them: this fills in what is missing up to what the save already has and
+     * never goes past it, so nothing is invented and nothing is dropped.
      */
     fun ensureBoxes(): LuaValue.Table {
         var boxesTable = root["boxes"].asTable()
@@ -162,7 +199,7 @@ class Gen1RecompSave(val root: LuaValue.Table) {
                 root.remove(LuaKey.Name("box"))
             }
         }
-        for (i in 1..BOX_COUNT) {
+        for (i in 1..boxCount) {
             if (boxesTable[i].asTable() == null) boxesTable[i] = LuaValue.Table()
         }
         root["currentBox"] = luaNum(currentBox)
@@ -223,7 +260,13 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         /** `src/pokemon/Party.lua` PARTY_LENGTH. */
         const val PARTY_MAX = 6
 
-        /** `src/pokemon/Boxes.lua` COUNT and CAPACITY — Bill's PC, 12 x 20. */
+        /**
+         * `src/pokemon/Boxes.lua` COUNT and CAPACITY — Bill's PC, 12 x 20.
+         *
+         * [BOX_COUNT] is what the game ships with and what a save is given if
+         * it has none; it is a floor, not a limit. What a particular save has
+         * is [boxCount].
+         */
         const val BOX_COUNT = 12
         const val BOX_CAPACITY = 20
 

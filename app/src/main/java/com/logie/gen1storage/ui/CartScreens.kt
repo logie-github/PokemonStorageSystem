@@ -186,27 +186,15 @@ private fun TitleCard(
     onClick: () -> Unit,
 ) {
     val palette = paletteFor(version.id)
-    val pixel = gen1PixelPx().toFloat()
-    val ink = if (chosen) palette.darkest else Gen1Palette.Ink
-    Box(
-        modifier
-            .aspectRatio(1f)
-            .gen1WindowBounds()
-            .background(palette.lightest)
-            .gen1Clickable(onClick = onClick)
-            // The picture runs to the edges of the card and the frame is a
-            // frame: the tile it occupies is painted out first, so nothing of
-            // the picture survives under it. Drawing the border straight over
-            // the art does not do that — its tiles are mostly holes, and the
-            // art showed through every one of them.
-            .drawWithContent {
-                drawContent()
-                fillGen1BorderArea(palette.lightest, pixel)
-                drawGen1Border(ink, pixel)
-            },
-        contentAlignment = Alignment.Center,
+    Gen1Frame(
+        modifier.aspectRatio(1f).gen1Clickable(onClick = onClick),
+        fill = palette.lightest,
+        ink = if (chosen) palette.darkest else Gen1Palette.Ink,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
     ) {
-        Gen1Art(art, palette, Modifier.fillMaxSize(), version.label)
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Gen1Art(art, palette, Modifier.fillMaxSize(), version.label)
+        }
     }
 }
 

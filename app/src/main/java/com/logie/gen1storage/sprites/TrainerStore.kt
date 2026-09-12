@@ -146,10 +146,15 @@ class TrainerStore(private val directory: File) {
         memory.clear()
     }
 
-    /** One trainer, or null when that one is not on the device. */
-    fun load(id: String): ImageBitmap? {
+    /**
+     * One trainer, or null when that one is not on the device.
+     *
+     * [cutout] drops the white field the decomp's picture carries, so the
+     * trainer stands on the card rather than on a white plate.
+     */
+    fun load(id: String, cutout: Boolean = false): ImageBitmap? {
         if (ALL.none { it.id == id }) return null
-        val key = "$tintId/$id"
+        val key = "$tintId/${if (cutout) "cut/" else ""}$id"
         memory[key]?.let { return it }
 
         val source = file(id).takeIf { it.isFile } ?: return null
@@ -161,8 +166,13 @@ class TrainerStore(private val directory: File) {
         }.getOrNull() ?: return null
 
         val ramp = tintRamp
-        val finished = if (ramp == null) decoded
-        else runCatching { recolourToRamp(decoded, ramp) }.getOrNull() ?: decoded
+        val finished = runCatching {
+            when {
+                ramp != null -> recolourToRamp(decoded, ramp, cutout)
+                cutout -> cutOutLightest(decoded)
+                else -> decoded
+            }
+        }.getOrNull() ?: decoded
         return finished.asImageBitmap().also { memory[key] = it }
     }
 

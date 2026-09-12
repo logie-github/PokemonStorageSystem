@@ -2,12 +2,15 @@ package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -77,7 +80,11 @@ fun Gen1TrainerCard(
         fill = palette.lightest,
         ink = palette.darkest,
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        // The portrait's column is as tall as everything beside it, and the
+        // sprite stands at the foot of it. A card is a picture of somebody
+        // with their details written next to them, and somebody floating in
+        // the top corner over a column of empty space is neither.
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Column(Modifier.weight(1f)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     GbText(
@@ -91,28 +98,40 @@ fun Gen1TrainerCard(
                 Field("MONEY", save?.money?.let { "¥$it" } ?: " ")
                 Field("TIME", save?.playTimeText ?: " ")
             }
+
             // The card's own corner, as the games put the player there.
             //
             // The trainer the player picked, and until they pick one the
             // party's lead — which is what this corner held before there were
             // trainers to choose from, so a card is never empty for the sake
             // of a choice nobody has made yet.
-            val side = if (full) 56 else 32
-            when {
-                trainerSprite != null -> Gen1TrainerSprite(
-                    id = trainerSprite,
-                    store = trainers,
-                    revision = spriteRevision,
-                    sizeInPixels = side,
-                )
-                read -> Gen1Sprite(
-                    speciesId = lead?.speciesId,
-                    gameVersionId = remote.version.id,
-                    store = sprites,
-                    revision = spriteRevision,
-                    sizeInPixels = side,
-                )
-                else -> Spacer(Modifier.size(gen1Dp(side)))
+            //
+            // Cut out rather than painted: the decomps draw these on a white
+            // field, and on a tinted card that field is a white plate with a
+            // trainer standing on it.
+            val side = if (full) FULL_PORTRAIT_PIXELS else SMALL_PORTRAIT_PIXELS
+            Box(
+                Modifier.width(gen1Dp(side)).fillMaxHeight(),
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                when {
+                    trainerSprite != null -> Gen1TrainerSprite(
+                        id = trainerSprite,
+                        store = trainers,
+                        revision = spriteRevision,
+                        modifier = Modifier.fillMaxSize(),
+                        sizeInPixels = null,
+                        cutout = true,
+                    )
+                    read -> Gen1Sprite(
+                        speciesId = lead?.speciesId,
+                        gameVersionId = remote.version.id,
+                        store = sprites,
+                        revision = spriteRevision,
+                        sizeInPixels = side,
+                        cutout = true,
+                    )
+                }
             }
         }
 
@@ -148,13 +167,19 @@ fun Gen1TrainerSprite(
     store: TrainerStore,
     revision: Int,
     modifier: Modifier = Modifier,
-    sizeInPixels: Int = TrainerStore.SIZE,
+    /** A side in game pixels, or null to take whatever the modifier gives it. */
+    sizeInPixels: Int? = TrainerStore.SIZE,
+    /** Drops the white field the decomp's picture carries. */
+    cutout: Boolean = false,
 ) {
-    var image by remember(id, revision) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(id, revision, store) {
-        image = withContext(Dispatchers.IO) { store.load(id) }
+    var image by remember(id, revision, cutout) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(id, revision, store, cutout) {
+        image = withContext(Dispatchers.IO) { store.load(id, cutout) }
     }
-    Box(modifier.size(gen1Dp(sizeInPixels)), contentAlignment = Alignment.Center) {
+    Box(
+        modifier.then(if (sizeInPixels == null) Modifier else Modifier.size(gen1Dp(sizeInPixels))),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
         image?.let {
             Image(
                 bitmap = it,
@@ -229,6 +254,10 @@ private fun Badge(gym: Int, earned: Boolean, trainers: TrainerStore, revision: I
         }
     }
 }
+
+/** How wide the portrait's column is, in game pixels. */
+private const val FULL_PORTRAIT_PIXELS = 56
+private const val SMALL_PORTRAIT_PIXELS = 32
 
 /** One badge's side, in game pixels — the sheet's own tile, scaled whole. */
 private const val BADGE_PIXELS = 16

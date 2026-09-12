@@ -56,21 +56,27 @@ fun Gen1Sprite(
     sizeInPixels: Int = 56,
     onLongPress: ((String) -> Unit)? = null,
     onTap: (() -> Unit)? = null,
+    /** Drops the sprite's white field, for a sprite that sits on a window. */
+    cutout: Boolean = false,
 ) {
-    var image by remember(speciesId, gameVersionId, revision) { mutableStateOf<ImageBitmap?>(null) }
+    var image by remember(speciesId, gameVersionId, revision, cutout) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
     // Whether the answer is in yet. Without this the first frame after a
     // change has no image and no reason to think one is coming, so the
     // bracketed mark flashed up every time — on the cartridge screen, once
     // per save, every time the game was switched.
     var settled by remember(speciesId, gameVersionId, revision) { mutableStateOf(false) }
 
-    LaunchedEffect(speciesId, gameVersionId, store, revision) {
+    LaunchedEffect(speciesId, gameVersionId, store, revision, cutout) {
         settled = false
         // Off the main thread: this decodes a PNG and then walks it twice to
         // point sample and recolour it, and on the main thread that is a
         // dropped frame every time a sprite changes — which, walking a box
         // with the cursor, is every spot.
-        image = speciesId?.let { id -> withContext(Dispatchers.IO) { store.load(id, gameVersionId) } }
+        image = speciesId?.let { id ->
+            withContext(Dispatchers.IO) { store.load(id, gameVersionId, cutout) }
+        }
         settled = true
     }
 

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -271,6 +273,10 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
     val fallback = "CARD $slot"
     val title = remember(key, state.cartRevision) { model.cartName(key) }?.uppercase() ?: fallback
     val chosen = remember(key, state.cartRevision) { model.trainerSprite(key) }
+    // The three things this card can be told to do, and then the way out. They
+    // are sized together so the stack reads as one control rather than as
+    // three windows that happen to be near each other; BACK is not one of the
+    // three and is left to its own width.
     val actions = listOf<Pair<String, () -> Unit>>(
         "INSERT" to { model.chooseCart(key, thenOpenStorage = true) },
         "TRAINER" to { model.prompt(Prompt.ChooseTrainerSprite(key)) },
@@ -294,8 +300,24 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
                 full = true,
             )
         }
-        itemsIndexed(actions) { index, (label, action) ->
-            Gen1BoxButton(label, action, selected = at == index)
+        item {
+            Column(
+                Modifier.width(IntrinsicSize.Max),
+                verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+            ) {
+                actions.dropLast(1).forEachIndexed { index, (label, action) ->
+                    Gen1BoxButton(
+                        label,
+                        action,
+                        modifier = Modifier.fillMaxWidth(),
+                        selected = at == index,
+                    )
+                }
+            }
+        }
+        item {
+            val index = actions.lastIndex
+            Gen1BoxButton(actions[index].first, actions[index].second, selected = at == index)
         }
     }
 }

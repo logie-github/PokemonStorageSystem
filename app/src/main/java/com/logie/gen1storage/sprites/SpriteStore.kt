@@ -104,13 +104,19 @@ class SpriteStore(
         return SpriteSet.entries.firstOrNull { has(it, speciesId) }
     }
 
-    fun load(speciesId: String, gameVersionId: String?): ImageBitmap? {
+    fun load(speciesId: String, gameVersionId: String?, cutout: Boolean = false): ImageBitmap? {
         val set = resolve(speciesId, gameVersionId) ?: return null
-        return load(set, speciesId)
+        return load(set, speciesId, cutout)
     }
 
-    fun load(set: SpriteSet, speciesId: String): ImageBitmap? {
-        val key = "$tintId/${set.id}/${spriteFileName(speciesId)}"
+    /**
+     * [cutout] drops the sprite's white field so it sits on whatever is behind
+     * it — see [recolourToRamp]. Kept under its own key, because the two are
+     * different pictures and a screen asking for one must not be handed the
+     * other.
+     */
+    fun load(set: SpriteSet, speciesId: String, cutout: Boolean = false): ImageBitmap? {
+        val key = "$tintId/${set.id}/${if (cutout) "cut/" else ""}${spriteFileName(speciesId)}"
         memory[key]?.let { return it }
         val file = fileFor(set, speciesId)
         if (!file.isFile) return null
@@ -127,9 +133,13 @@ class SpriteStore(
             return null
         }
         val ramp = tintRamp
-        val shown =
-            if (ramp == null) reduced
-            else runCatching { recolourToRamp(reduced, ramp) }.getOrNull() ?: reduced
+        val shown = runCatching {
+            when {
+                ramp != null -> recolourToRamp(reduced, ramp, cutout)
+                cutout -> cutOutLightest(reduced)
+                else -> reduced
+            }
+        }.getOrNull() ?: reduced
 
         // Recycle every intermediate that is not the bitmap being kept.
         if (full !== shown) full.recycle()

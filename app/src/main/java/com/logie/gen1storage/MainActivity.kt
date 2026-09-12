@@ -50,10 +50,12 @@ import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.Gen1Typing
 import com.logie.gen1storage.ui.Gen1Haptics
 import com.logie.gen1storage.ui.Gen1Motion
+import com.logie.gen1storage.ui.Gen1NoOverscroll
 import com.logie.gen1storage.ui.rememberConfirmTick
 import com.logie.gen1storage.ui.rememberCursorTick
 import com.logie.gen1storage.ui.Gen1TradeScene
 import com.logie.gen1storage.ui.RestoreScreen
+import com.logie.gen1storage.ui.DexEntryScreen
 import com.logie.gen1storage.ui.DexScreen
 import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
@@ -218,6 +220,7 @@ private fun StorageApp(model: StorageViewModel) {
         LocalGen1WindowBounds provides windows,
         LocalGen1Audio provides audio,
     ) {
+    Gen1NoOverscroll {
     Box(
         Modifier
             .fillMaxSize()
@@ -310,6 +313,7 @@ private fun StorageApp(model: StorageViewModel) {
         if (state.prompt != null) PromptWindow(state, model)
     }
     }
+    }
 }
 
 /**
@@ -350,6 +354,7 @@ private fun ScreenContent(
         Screen.Restore -> RestoreScreen(state, model)
         Screen.Trade -> TradeScreen(state, model)
         Screen.Dex -> DexScreen(state, model)
+        is Screen.DexEntry -> DexEntryScreen(state, model, screen.speciesId)
         Screen.Credits -> CreditsScreen()
         Screen.Options -> OptionsScreen(
             state = state,

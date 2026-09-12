@@ -512,11 +512,20 @@ fun Gen1BoxButton(
     /** Whether the cursor is on it, so a swipe can reach it like any row. */
     selected: Boolean = false,
 ) {
-    Gen1FrameBox(modifier.wrapContentWidth().gen1Clickable(enabled, onClick)) {
-        GbText(
-            (if (selected && enabled) "▶" else "") + label.uppercase(),
-            style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
-        )
+    // The arrow stands outside the window rather than inside it. A cursor is
+    // the thing pointing at a choice; drawn within the border it becomes part
+    // of the choice, and the word it points at is no longer where the word on
+    // every other button is.
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(gen1Dp(CURSOR_PIXELS))) {
+            if (selected && enabled) GbText("▶", style = Gen1Text)
+        }
+        Gen1FrameBox(modifier.gen1Clickable(enabled, onClick)) {
+            GbText(
+                label.uppercase(),
+                style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),
+            )
+        }
     }
 }
 
@@ -572,3 +581,6 @@ fun Gen1HpBar(current: Int, max: Int, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** The room the cursor takes beside a window it is pointing at. */
+private const val CURSOR_PIXELS = 10

@@ -51,6 +51,7 @@ import com.logie.gen1storage.download.DownloadService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -121,6 +122,8 @@ sealed interface Screen {
     data object Trade : Screen
     /** One Pokédex over every cartridge at once, and over the PC. */
     data object Dex : Screen
+    /** One species' Pokédex page, as the cartridge prints it. */
+    data class DexEntry(val speciesId: String) : Screen
     data object Credits : Screen
 }
 
@@ -1226,7 +1229,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 mutable.update { it.copy(busy = false, transferScene = null) }
                 return@launch message("THE TRANSFER COULD NOT START.", e.message.orEmpty().uppercase())
             }
-            finish(result)
+            finish(result, key)
         }
     }
 
@@ -1281,7 +1284,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 val result = runTransfer { engine.withdraw(loaded, uid, target) }
                 if (result is TransferResult.Success) done++ else { stopped = result; break }
             }
-            finishMany(done, stopped, mutable.value.outLabel)
+            finishMany(done, stopped, mutable.value.outLabel, listOf(key))
         }
     }
 
@@ -1335,7 +1338,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 val result = runTransfer { engine.deposit(loaded, location, targetBox) }
                 if (result is TransferResult.Success) done++ else { stopped = result; break }
             }
-            finishMany(done, stopped, mutable.value.inLabel)
+            finishMany(done, stopped, mutable.value.inLabel, picks.map { it.first }.toSet())
         }
     }
 
@@ -1390,9 +1393,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * refused on the fifth has genuinely moved four — a bare refusal would
      * read as though nothing had happened.
      */
-    private suspend fun finishMany(done: Int, stopped: TransferResult?, verb: String) {
+    private suspend fun finishMany(
+        done: Int,
+        stopped: TransferResult?,
+        verb: String,
+        touched: Collection<String> = emptyList(),
+    ) = coroutineScope {
+        // Read while the ball is still up, as [finish] does.
+        val reading = async(Dispatchers.IO) { saves.listSaves() }
         awaitScene()
-        val refreshed = withContext(Dispatchers.IO) { saves.listSaves() }
+        val refreshed = reading.await()
         if (refreshed is SyncResult.Ok) {
             mutable.update {
                 it.copy(
@@ -1420,7 +1430,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         if (lines.isNotEmpty()) message(*lines.toTypedArray())
-        refreshTransferSources()
+        refreshTransferSources(*touched.toTypedArray())
+        Unit
     }
 
     /**
@@ -1428,9 +1439,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * account is re-read before the result is shown. Without that the next
      * transfer would be checked against a revision the server has moved past.
      */
-    private suspend fun finish(result: TransferResult) {
+    private suspend fun finish(result: TransferResult, vararg touched: String) = coroutineScope {
+        // The account is re-read while the ball is still in the air rather than
+        // after it lands. It is a whole round trip and it does not depend on
+        // the animation, so running the two side by side takes a second off
+        // every transfer without changing what is checked or when.
+        val reading = async(Dispatchers.IO) { saves.listSaves() }
         awaitScene()
-        val refreshed = withContext(Dispatchers.IO) { saves.listSaves() }
+        val refreshed = reading.await()
         if (refreshed is SyncResult.Ok) {
             mutable.update {
                 it.copy(
@@ -1456,6 +1472,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         refreshTransferSources()
+        Unit
     }
 
     /**
@@ -1465,17 +1482,42 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * leave the deposit list empty behind the result message. Deliberately does
      * not touch the prompt, so that message stays up.
      */
-    private fun refreshTransferSources() = viewModelScope.launch {
+    /**
+     * Re-reads the cartridges a transfer has just moved past.
+     *
+     * A write moves the save's revision, so the blob the app was holding is
+     * dropped the moment the account is re-read. Whatever is dropped has to
+     * come back, or the screen it was feeding goes empty and the next transfer
+     * out of it is refused for a save the app is no longer holding — which a
+     * player experiences as pressing the same button and being told no, over
+     * and over, with nothing they can do about it.
+     *
+     * So the cartridges actually touched are named rather than inferred from
+     * which one happens to be in the machine, and this never defers to the
+     * shared "load everything" pass: that one declines to start while another
+     * is already running, which is exactly the case where a dropped blob would
+     * never come back.
+     */
+    private fun refreshTransferSources(vararg touched: String) = viewModelScope.launch {
         val current = mutable.value
-        if (current.showAllSaves) {
-            loadAllSaves()
-            return@launch
+        val wanted = buildSet {
+            addAll(touched)
+            current.activeSaveKey?.let { add(it) }
+            // Every cartridge is on screen at once in this mode, so every one
+            // of them has to be current.
+            if (current.showAllSaves) addAll(current.saves.map { it.key })
+        }.filter { key -> current.loaded[key]?.rev != current.remote(key)?.rev }
+        if (wanted.isEmpty()) return@launch
+
+        val fetched = withContext(Dispatchers.IO) {
+            wanted.mapNotNull { key ->
+                current.remote(key)?.let { remote ->
+                    async { (saves.load(remote) as? SyncResult.Ok)?.value?.takeIf { it.isUsable } }
+                }
+            }.awaitAll().filterNotNull()
         }
-        val key = current.activeSaveKey ?: return@launch
-        val remote = current.remote(key) ?: return@launch
-        val result = withContext(Dispatchers.IO) { saves.load(remote) }
-        if (result is SyncResult.Ok && result.value.isUsable) {
-            mutable.update { it.copy(loaded = it.loaded + (key to result.value)) }
+        if (fetched.isNotEmpty()) {
+            mutable.update { it.copy(loaded = it.loaded + fetched.associateBy { save -> save.key }) }
         }
     }
 
@@ -1621,7 +1663,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 else itemEngine.withdraw(loaded, id, count)
             }
             mutable.update { it.copy(items = itemStorage.state()) }
-            finish(result)
+            finish(result, key)
         }
     }
 

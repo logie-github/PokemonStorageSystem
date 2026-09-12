@@ -1,6 +1,10 @@
 package com.logie.gen1storage.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -66,4 +70,19 @@ object Gen1Motion {
  */
 suspend fun LazyListState.scrollToRow(index: Int) {
     if (Gen1Motion.moves(Motion.SCROLL)) animateScrollToItem(index) else scrollToItem(index)
+}
+
+/**
+ * Turns off the platform's overscroll.
+ *
+ * Android stretches or bounces a list that is dragged past its end. It is a
+ * good effect and it belongs to a different machine entirely: nothing on a
+ * Game Boy had elastic edges, and a Pokédex that springs back when it runs out
+ * of entries reads as a modern app wearing the interface rather than as the
+ * interface. Every list in the app is inside this, so none of them do it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Gen1NoOverscroll(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalOverscrollFactory provides null, content = content)
 }

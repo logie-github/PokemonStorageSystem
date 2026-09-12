@@ -132,8 +132,17 @@ fun StorageSystemScreen(
     /** What the two directions are called, which is the player's to choose. */
     outLabel: String,
     inLabel: String,
-    /** False while a message is showing that would be drawn over it anyway. */
+    /**
+     * Whether the window naming the box is on screen.
+     *
+     * It belongs to the menu: once a list is open over it, or a message window
+     * has come up at the foot of the screen, it is furniture behind something
+     * nobody is looking at — and at the bottom of the screen it is the thing a
+     * message lands on top of.
+     */
     showBox: Boolean = true,
+    /** Whether the PC is saying anything. Same reasoning as [showBox]. */
+    showMessage: Boolean = true,
     message: String = "What?",
     overlay: @Composable (() -> Unit)? = null,
     action: @Composable (() -> Unit)? = null,
@@ -150,11 +159,12 @@ fun StorageSystemScreen(
         if (onOptions != null) add(Triple("OPTIONS", onOptions, SoundEffect.OPTIONS))
     }
 
-    // Four layers, and the order is the whole point: the menu, then whatever
-    // list is open over it, then the box window, then the message over that,
-    // then the small window that opens on a chosen Pokémon above everything.
-    // The message sits over the box window because when a box is empty the
-    // message is the thing that matters.
+    // The menu and what the PC is saying are one block in the top corner, in
+    // that order: the message is the menu talking, so it hangs off the bottom
+    // of the menu rather than sitting at the foot of the screen with the whole
+    // screen between it and the thing it is about. Then whatever list is open
+    // over them, then the window naming the box in the far bottom corner, then
+    // the small window that opens on a chosen Pokémon above everything.
     //
     // Which edge they sit against is a setting. Everything mirrors together, so
     // the menu and the list keep overlapping the same way round either way.
@@ -165,13 +175,20 @@ fun StorageSystemScreen(
             .padding(gen1Dp(2)),
     ) {
         val selected = rememberCursorLayer(rows.size) { rows[it].second() }
-        Gen1Frame(
-            Modifier
-                .align(Gen1Layout.corner(top = true, menuSide = true))
-                .wrapContentWidth()
+        Column(
+            Modifier.align(Gen1Layout.corner(top = true, menuSide = true)),
+            horizontalAlignment = Gen1Layout.menuSide,
         ) {
-            rows.forEachIndexed { index, (label, action, sound) ->
-                Gen1MenuRow(label, selected == index, {}, action, sound = sound)
+            Gen1Frame(Modifier.wrapContentWidth()) {
+                rows.forEachIndexed { index, (label, action, sound) ->
+                    Gen1MenuRow(label, selected == index, {}, action, sound = sound)
+                }
+            }
+            if (showMessage) {
+                Spacer(Modifier.height(gen1Dp(3)))
+                Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) {
+                    Gen1TypedLines(listOf(message))
+                }
             }
         }
 
@@ -180,7 +197,7 @@ fun StorageSystemScreen(
         if (showBox) {
             Box(
                 Modifier.fillMaxSize(),
-                // The far corner, because the message wants the menu's edge.
+                // The far corner, away from the menu and whatever opens under it.
                 contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
             ) {
                 // Hold to rename it. There is one box, so there is nothing
@@ -198,19 +215,6 @@ fun StorageSystemScreen(
                 }
             }
         }
-
-        Box(
-            Modifier.fillMaxSize(),
-            // Against the same edge as the menu and the windows that open
-            // under it, so it lines up with what it is talking about rather
-            // than sitting off on its own across the screen.
-            contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
-        ) {
-            Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) {
-                Gen1TypedLines(listOf(message))
-            }
-        }
-
 
         action?.invoke()
     }

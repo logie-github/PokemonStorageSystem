@@ -188,6 +188,8 @@ fun StorageSystemScreen(
         marked = if (index in marked) marked - index else marked + index
     }
 
+    // Standing on the PC's own menu rather than in something opened from it.
+    val atMenu = mode == PcMode.MENU
     val box = state.storage.boxes.firstOrNull()
     val thisBoxLabel = box?.label ?: "THE PC"
     val boxContents = box?.contents.orEmpty()
@@ -335,8 +337,14 @@ fun StorageSystemScreen(
         outLabel = state.outLabel,
         inLabel = state.inLabel,
         boxLabel = thisBoxLabel,
-        // Hidden rather than drawn under a message that would cover it.
-        showBox = refusal == null && emptiness == null,
+        // Both belong to the menu and go when the menu does: a list open over
+        // them, a question in the middle of the screen, or a window come up at
+        // the foot of it. A message landing on top of the box's name is why
+        // the name goes rather than being drawn under it.
+        showBox = atMenu && state.prompt == null && state.transferScene == null,
+        // The exception is a list that would not open. The message is the only
+        // thing saying why, so it stays even though the menu has been left.
+        showMessage = atMenu || refusal != null || emptiness != null,
         // Both directions need a cartridge in the machine. If there is not one
         // yet, that is the only question worth asking, so it gets the whole
         // screen rather than a window over this one.

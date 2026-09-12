@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
@@ -330,25 +331,32 @@ fun Modifier.gen1Ground(): Modifier {
         .onGloballyPositioned { origin = it.positionInRoot() }
         .drawBehind {
             val area = size
-            translate(left = -origin.x, top = -origin.y) {
-                drawRect(brush, topLeft = origin, size = area)
-                // Read here rather than in composition: a turn of the ball is a
-                // redraw and nothing more.
-                val ball = Gen1Pokeball.frame(windowWidth, windowHeight, unit, ballInk, step.value)
-                if (ball != null) {
-                    drawImage(
-                        image = ball.image,
-                        // Anchored to the window's bottom right, which is the
-                        // ball's own centre.
-                        dstOffset = IntOffset(
-                            windowWidth - ball.cellsWide * unit,
-                            windowHeight - ball.cellsHigh * unit,
-                        ),
-                        dstSize = IntSize(ball.cellsWide * unit, ball.cellsHigh * unit),
-                        // Whole multiples of one cell; smoothing would undo the
-                        // thing that makes it pixels.
-                        filterQuality = FilterQuality.None,
-                    )
+            // Cut to this piece of ground before anything is drawn on it.
+            // `drawBehind` does not clip, and the ball is drawn at the whole
+            // window's size: without this it spilled out past whatever was
+            // carrying the ground and over the bar along the top.
+            clipRect(0f, 0f, area.width, area.height) {
+                translate(left = -origin.x, top = -origin.y) {
+                    drawRect(brush, topLeft = origin, size = area)
+                    // Read here rather than in composition: a turn of the ball
+                    // is a redraw and nothing more.
+                    val ball =
+                        Gen1Pokeball.frame(windowWidth, windowHeight, unit, ballInk, step.value)
+                    if (ball != null) {
+                        drawImage(
+                            image = ball.image,
+                            // Anchored to the window's bottom right, which is
+                            // the ball's own centre.
+                            dstOffset = IntOffset(
+                                windowWidth - ball.cellsWide * unit,
+                                windowHeight - ball.cellsHigh * unit,
+                            ),
+                            dstSize = IntSize(ball.cellsWide * unit, ball.cellsHigh * unit),
+                            // Whole multiples of one cell; smoothing would undo
+                            // the thing that makes it pixels.
+                            filterQuality = FilterQuality.None,
+                        )
+                    }
                 }
             }
         }

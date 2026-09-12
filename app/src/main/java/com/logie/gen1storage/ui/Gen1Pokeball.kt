@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
@@ -12,11 +13,10 @@ import kotlin.math.sin
 /**
  * The ball turning behind everything.
  *
- * Its centre is the screen's bottom right corner and it grows from there until
- * its rim reaches the top left corner, so the whole screen is inside it and
- * what shows is one quarter of a very large Poké Ball: the button's arc in the
- * near corner, the seam sweeping out of it, and the rim itself grazing the far
- * corner it was grown to.
+ * Its centre is the screen's bottom right corner and it grows from there to
+ * half the screen's width, so what shows is one quarter of a large Poké Ball
+ * sitting in that corner: the rim arcing from the bottom edge round to the
+ * right one, the button near the corner, and the seam sweeping between them.
  *
  * Drawn a pixel at a time rather than as a circle. A stroked path would give
  * smooth, anti-aliased edges — a modern picture of a Poké Ball, which is the
@@ -66,54 +66,52 @@ object Gen1Pokeball {
     }
 
     private fun build(wide: Int, high: Int, colour: Int, step: Int): Frame? {
-        if (wide < MIN_CELLS || high < MIN_CELLS) return null
-        val pixels = IntArray(wide * high)
+        // Half the window across, measured from the corner it is centred on.
+        val radius = wide / 2f
+        // Only the quarter of the ball that is on screen is drawn, and only
+        // out to its own rim: the rest is off two edges and would be a bitmap
+        // several times the size for nothing.
+        val side = minOf(ceil(radius).toInt(), wide, high)
+        if (side < MIN_CELLS) return null
 
-        // The centre is the bottom right corner of the window and the rim
-        // reaches the opposite one, so the radius is the screen's diagonal.
-        val radius = hypot(wide.toFloat(), high.toFloat())
+        val pixels = IntArray(side * side)
+        val weight = (radius * 2f * LINE).coerceAtLeast(2f)
         val button = radius * BUTTON
         val angle = step.toFloat() / STEPS * 2f * PI.toFloat()
         val alongX = cos(angle)
         val alongY = sin(angle)
 
-        for (cellY in 0 until high) {
-            val y = cellY + 0.5f - high
-            val row = cellY * wide
-            for (cellX in 0 until wide) {
-                val x = cellX + 0.5f - wide
+        for (cellY in 0 until side) {
+            // The bitmap's bottom right cell is the ball's centre.
+            val y = cellY + 0.5f - side
+            val row = cellY * side
+            for (cellX in 0 until side) {
+                val x = cellX + 0.5f - side
                 val distance = hypot(x, y)
                 val on = when {
                     // The rim, sitting inside the ball's full reach.
-                    distance <= radius && distance >= radius - WEIGHT -> true
+                    distance <= radius && distance >= radius - weight -> true
                     // The button.
-                    abs(distance - button) <= WEIGHT / 2f -> true
+                    abs(distance - button) <= weight / 2f -> true
                     // The seam, from the button out to the rim. Turned by the
                     // step; the rings are not, having nothing to turn.
-                    else -> abs(y * alongX - x * alongY) <= WEIGHT / 2f &&
-                        distance <= radius - WEIGHT &&
-                        distance >= button + WEIGHT / 2f
+                    else -> abs(y * alongX - x * alongY) <= weight / 2f &&
+                        distance <= radius - weight &&
+                        distance >= button + weight / 2f
                 }
                 pixels[row + cellX] = if (on) colour else 0
             }
         }
 
-        val bitmap = Bitmap.createBitmap(pixels, wide, high, Bitmap.Config.ARGB_8888)
-        return Frame(bitmap.asImageBitmap(), wide, high)
+        val bitmap = Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888)
+        return Frame(bitmap.asImageBitmap(), side, side)
     }
 
     /** Below this there is no room for a shape at all. */
     private const val MIN_CELLS = 8
 
-    /**
-     * Line weight in cells, held rather than scaled.
-     *
-     * A real Poké Ball's outline is a few per cent of its width, and this ball
-     * is several screens wide — that fraction would draw a slab. Three of the
-     * ground's own pixels is what reads as a drawn line at the size the screen
-     * actually shows.
-     */
-    private const val WEIGHT = 3f
+    /** Line weight as a fraction of the ball's width, as the real one is drawn. */
+    private const val LINE = 0.028f
 
     /** The button's radius, as a fraction of the ball's. */
     private const val BUTTON = 0.21f

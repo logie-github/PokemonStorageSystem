@@ -139,7 +139,12 @@ class TransferEngine(
                 // It has left that cartridge, so the app is no longer holding
                 // it there and a later withdrawal has nothing to refuse. Only
                 // that cartridge's record goes: see [PlacementLedger.forgetFrom].
-                ledger.forgetFrom(removedFingerprint, fresh.key)
+                //
+                // Bookkeeping, and bookkeeping never decides a transfer. The
+                // write has landed by this point; a ledger that could not be
+                // updated must not turn a move that happened into a failure
+                // report, and a stale record is droppable from SAVE FILES.
+                runCatching { ledger.forgetFrom(removedFingerprint, fresh.key) }
                 if (!holdsExactlyOne(uid)) {
                     TransferResult.NeedsRecovery("THE PC DID NOT END UP WITH EXACTLY ONE COPY. CHECK STORAGE BOXES.")
                 } else {
@@ -196,7 +201,7 @@ class TransferEngine(
                 "${stored.pokemon.displayName.uppercase()} IS ALREADY IN THAT SAVE."
             )
         }
-        ledger.placement(fingerprint)?.let { held ->
+        runCatching { ledger.placement(fingerprint) }.getOrNull()?.let { held ->
             if (held.saveKey != fresh.key) {
                 return TransferResult.Refused(
                     "THE PC PUT ${stored.pokemon.displayName.uppercase()} IN ${held.savePath.uppercase()}. " +
@@ -238,15 +243,19 @@ class TransferEngine(
                 journal.write(entry.copy(stage = TransferStage.SAVED))
                 storage.withdraw(uid)
                 journal.clear()
-                ledger.record(
-                    Placement(
-                        fingerprint = fingerprint,
-                        saveKey = fresh.key,
-                        savePath = entry.savePath,
-                        monName = stored.pokemon.displayName,
-                        atMillis = now(),
+                // Again bookkeeping, and again after the fact: the save has
+                // it either way.
+                runCatching {
+                    ledger.record(
+                        Placement(
+                            fingerprint = fingerprint,
+                            saveKey = fresh.key,
+                            savePath = entry.savePath,
+                            monName = stored.pokemon.displayName,
+                            atMillis = now(),
+                        )
                     )
-                )
+                }
                 TransferResult.Success(
                     "${stored.pokemon.displayName.uppercase()} is taken out.",
                     null,

@@ -523,13 +523,16 @@ class StorageRepository(private val directory: File) {
         const val MAX_NICKNAME = 10
 
         /**
-         * The characters a Generation I cartridge can actually draw.
+         * The characters a nickname may be made of.
          *
-         * A nickname written here can be withdrawn into a save and shown by
-         * the game, so it has to stay inside the charmap upstream encodes
-         * against. Anything else is dropped rather than substituted: a name
-         * that silently became something else would be worse than a shorter
-         * one.
+         * Two rules at once. A nickname written here can be withdrawn into a
+         * save and shown by the game, so it has to stay inside the charmap
+         * upstream encodes against; and both the storage file and the save are
+         * written as ISO-8859-1, so anything outside that byte range would not
+         * survive being written — which rules out the gender signs the game
+         * itself can draw. Anything else is dropped rather than substituted: a
+         * name that silently became something else would be worse than a
+         * shorter one.
          */
         fun cleanNickname(name: String): String =
             name.trim()
@@ -540,6 +543,6 @@ class StorageRepository(private val directory: File) {
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
                 "abcdefghijklmnopqrstuvwxyz" +
                 "0123456789" +
-                " .,'!?-/♀♂é"
+                " .,'!?-/é"
     }
 }

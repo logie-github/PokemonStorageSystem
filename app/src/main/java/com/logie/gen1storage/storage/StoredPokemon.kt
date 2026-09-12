@@ -108,12 +108,13 @@ data class StorageBox(
     val contents: List<StoredPokemon> get() = slots.filterNotNull()
 
     /**
-     * "THE BOX", or whatever the player has called it.
+     * "THE PC", or whatever the player has called it.
      *
-     * There is only one, so there is no number to lead with — a number would
-     * only raise the question of where the others are.
+     * There is one box and it is the whole of this machine's storage, so it is
+     * named for the machine. A number would only raise the question of where
+     * the others are, and "the box" says less than "the PC" about what it is.
      */
-    val label: String get() = if (name.isNullOrBlank()) "THE BOX" else name.uppercase()
+    val label: String get() = if (name.isNullOrBlank()) "THE PC" else name.uppercase()
 
     val isFull: Boolean get() = slots.none { it == null }
     val freeSlots: Int get() = slots.count { it == null }

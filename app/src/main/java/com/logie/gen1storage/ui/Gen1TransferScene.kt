@@ -170,9 +170,18 @@ fun Gen1TransferScene(
                     GbText("${scene.destination}.")
                     // One is arriving and the other is leaving, and the same
                     // word cannot be right for both.
+                    //
+                    // Nobody is greeted by the count of themselves, so a run of
+                    // several is greeted without a name: "Hello, 3 POKéMON!" is
+                    // addressed to nothing.
+                    val several = scene.alsoSpeciesIds.isNotEmpty()
                     GbText(
-                        if (scene.arriving) "Hello, ${scene.name}!"
-                        else "Goodbye, ${scene.name}!"
+                        when {
+                            several && scene.arriving -> "Hello!"
+                            several -> "Goodbye!"
+                            scene.arriving -> "Hello, ${scene.name}!"
+                            else -> "Goodbye, ${scene.name}!"
+                        }
                     )
                 }
             }

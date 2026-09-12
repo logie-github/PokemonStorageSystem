@@ -189,7 +189,7 @@ fun StorageSystemScreen(
     }
 
     val box = state.storage.boxes.firstOrNull()
-    val thisBoxLabel = box?.label ?: "THE BOX"
+    val thisBoxLabel = box?.label ?: "THE PC"
     val boxContents = box?.contents.orEmpty()
     // WITHDRAW offers everything the app holds; VIEW is about the box that is
     // open, because that is the one being rearranged.
@@ -435,7 +435,7 @@ fun StorageSystemScreen(
                     emptyMessage = "What? There are no POKéMON here!",
                     marked = marked,
                     onToggle = ::toggle,
-                    actionLabel = "${state.outLabel} ${marked.size}".takeIf {
+                    actionLabel = TRANSFER_LABEL.takeIf {
                         mode == PcMode.WITHDRAW && marked.isNotEmpty() && state.saves.isNotEmpty()
                     },
                     onAction = { startWithdraw(marked.mapNotNull { stored.getOrNull(it)?.uid }) },
@@ -456,7 +456,7 @@ fun StorageSystemScreen(
                     emptyMessage = "There are no POKéMON here.",
                     marked = marked,
                     onToggle = ::toggle,
-                    actionLabel = "${state.inLabel} ${marked.size}".takeIf { marked.isNotEmpty() },
+                    actionLabel = TRANSFER_LABEL.takeIf { marked.isNotEmpty() },
                     onAction = {
                         val picks = marked.mapNotNull { index ->
                             depositRows.getOrNull(index)?.let { it.key to it.location }
@@ -602,6 +602,14 @@ fun StorageSystemScreen(
         },
     )
 }
+
+/**
+ * The button under a list that acts on everything ticked in it.
+ *
+ * One word, and the same word both ways: which direction it is going is
+ * already settled by the row that opened the list, and the ticks say how many.
+ */
+private const val TRANSFER_LABEL = "TRANSFER"
 
 private enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW }
 
@@ -765,7 +773,7 @@ private fun transferAction(
     StatusTransfer.DEPOSIT -> {
         if (key == null || area <= 0) null else state.inLabel to {
             model.back()
-            val where = state.storage.boxes.firstOrNull()?.label ?: "THE BOX"
+            val where = state.storage.boxes.firstOrNull()?.label ?: "THE PC"
             model.askToSend(
                 TransferScene(
                     speciesId = pokemon.speciesId,
@@ -1518,7 +1526,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
             }
 
             is Prompt.RenameBox -> NamePrompt(
-                heading = state.storage.boxes.firstOrNull()?.label ?: "THE BOX",
+                heading = state.storage.boxes.firstOrNull()?.label ?: "THE PC",
                 initial = state.storage.boxes.getOrNull(prompt.index - 1)?.name.orEmpty(),
                 onDone = { model.renameBox(prompt.index, it) },
                 onCancel = model::dismissPrompt,

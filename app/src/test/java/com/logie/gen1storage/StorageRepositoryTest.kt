@@ -195,12 +195,12 @@ class StorageRepositoryTest {
     }
 
     @Test
-    fun `an unnamed box is THE BOX`() {
+    fun `an unnamed box is THE PC`() {
         val directory = temporaryFolder.newFolder()
         val boxes = StorageRepository(directory).state().boxes
 
         assertNull(boxes[0].name)
-        assertEquals("THE BOX", boxes[0].label)
+        assertEquals("THE PC", boxes[0].label)
     }
 
     @Test
@@ -213,14 +213,14 @@ class StorageRepositoryTest {
     }
 
     @Test
-    fun `clearing the name puts the box back to THE BOX`() {
+    fun `clearing the name puts the box back to THE PC`() {
         val directory = temporaryFolder.newFolder()
         val repository = StorageRepository(directory)
         repository.renameBox(StorageLayout.THE_BOX, "TRADES")
         repository.renameBox(StorageLayout.THE_BOX, "  ")
 
         assertNull(repository.state().boxes[0].name)
-        assertEquals("THE BOX", repository.state().boxes[0].label)
+        assertEquals("THE PC", repository.state().boxes[0].label)
     }
 
     @Test

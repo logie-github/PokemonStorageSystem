@@ -250,57 +250,66 @@ fun MonListOverlay(
     // set is started from, so there is no mode to find and none to leave.
     val choosingMany = marked.isNotEmpty()
     val take: (Int) -> Unit = { index -> if (choosingMany) onToggle(index) else onConfirm(index) }
-    val extras = if (actionLabel != null) 2 else 1
-    // One past the end is CANCEL, so the cursor can reach it like any row.
-    val selected = rememberCursorLayer(entries.size + extras) { index ->
-        when {
-            index < entries.size -> take(index)
-            actionLabel != null && index == entries.size -> onAction()
-            else -> onCancel()
+    // Rows, then CANCEL at the foot of the list, then the button below the
+    // window. In that order because that is the order they are drawn in: the
+    // cursor walks to the bottom of the box and then out of it.
+    val cancelAt = entries.size
+    val actionAt = if (actionLabel != null) entries.size + 1 else -1
+    val selected = rememberCursorLayer(entries.size + if (actionLabel != null) 2 else 1) { index ->
+        when (index) {
+            actionAt -> onAction()
+            cancelAt -> onCancel()
+            else -> take(index)
         }
     }
     // The cursor can walk past the bottom of what is drawn, so the list has to
     // follow it. Without this a swipe moves a cursor nobody can see.
     val scroll = rememberLazyListState()
-    LaunchedEffect(selected) { scroll.animateScrollToItem(selected) }
+    // Only for what is actually in the list. The button below it is not, and
+    // asking the list to scroll to a row it does not have just pins it to the
+    // bottom.
+    LaunchedEffect(selected) {
+        if (selected <= cancelAt) scroll.animateScrollToItem(selected)
+    }
     Box(
         Modifier.fillMaxSize(),
         contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
     ) {
-        Gen1Frame(
-            Modifier
-                .gen1MaxWidth()
-                .wrapContentWidth()
-                .padding(top = gen1Dp(5)),
-            opening = true,
+        Column(
+            Modifier.padding(top = gen1Dp(5)),
+            horizontalAlignment = Gen1Layout.menuSide,
         ) {
-            if (entries.isEmpty()) {
-                GbText(emptyMessage)
-            }
-            LazyColumn(Modifier.heightIn(max = 320.dp), state = scroll) {
-                itemsIndexed(entries) { index, row ->
-                    if (row.header != null) {
-                        if (index > 0) Spacer(Modifier.height(gen1Dp(3)))
-                        GbText(row.header)
-                    }
-                    Gen1MenuRow(
-                        row.name,
-                        selected == index,
-                        {},
-                        { take(index) },
-                        trailing = row.trailing,
-                        mark = index in marked,
-                    )
+            Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth(), opening = true) {
+                if (entries.isEmpty()) {
+                    GbText(emptyMessage)
                 }
-                if (actionLabel != null) {
+                LazyColumn(Modifier.heightIn(max = 320.dp), state = scroll) {
+                    itemsIndexed(entries) { index, row ->
+                        if (row.header != null) {
+                            if (index > 0) Spacer(Modifier.height(gen1Dp(3)))
+                            GbText(row.header)
+                        }
+                        Gen1MenuRow(
+                            row.name,
+                            selected == index,
+                            {},
+                            { take(index) },
+                            trailing = row.trailing,
+                            mark = index in marked,
+                        )
+                    }
                     item {
-                        Spacer(Modifier.height(gen1Dp(3)))
-                        Gen1MenuRow(actionLabel, selected == entries.size, {}, onAction)
+                        Gen1MenuRow("CANCEL", selected == cancelAt, {}, onCancel)
                     }
                 }
-                item {
-                    Gen1MenuRow("CANCEL", selected == entries.size + extras - 1, {}, onCancel)
-                }
+            }
+            // Under the box rather than as a row inside it. A row in the list
+            // reads as another Pokémon to pick; the thing that acts on
+            // everything ticked is not one of them, so it is its own window
+            // sitting below the one it acts on.
+            if (actionLabel != null) {
+                Spacer(Modifier.height(gen1Dp(3)))
+                Gen1BoxButton(actionLabel, onAction, selected = selected == actionAt)
             }
         }
     }

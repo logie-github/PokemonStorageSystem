@@ -1072,7 +1072,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun boxLabel(index: Int): String =
-        storage.state().boxes.getOrNull(index - 1)?.label ?: "THE BOX"
+        storage.state().boxes.getOrNull(index - 1)?.label ?: "THE PC"
 
     /** The Pokémon a save location points at, for naming it before it moves. */
     private fun pokemonAt(save: Gen1RecompSave, location: SaveLocation) = when (location) {

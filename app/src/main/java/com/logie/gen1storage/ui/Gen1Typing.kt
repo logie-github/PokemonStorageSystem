@@ -3,7 +3,6 @@ package com.logie.gen1storage.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,7 +55,10 @@ fun Gen1TypedLines(
 /** One line, with the part not yet typed drawn in the window's own colour. */
 @Composable
 private fun TypedLine(line: String, shown: Int, style: TextStyle) {
-    Row(Modifier.fillMaxWidth()) {
+    // Sized to the line, not to whatever it is sitting in: the untyped
+    // remainder already holds the full width open, so filling the width on
+    // top of that only made a one-word message as wide as the screen allowed.
+    Row {
         // No line cap: a question that runs past the window should wrap, not
         // be cut off mid-word with an ellipsis.
         if (shown > 0) GbText(line.take(shown), style = style)

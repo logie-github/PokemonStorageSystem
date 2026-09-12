@@ -1,5 +1,6 @@
 package com.logie.gen1storage.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
@@ -60,6 +62,32 @@ fun ChooseCartScreen(
         GameVersion.YELLOW to R.drawable.title_yellow,
     )
 
+    val saves = if (game == null) emptyList() else state.saves.filter { it.version.id == game }
+    // Two columns once there is room for two, one otherwise. A save is a
+    // window like every other window here, so it is capped the same way and
+    // never runs the width of an opened screen.
+    val columns = if (isUnfolded()) 2 else 1
+    val choose: (RemoteSave) -> Unit = { remote ->
+        if (sending) model.chooseWithdrawSave(sendUids, remote.key)
+        else model.chooseCart(remote.key, thenOpenStorage)
+    }
+    val openGame: (GameVersion) -> Unit = { version ->
+        model.replace(Screen.ChooseCart(version.id, sendUids, thenOpenStorage))
+    }
+    // Whichever of the two things on this screen is the one to take: the games
+    // until one is picked and shown to have saves, the saves after that. The
+    // cursor used to be registered only in the second case, so a swipe on the
+    // screen that asks which game did nothing at all and the three cards could
+    // only be tapped.
+    val pickingGame = saves.isEmpty()
+    val cursor = rememberCursorLayer(
+        count = if (pickingGame) games.size else saves.size,
+        columns = if (pickingGame) games.size else columns,
+    ) { index ->
+        if (pickingGame) games.getOrNull(index)?.let { (version, _) -> openGame(version) }
+        else saves.getOrNull(index)?.let(choose)
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -70,15 +98,23 @@ fun ChooseCartScreen(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
         ) {
+            games.forEachIndexed { index, (version, _) ->
+                Box(Modifier.weight(1f)) {
+                    CardCursor(pickingGame && cursor == index)
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+        ) {
             games.forEach { (version, art) ->
                 TitleCard(
                     version = version,
                     art = art,
                     chosen = game == version.id,
                     modifier = Modifier.weight(1f),
-                    onClick = {
-                        model.replace(Screen.ChooseCart(version.id, sendUids, thenOpenStorage))
-                    },
+                    onClick = { openGame(version) },
                 )
             }
         }
@@ -90,7 +126,6 @@ fun ChooseCartScreen(
             return@Column
         }
 
-        val saves = state.saves.filter { it.version.id == game }
         if (saves.isEmpty()) {
             Notice("NO SAVES FOUND.")
             return@Column
@@ -101,19 +136,6 @@ fun ChooseCartScreen(
             Spacer(Modifier.height(gen1Dp(4)))
         }
 
-        // Two columns once there is room for two, one otherwise. A save is a
-        // window like every other window here, so it is capped the same way
-        // and never runs the width of an opened screen.
-        val columns = if (isUnfolded()) 2 else 1
-        val choose: (RemoteSave) -> Unit = { remote ->
-            if (sending) model.chooseWithdrawSave(sendUids, remote.key)
-            else model.chooseCart(remote.key, thenOpenStorage)
-        }
-        // The shared cursor, told how wide the grid is, so it walks across a
-        // two-column layout rather than down one of them.
-        val cursor = rememberCursorLayer(saves.size, columns) { index ->
-            saves.getOrNull(index)?.let(choose)
-        }
         val scroll = rememberLazyListState()
         LaunchedEffect(cursor, columns) { scroll.animateScrollToItem(cursor / columns) }
         LazyColumn(
@@ -162,15 +184,33 @@ private fun TitleCard(
     onClick: () -> Unit,
 ) {
     val palette = paletteFor(version.id)
-    Gen1Frame(
-        modifier.aspectRatio(1f).gen1Clickable(onClick = onClick),
-        fill = palette.lightest,
-        ink = if (chosen) palette.darkest else Gen1Palette.Ink,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+    val pixel = gen1PixelPx().toFloat()
+    val ink = if (chosen) palette.darkest else Gen1Palette.Ink
+    Box(
+        modifier
+            .aspectRatio(1f)
+            .gen1WindowBounds()
+            .background(palette.lightest)
+            .gen1Clickable(onClick = onClick)
+            // The picture runs to the edges and the frame is drawn over it.
+            // A window insets its contents past the border, which is right for
+            // text and wrong for a picture: it left a band of empty panel
+            // between the art and the frame on every side.
+            .drawWithContent {
+                drawContent()
+                drawGen1Border(ink, pixel)
+            },
+        contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Gen1Art(art, palette, Modifier.fillMaxSize(), version.label)
-        }
+        Gen1Art(art, palette, Modifier.fillMaxSize(), version.label)
+    }
+}
+
+/** The cursor's mark above a card, which has no room for one inside it. */
+@Composable
+private fun CardCursor(on: Boolean) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        GbText(if (on) "▼" else " ", maxLines = 1)
     }
 }
 
@@ -195,6 +235,10 @@ private fun SaveRow(
     onChoose: () -> Unit,
     modifier: Modifier,
 ) {
+    // The same ink as everything else in a window. The small size is what
+    // separates these lines from the save's name; the grey on top of it only
+    // made them harder to read.
+    val small = Gen1TextSmall.copy(color = Gen1Palette.Ink)
     val save = state.save(remote.key)?.save
     // Nothing has been read yet, so nothing is known about the party. Saying
     // "NO POKéMON" here would be a claim rather than a reading.
@@ -229,20 +273,20 @@ private fun SaveRow(
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                     )
-                    if (loaded) GbText("LOADED", style = Gen1TextSmall, maxLines = 1)
+                    if (loaded) GbText("LOADED", style = small, maxLines = 1)
                 }
-                GbText(trainer, style = Gen1TextSmall, maxLines = 1)
+                GbText(trainer, style = small, maxLines = 1)
                 GbText(
                     when {
                         lead != null -> "${lead.displayName.uppercase()}, L${lead.level}"
                         read -> "NO POKéMON"
                         else -> " "
                     },
-                    style = Gen1TextSmall,
+                    style = small,
                     maxLines = 1,
                 )
-                time?.let { GbText("PLAY TIME: $it", style = Gen1TextSmall, maxLines = 1) }
-                GbText("$badges BADGES - $caught CAUGHT", style = Gen1TextSmall, maxLines = 1)
+                time?.let { GbText("PLAY TIME: $it", style = small, maxLines = 1) }
+                GbText("$badges BADGES - $caught CAUGHT", style = small, maxLines = 1)
             }
             // The bracketed mark means "there is no art for this one", which
             // is only worth saying once the save has actually been read.

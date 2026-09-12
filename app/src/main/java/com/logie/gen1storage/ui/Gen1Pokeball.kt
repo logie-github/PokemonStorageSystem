@@ -1,8 +1,14 @@
 package com.logie.gen1storage.ui
 
 import android.graphics.Bitmap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -44,25 +50,51 @@ object Gen1Pokeball {
     /** A rasterised position, in cells, and the cell size it was drawn at. */
     class Frame(val image: ImageBitmap, val cellsWide: Int, val cellsHigh: Int)
 
-    private var key: String = ""
-    private var frame: Frame? = null
+    /**
+     * The position on screen now, ready to draw.
+     *
+     * Snapshot state written from a background coroutine and read inside a
+     * draw lambda, so a turn costs one blit and nothing else. It used to be
+     * rasterised inside the draw pass itself — eight thousand cells and a
+     * bitmap allocation, on the main thread, ten times a second, in the middle
+     * of laying out whatever else was on screen. That is a frame lost every
+     * hundred milliseconds, which is exactly what a laggy touch is.
+     */
+    var current by mutableStateOf<Frame?>(null)
+        private set
+
+    /** Who is already turning it, so several grounds do not each do the work. */
+    private var driving: String? = null
 
     /**
-     * The ball at [step], covering a window [widthPx] by [heightPx].
+     * Turns the ball for as long as the caller is on screen.
      *
-     * Cached on everything that shapes it, because every piece of ground on
-     * screen asks for the same one in the same frame and only the first of them
-     * should pay for it.
+     * The first ground to ask for a given shape drives it and the rest are
+     * handed the same [current]; they are all the same window's ball, drawn in
+     * the same place, so a second coroutine rasterising it in parallel would
+     * be the same picture computed twice.
      */
-    @Synchronized
-    fun frame(widthPx: Int, heightPx: Int, unit: Int, colour: Int, step: Int): Frame? {
-        if (widthPx <= 0 || heightPx <= 0 || unit <= 0) return null
-        val wanted = "$widthPx/$heightPx/$unit/$colour/$step"
-        frame?.let { if (key == wanted) return it }
-        val built = build(widthPx / unit, heightPx / unit, colour, step) ?: return null
-        key = wanted
-        frame = built
-        return built
+    suspend fun drive(widthPx: Int, heightPx: Int, unit: Int, colour: Int, turning: Boolean) {
+        val key = "$widthPx/$heightPx/$unit/$colour/$turning"
+        synchronized(this) {
+            if (driving != null && driving != key) return
+            driving = key
+        }
+        try {
+            var step = 0
+            while (true) {
+                val frame = withContext(Dispatchers.Default) {
+                    build(widthPx / unit, heightPx / unit, colour, step)
+                }
+                if (frame != null) current = frame
+                // Held still: one position, drawn, and nothing further to do.
+                if (!turning) return
+                delay(STEP_MS)
+                step = (step + 1) % STEPS
+            }
+        } finally {
+            synchronized(this) { if (driving == key) driving = null }
+        }
     }
 
     private fun build(wide: Int, high: Int, colour: Int, step: Int): Frame? {

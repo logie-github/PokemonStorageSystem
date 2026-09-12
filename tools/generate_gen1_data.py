@@ -76,9 +76,15 @@ def const_block(path, stop_at=None):
 
 
 def parse_names(path):
+    """A name table, however that file spells one.
+
+    The species list uses `dname`; the move list uses `li` under a
+    `list_start`. Reading only the first meant every move fell back to its
+    constant name, so STUN_SPORE printed with the underscore in it.
+    """
     names = []
     for line in read_asm(path):
-        m = re.match(r'dname\s+"([^"]*)"', line.strip())
+        m = re.match(r'(?:dname|li)\s+"([^"]*)"', line.strip())
         if m:
             names.append(m.group(1))
     return names

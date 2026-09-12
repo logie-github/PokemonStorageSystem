@@ -178,13 +178,17 @@ private fun CameFrom(provenance: Provenance) {
         java.time.Instant.ofEpochMilli(provenance.depositedAtEpochMillis)
             .atZone(java.time.ZoneId.systemDefault())
             .toLocalDate()
-            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy"))
+            .format(java.time.format.DateTimeFormatter.ofPattern("MMM d yyyy"))
             .uppercase()
     }
+    // One sentence rather than a heading with two lines under it. Where it
+    // came from and when it arrived are one fact about this Pokémon, and
+    // three stacked lines made it look like three.
     Gen1CornerRule(Modifier.fillMaxWidth()) {
-        GbText("CAME FROM", style = Gen1TextSmall.copy(color = Gen1Palette.Ink))
-        GbText("$game - ${provenance.trainerName.uppercase()}", maxLines = 1)
-        GbText(day, style = Gen1TextSmall.copy(color = Gen1Palette.Ink), maxLines = 1)
+        GbText(
+            "TRANSFERRED FROM $game VERSION - $day",
+            style = Gen1TextSmall.copy(color = Gen1Palette.Ink),
+        )
     }
 }
 
@@ -291,14 +295,22 @@ private fun StatusHeaderTwo(pokemon: Gen1Pokemon) {
 private fun StatusPageTwo(pokemon: Gen1Pokemon) {
     Gen1Frame(contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2))) {
         // Always four slots: the games draw an empty move slot as "-".
+        //
+        // The move and its PP on one line rather than stacked. The cartridge
+        // has twenty columns and has to put the PP underneath; there is room
+        // here, and a name with its own count under it read as eight rows
+        // rather than four moves.
         for (index in 0 until 4) {
             val slot = pokemon.moves.getOrNull(index)
-            GbText(slot?.displayName?.uppercase() ?: "-")
-            GbText(
-                if (slot == null) "--" else "PP ${slot.pp}/${slot.maxPp ?: slot.pp}",
-                modifier = Modifier.fillMaxWidth(),
-                style = Gen1Text.copy(textAlign = TextAlign.End),
-            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                GbText(
+                    slot?.displayName?.uppercase() ?: "-",
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                )
+                Spacer(Modifier.width(gen1Dp(4)))
+                GbText(if (slot == null) "--" else "PP ${slot.pp}/${slot.maxPp ?: slot.pp}")
+            }
         }
     }
 }
@@ -356,10 +368,11 @@ private fun StatusHeaderThree(pokemon: Gen1Pokemon) {
 @Composable
 private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
     val entry = Gen1Data.dexEntry(pokemon.speciesId)
-    // The entry is the body text of this page, so it is drawn in the ink
-    // everything else is drawn in. Small, because the cartridge's own lines
-    // run to eighteen characters and they are kept as it broke them.
-    val style = Gen1TextSmall.copy(color = Gen1Palette.Ink)
+    // The entry is the body text of this page, so it is drawn in the same
+    // ink and at the same size as everything else on it. The cartridge's own
+    // lines run to eighteen characters and are kept as it broke them, which
+    // fits at this size with room to spare.
+    val style = Gen1Text
     Column {
         if (entry == null) {
             // A modded species, or one the tables never had. Said plainly

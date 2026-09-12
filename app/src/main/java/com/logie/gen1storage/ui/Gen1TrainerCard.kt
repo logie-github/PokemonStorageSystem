@@ -5,11 +5,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -81,12 +81,7 @@ fun Gen1TrainerCard(
         fill = palette.lightest,
         ink = palette.darkest,
     ) {
-        // Everything written about the card goes in one column and the
-        // portrait stands beside all of it, as tall as the card itself. A
-        // card is a picture of somebody with their details written next to
-        // them; somebody in a small window in the top corner, with a column
-        // of empty space under them, is neither.
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     GbText(
@@ -99,62 +94,64 @@ fun Gen1TrainerCard(
                 Field("NAME", trainer)
                 Field("MONEY", save?.money?.let { "¥$it" } ?: " ")
                 Field("TIME", save?.playTimeText ?: " ")
-
-                Badges(
-                    save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
-                    trainers,
-                    spriteRevision,
-                )
-
-                if (full) {
-                    Spacer(Modifier.height(gen1Dp(3)))
-                    Field("GAME", GameVersion.fromId(remote.version.id)?.label ?: "?")
-                    Field(
-                        "POKéMON",
-                        save?.let { "${it.partyCount} OUT, ${it.storedCount} STORED" } ?: " ",
-                    )
-                    Field("SEEN", save?.let { "${it.dexOwnedCount}" } ?: " ")
-                    Field("BOXES", save?.let { "${it.boxCount}" } ?: " ")
-                }
             }
 
-            // The card's own corner, as the games put the player there: the
-            // trainer, and the first Pokémon in the party standing beside
-            // them. Both are as tall as everything written next to them and
-            // square, so the portrait grows with the card rather than sitting
-            // in a fixed little window in the corner of it.
+            // The card's own corner, as the games put the player there.
             //
-            // Cut out rather than painted: the decomps draw these on a white
-            // field, and on a tinted card that field is a white plate with
-            // somebody standing on it.
-            Row(
-                Modifier.fillMaxHeight(),
-                verticalAlignment = Alignment.Bottom,
-            ) {
+            // The trainer fills the corner with a little air around them, and
+            // the first Pokémon in the party stands over their shoulder in the
+            // bottom right — overlapping, the way a photograph of the two of
+            // them would be, rather than set out side by side as a pair of
+            // equal exhibits.
+            //
+            // Both are cut out of the white field the decomps draw them on:
+            // on a Game Boy the lightest of the four shades *is* the
+            // background, and painted onto a tinted card it reads as a white
+            // plate with somebody standing on it.
+            val side = if (full) FULL_PORTRAIT_PIXELS else SMALL_PORTRAIT_PIXELS
+            Box(Modifier.size(gen1Dp(side))) {
+                if (trainerSprite != null) {
+                    Gen1TrainerSprite(
+                        id = trainerSprite,
+                        store = trainers,
+                        revision = spriteRevision,
+                        modifier = Modifier.fillMaxSize().padding(gen1Dp(2)),
+                        sizeInPixels = null,
+                        cutout = true,
+                    )
+                }
                 if (read && lead != null) {
                     Gen1Sprite(
                         speciesId = lead.speciesId,
                         gameVersionId = remote.version.id,
                         store = sprites,
                         revision = spriteRevision,
-                        modifier = Modifier.fillMaxHeight().aspectRatio(1f, true),
-                        sizeInPixels = null,
-                        cutout = true,
-                    )
-                }
-                if (trainerSprite != null) {
-                    Gen1TrainerSprite(
-                        id = trainerSprite,
-                        store = trainers,
-                        revision = spriteRevision,
-                        modifier = Modifier.fillMaxHeight().aspectRatio(1f, true),
-                        sizeInPixels = null,
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                        // Half the corner, so it reads as standing with the
+                        // trainer rather than as a second portrait.
+                        sizeInPixels = side / 2,
                         cutout = true,
                     )
                 }
             }
         }
 
+        Badges(
+            save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
+            trainers,
+            spriteRevision,
+        )
+
+        if (full) {
+            Spacer(Modifier.height(gen1Dp(3)))
+            Field("GAME", GameVersion.fromId(remote.version.id)?.label ?: "?")
+            Field(
+                "POKéMON",
+                save?.let { "${it.partyCount} OUT, ${it.storedCount} STORED" } ?: " ",
+            )
+            Field("SEEN", save?.let { "${it.dexOwnedCount}" } ?: " ")
+            Field("BOXES", save?.let { "${it.boxCount}" } ?: " ")
+        }
     }
 }
 
@@ -258,6 +255,10 @@ private fun Badge(gym: Int, earned: Boolean, trainers: TrainerStore, revision: I
         }
     }
 }
+
+/** How wide the portrait's corner is, in game pixels. */
+private const val FULL_PORTRAIT_PIXELS = 56
+private const val SMALL_PORTRAIT_PIXELS = 32
 
 /** One badge's side, in game pixels — the sheet's own tile, scaled whole. */
 private const val BADGE_PIXELS = 16

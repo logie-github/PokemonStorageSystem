@@ -125,8 +125,9 @@ fun Gen1DialogueBox(
 @Composable
 fun StorageSystemScreen(
     boxLabel: String,
-    onWithdraw: () -> Unit,
     onDeposit: () -> Unit,
+    /** Whether a trainer card is in the machine, which is what a transfer needs. */
+    hasCard: Boolean,
     onView: () -> Unit,
     onChangeCart: () -> Unit,
     /**
@@ -185,12 +186,15 @@ fun StorageSystemScreen(
     preview: @Composable (() -> Unit)? = null,
 ) {
     val rows: List<Triple<String, () -> Unit, SoundEffect>> = buildList {
-        // Named for which way the Pokémon is going, not for which side of
-        // the machine is doing it: OUT leaves this PC for the cartridge, IN
-        // comes the other way.
-        add(Triple("$outLabel PKMN", onWithdraw, SoundEffect.SELECT))
-        add(Triple("$inLabel PKMN", onDeposit, SoundEffect.SELECT))
-        add(Triple("VIEW BOXES", onView, SoundEffect.SELECT))
+        // The box first, because it is the one row that always works and the
+        // one a player wants most of the time. Taking a Pokémon out starts
+        // there too: picking one in the box is how you say which one, and a
+        // separate list saying the same thing was the same trip twice.
+        add(Triple("VIEW PC BOX", onView, SoundEffect.SELECT))
+        // Bringing one in needs somewhere to bring it from, so it is not
+        // offered until there is a card in the machine. A row that always
+        // answers "put a card in first" is a row that never did anything.
+        if (hasCard) add(Triple("$inLabel PKMN", onDeposit, SoundEffect.SELECT))
         add(Triple("TRAINER CARD", onChangeCart, SoundEffect.CURSOR))
         if (onTrade != null) add(Triple("TRADE", onTrade, SoundEffect.SELECT))
         if (onDex != null) add(Triple("POKéDEX", onDex, SoundEffect.SELECT))

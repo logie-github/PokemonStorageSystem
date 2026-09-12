@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -309,18 +308,13 @@ fun Modifier.gen1Ground(): Modifier {
     // does, so a window sitting over part of it hides that part and the pieces
     // of ground either side of a window still agree about where it is.
     val ballInk = palette.lightest.toArgb()
-    val step = remember { mutableStateOf(0) }
     // Held still rather than taken away: the ball is a graphic as much as a
     // movement, so REDUCE MOTION stops it turning and leaves it drawn.
     val turns = Gen1Motion.moves(Motion.BALL)
-    LaunchedEffect(turns) {
-        if (!turns) return@LaunchedEffect
-        while (true) {
-            withInfiniteAnimationFrameNanos { nanos ->
-                val position = nanos / 1_000_000L / Gen1Pokeball.STEP_MS
-                step.value = (position % Gen1Pokeball.STEPS).toInt()
-            }
-        }
+    // Rasterised off the main thread; the draw lambda only ever blits what is
+    // ready. See [Gen1Pokeball.drive].
+    LaunchedEffect(windowWidth, windowHeight, unit, ballInk, turns) {
+        Gen1Pokeball.drive(windowWidth, windowHeight, unit, ballInk, turns)
     }
 
     // Where this piece of ground sits in the window, so the strip can be drawn
@@ -340,8 +334,7 @@ fun Modifier.gen1Ground(): Modifier {
                     drawRect(brush, topLeft = origin, size = area)
                     // Read here rather than in composition: a turn of the ball
                     // is a redraw and nothing more.
-                    val ball =
-                        Gen1Pokeball.frame(windowWidth, windowHeight, unit, ballInk, step.value)
+                    val ball = Gen1Pokeball.current
                     if (ball != null) {
                         drawImage(
                             image = ball.image,

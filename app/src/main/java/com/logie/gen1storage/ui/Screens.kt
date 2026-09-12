@@ -359,24 +359,11 @@ fun StorageSystemScreen(
             emptiness == null &&
             state.prompt == null &&
             state.transferScene == null,
-        // Both directions need a cartridge in the machine. If there is not one
-        // yet, that is the only question worth asking, so it gets the whole
-        // screen rather than a window over this one.
-        // The cartridge checks before it opens a list, not after: a list you
-        // cannot act on is worse than being told so on the menu you are
-        // standing on. Both guards are `BillsPCWithdraw` and `BillsPCDeposit`
-        // in pokered, in the same order.
-        onWithdraw = {
-            refusal = null
-            val target = state.save(state.activeSaveKey)?.save
-            when {
-                target == null -> model.open(Screen.ChooseCart(null))
-                state.storage.total == 0 -> refusal = "What? There are no POKéMON here!"
-                target.boxFreeSlots(target.currentBox) <= 0 ->
-                    refusal = "You can't take any more POKéMON."
-                else -> mode = PcMode.WITHDRAW
-            }
-        },
+        // A transfer needs a cartridge in the machine, and the row is not
+        // offered without one — so this is the check behind it rather than the
+        // whole of the reason it exists. `BillsPCDeposit` in pokered guards
+        // the same way: before the list opens, not after.
+        hasCard = !needsCart,
         onDeposit = {
             refusal = null
             when {
@@ -589,6 +576,18 @@ fun StorageSystemScreen(
                         // down, and the box arrows still work, so moving one
                         // to another box is the same gesture as moving it two
                         // spots left.
+                        // Taking it out starts here now: the box is where a
+                        // Pokémon is picked, so it is where the choice to send
+                        // it belongs. Only with a card in the machine — there
+                        // is nowhere for it to go otherwise.
+                        *if (!needsCart) {
+                            arrayOf(
+                                MonAction(state.outLabel, {
+                                    startWithdraw(listOf(storedPick.uid))
+                                    gridSlot = null
+                                })
+                            )
+                        } else emptyArray(),
                         MonAction("MOVE", {
                             heldUid = storedPick.uid
                             chosen = null

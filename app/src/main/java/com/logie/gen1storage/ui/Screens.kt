@@ -44,6 +44,7 @@ import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sound.SoundEffect
+import com.logie.gen1storage.storage.Provenance
 import com.logie.gen1storage.storage.StorageBox
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
@@ -654,16 +655,21 @@ private fun previewOf(
     val index = highlighted ?: return null
     val pokemon: Gen1Pokemon?
     val gameVersionId: String?
+    // Set only for one this app is holding; a Pokémon still in a save came
+    // from the save it is in and has nothing to say about it.
+    var held: Provenance? = null
     when (mode) {
         PcMode.VIEW -> {
             val here = box?.slots?.getOrNull(index)
             pokemon = here?.pokemon
             gameVersionId = here?.provenance?.gameVersion
+            held = here?.provenance
         }
         PcMode.WITHDRAW -> {
             val here = stored.getOrNull(index)
             pokemon = here?.pokemon
             gameVersionId = here?.provenance?.gameVersion
+            held = here?.provenance
         }
         PcMode.DEPOSIT -> {
             val here = depositRows.getOrNull(index)
@@ -681,6 +687,7 @@ private fun previewOf(
             spriteRevision = state.spriteRevision,
             inPane = true,
             speaks = false,
+            provenance = held,
         )
     }
 }
@@ -758,6 +765,11 @@ fun StatusScreen(
         gameVersionId = gameVersionId,
         store = model.sprites,
         spriteRevision = state.spriteRevision,
+        // Only for one this app is holding: a Pokémon still in a save came
+        // from the save it is in.
+        provenance = if (key == null) {
+            state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.provenance
+        } else null,
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
         footer = {
             Gen1BoxButton(BACK_LABEL, { model.back() }, selected = isOn(BACK_LABEL))
@@ -951,9 +963,18 @@ private fun DownloadPage(
                     DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
                     if (progress.finished) {
                         Spacer(Modifier.height(10.dp))
+                        // What did not arrive, said out loud. It was counted
+                        // all along and never shown, so a run that lost twenty
+                        // files to the network read as a complete success and
+                        // the art was simply missing afterwards with nothing
+                        // to explain it. DOWNLOAD MISSING will go back for
+                        // them, which is why the number is worth knowing.
                         GbText(
-                            if (progress.error != null) "STOPPED: ${progress.error.uppercase()}"
-                            else "DONE.",
+                            when {
+                                progress.error != null -> "STOPPED: ${progress.error.uppercase()}"
+                                progress.failed > 0 -> "DONE. ${progress.failed} DID NOT ARRIVE."
+                                else -> "DONE."
+                            },
                             style = Gen1TextSmall,
                         )
                     }
@@ -1143,6 +1164,9 @@ private fun OptionsDrawerContent(
     val rows = buildList {
         when (drawer) {
             OptionsDrawer.VISUAL -> {
+                // The games' own first option, and in their order: FAST, MID,
+                // SLOW, taken by pressing the row.
+                add(OptionRow("TEXT SPEED", state.textSpeed.label) { model.cycleTextSpeed() })
                 GbPalette.ALL.forEach { palette ->
                     add(
                         OptionRow(

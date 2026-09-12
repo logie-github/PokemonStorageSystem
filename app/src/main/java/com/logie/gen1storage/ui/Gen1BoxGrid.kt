@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
+import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sprites.FollowerStore
 import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.storage.StorageBox
@@ -182,6 +183,7 @@ fun Gen1BoxGrid(
     val columns = StorageLayout.BOX_COLUMNS
     val rows = StorageLayout.BOX_ROWS
     val scroll = rememberLazyListState()
+    val cries = LocalGen1Audio.current
 
     // Every row is exactly one cell tall, so how far the list has travelled is
     // arithmetic rather than a measurement.
@@ -245,7 +247,15 @@ fun Gen1BoxGrid(
                         // a request to go back a screen.
                         .gen1HoldRegion()
                         .pointerInput(row, columns, cellPx) {
-                            detectTapGestures { at -> slotAt(onGrid(at))?.let(onTap) }
+                            detectTapGestures { at ->
+                                slotAt(onGrid(at))?.let { slot ->
+                                    // It speaks when it is touched, the way the
+                                    // sprite on the status screen does.
+                                    box.slots.getOrNull(slot)?.pokemon?.species?.dexNumber
+                                        ?.let { cries?.cry(it) }
+                                    onTap(slot)
+                                }
+                            }
                         }
                         .pointerInput(row, columns, cellPx) {
                             detectDragGesturesAfterLongPress(

@@ -80,6 +80,17 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_CLASSIC_LABELS, false)
         set(value) = prefs.edit().putBoolean(KEY_CLASSIC_LABELS, value).apply()
 
+    /**
+     * How fast the text prints, as the games' own OPTIONS put it.
+     *
+     * MID is the cartridge's default and this one's. Kept as the enum's name
+     * rather than a number of milliseconds, so a stored preference survives
+     * the speeds themselves being retuned.
+     */
+    var textSpeed: TextSpeed
+        get() = TextSpeed.fromId(prefs.getString(KEY_TEXT_SPEED, null))
+        set(value) = prefs.edit().putString(KEY_TEXT_SPEED, value.id).apply()
+
     /** One switch over the lot, for when none of it is wanted. */
     var soundOff: Boolean
         get() = prefs.getBoolean(KEY_SOUND_OFF, false)
@@ -93,6 +104,7 @@ class AppSettings(private val prefs: SharedPreferences) {
     }
 
     private companion object {
+        const val KEY_TEXT_SPEED = "text-speed"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"
         const val KEY_PALETTE = "palette"

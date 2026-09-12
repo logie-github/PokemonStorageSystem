@@ -191,6 +191,8 @@ data class UiState(
     val windowsFollowPalette: Boolean = false,
     val windowsOnRight: Boolean = true,
     val classicTransferLabels: Boolean = false,
+    /** How fast the text prints, as the games' OPTIONS screen puts it. */
+    val textSpeed: TextSpeed = TextSpeed.DEFAULT,
     /** Shown while a transfer is in flight, and cleared by its result. */
     val transferScene: TransferScene? = null,
     /**
@@ -304,6 +306,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
                 classicTransferLabels = settings.classicTransferLabels,
+                textSpeed = settings.textSpeed,
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
@@ -328,7 +331,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             return true
         }
         if (current.stack.size <= 1) return false
+        // Leaving the storage system is what the cartridge says SEE YA! to —
+        // `BillsPCMenu`'s exit, verbatim. Only on the way out of the PC
+        // itself; backing out of a download page is not saying goodbye to
+        // anything.
+        val leavingThePc = current.screen == Screen.Storage
         mutable.update { it.copy(stack = it.stack.dropLast(1)) }
+        if (leavingThePc) message("SEE YA!")
         return true
     }
 
@@ -599,6 +608,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setClassicTransferLabels(on: Boolean) {
         settings.classicTransferLabels = on
         mutable.update { it.copy(classicTransferLabels = on) }
+    }
+
+    /** Takes the next speed round, which is how the games' own row works. */
+    fun cycleTextSpeed() {
+        val next = mutable.value.textSpeed.next
+        settings.textSpeed = next
+        mutable.update { it.copy(textSpeed = next) }
     }
 
     private fun enabledSounds(): Set<String> =

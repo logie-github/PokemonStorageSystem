@@ -31,7 +31,9 @@ import com.logie.gen1storage.pokemon.Gen1Growth
 import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.sprites.SpriteStore
+import com.logie.gen1storage.storage.Provenance
 
 /**
  * The Generation I status screen, both pages.
@@ -63,6 +65,16 @@ fun Gen1StatusScreen(
      * thirty cries crossing a box.
      */
     speaks: Boolean = true,
+    /**
+     * Where this one came from, for a Pokémon held in this app's PC.
+     *
+     * The cartridge never had to say: everything in its PC came from itself.
+     * This machine holds Pokémon from several playthroughs at once, and which
+     * cartridge and which trainer a Pokémon arrived from is the one thing it
+     * knows that no cartridge could. Null for a Pokémon still in a save,
+     * where the question does not arise.
+     */
+    provenance: Provenance? = null,
     onSpriteLongPress: ((String) -> Unit)? = null,
     footer: @Composable () -> Unit = {},
     /**
@@ -121,6 +133,10 @@ fun Gen1StatusScreen(
             // there are only two pages: a player finds that in one tap and
             // never needs telling again.
             if (page == 0) StatusPageOne(pokemon) else StatusPageTwo(pokemon)
+            provenance?.let {
+                Spacer(Modifier.height(gen1Dp(3)))
+                CameFrom(it)
+            }
         }
             Spacer(Modifier.height(gen1Dp(3)))
             underBox()
@@ -133,6 +149,32 @@ fun Gen1StatusScreen(
         Box(Modifier.fillMaxSize().padding(gen1Dp(4))) {
             Box(Modifier.align(Gen1Layout.corner(top = false, menuSide = false))) { footer() }
         }
+    }
+}
+
+/**
+ * "CAME FROM / RED · ASH · 12 MAR 2026" — the line the cartridge never needed.
+ *
+ * Small, and at the foot of the window rather than among the stats, because
+ * it is a fact about the Pokémon's history rather than about the Pokémon. The
+ * trainer named here is whoever deposited it, which is not always the one on
+ * the OT line: a traded Pokémon carries its original trainer for ever and
+ * still arrived here from somebody else's cartridge.
+ */
+@Composable
+private fun CameFrom(provenance: Provenance) {
+    val game = GameVersion.fromId(provenance.gameVersion)?.label ?: "?"
+    val day = remember(provenance.depositedAtEpochMillis) {
+        java.time.Instant.ofEpochMilli(provenance.depositedAtEpochMillis)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy"))
+            .uppercase()
+    }
+    Gen1CornerRule(Modifier.fillMaxWidth()) {
+        GbText("CAME FROM", style = Gen1TextSmall.copy(color = Gen1Palette.Ink))
+        GbText("$game - ${provenance.trainerName.uppercase()}", maxLines = 1)
+        GbText(day, style = Gen1TextSmall.copy(color = Gen1Palette.Ink), maxLines = 1)
     }
 }
 

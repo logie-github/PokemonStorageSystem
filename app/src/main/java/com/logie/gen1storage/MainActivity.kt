@@ -47,6 +47,7 @@ import com.logie.gen1storage.ui.GbText
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
+import com.logie.gen1storage.ui.Gen1Typing
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
@@ -125,6 +126,7 @@ private fun StorageApp(model: StorageViewModel) {
         Gen1Palette.palette = GbPalette.fromId(state.paletteId)
         Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
         Gen1Layout.windowsOnRight = state.windowsOnRight
+        Gen1Typing.speed = state.textSpeed
     }
 
     // The game can save at any moment, and every revision this app is holding

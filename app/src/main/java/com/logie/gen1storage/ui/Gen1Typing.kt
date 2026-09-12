@@ -36,7 +36,7 @@ fun Gen1TypedLines(
     LaunchedEffect(lines) {
         typed = 0
         while (typed < whole) {
-            delay(LETTER_MILLIS)
+            delay(Gen1Typing.speed.letterMillis)
             typed++
         }
         onFinished()
@@ -88,8 +88,17 @@ fun Gen1TypedBox(
     }
 }
 
-/** One letter's worth of time. The games print about this fast. */
-private const val LETTER_MILLIS = 26L
+/**
+ * How fast the text prints, for the drawing code to read.
+ *
+ * Snapshot state on an object rather than a parameter threaded through every
+ * window, for the same reason the palette is: it is one decision the whole
+ * app has to agree on, and passing it around would let any window quietly
+ * disagree.
+ */
+object Gen1Typing {
+    var speed by mutableStateOf(TextSpeed.DEFAULT)
+}
 
 /**
  * The ▼ the games blink at the bottom of a box that has more to say.

@@ -1,6 +1,5 @@
 package com.logie.gen1storage.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,10 +29,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.Image
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.text.style.TextAlign
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.sprites.SpriteStore
@@ -122,9 +116,11 @@ fun Gen1TrainerCard(
             }
         }
 
-        Spacer(Modifier.height(gen1Dp(2)))
-        GbText("BADGES", style = Gen1TextSmall, maxLines = 1)
-        Badges(save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false })
+        Badges(
+            save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
+            trainers,
+            spriteRevision,
+        )
 
         if (full) {
             Spacer(Modifier.height(gen1Dp(3)))
@@ -172,54 +168,70 @@ fun Gen1TrainerSprite(
     }
 }
 
-/** "NAME/ RED" — the games' own label-then-value, on one line. */
+/**
+ * "NAME/RED" — the games' own label-then-value, on one line.
+ *
+ * The value sits against its label rather than against the far edge. TRAINER
+ * INFO draws the slash and then the value immediately after it, and pushing
+ * the value across the card instead put it under the portrait with a gulf in
+ * between, which reads as two columns that have nothing to do with each other.
+ */
 @Composable
 private fun Field(label: String, value: String) {
-    Row(Modifier.fillMaxWidth()) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         GbText("$label/", style = Gen1TextSmall, maxLines = 1)
-        Spacer(Modifier.width(gen1Dp(2)))
-        GbText(
-            value,
-            modifier = Modifier.weight(1f),
-            style = Gen1Text.copy(textAlign = TextAlign.End),
-            maxLines = 1,
-        )
+        GbText(value, maxLines = 1)
     }
 }
 
 /**
- * The eight gyms, in order, filled where the badge has been won.
+ * The eight gyms, in order, as the badges themselves.
  *
- * Drawn rather than lettered: the cartridge shows eight badge pictures, and
- * eight squares in a row read the same way at a glance — how far along this
- * playthrough is, without anybody having to count words.
+ * The cartridge's own badge art, cut from pokered's trainer-card sheet, with
+ * nothing drawn where a badge has not been won — which is exactly what the
+ * card does: the case is there, and it fills up as the player earns them.
+ *
+ * Unlabelled and unspaced on purpose. The badges are recognisable on sight, so
+ * a word over them and air between them only cost the row its resemblance to
+ * the thing it is copying.
  */
 @Composable
-private fun Badges(won: List<Boolean>) {
-    val pixel = gen1PixelPx().toFloat()
-    Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(2))) {
-        won.forEach { earned ->
-            Box(
-                Modifier.size(gen1Dp(BADGE_PIXELS)).drawBehind {
-                    val edge = pixel
-                    if (earned) {
-                        drawRect(Gen1Palette.Ink, Offset.Zero, size)
-                        return@drawBehind
-                    }
-                    // An outline for one not yet won: the slot is still there,
-                    // which is the point of drawing eight of them.
-                    drawRect(Gen1Palette.Ink, Offset.Zero, Size(size.width, edge))
-                    drawRect(Gen1Palette.Ink, Offset(0f, size.height - edge), Size(size.width, edge))
-                    drawRect(Gen1Palette.Ink, Offset.Zero, Size(edge, size.height))
-                    drawRect(Gen1Palette.Ink, Offset(size.width - edge, 0f), Size(edge, size.height))
-                }
+private fun Badges(won: List<Boolean>, trainers: TrainerStore, revision: Int) {
+    Row {
+        for (gym in 0 until TrainerStore.BADGES) {
+            Badge(gym, won.getOrElse(gym) { false }, trainers, revision)
+        }
+    }
+}
+
+/**
+ * One gym's badge, or the space it will occupy.
+ *
+ * Blank while the sheet has not been downloaded, for the same reason a trainer
+ * the player picked shows as a gap: the row keeps its shape either way, and
+ * DOWNLOADS fills it in.
+ */
+@Composable
+private fun Badge(gym: Int, earned: Boolean, trainers: TrainerStore, revision: Int) {
+    var image by remember(gym, revision) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(gym, revision, earned, trainers) {
+        image = if (!earned) null else withContext(Dispatchers.IO) { trainers.badge(gym) }
+    }
+    Box(Modifier.size(gen1Dp(BADGE_PIXELS))) {
+        image?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                filterQuality = FilterQuality.None,
             )
         }
     }
 }
 
-/** One badge slot's side, in game pixels. */
-private const val BADGE_PIXELS = 7
+/** One badge's side, in game pixels — the sheet's own tile, scaled whole. */
+private const val BADGE_PIXELS = 16
 
 /**
  * Which trainer a card wears.

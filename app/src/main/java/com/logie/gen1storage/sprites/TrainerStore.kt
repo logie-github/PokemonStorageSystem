@@ -56,7 +56,41 @@ class TrainerStore(private val directory: File) {
 
     fun has(id: String): Boolean = file(id).let { it.isFile && it.length() > 0 }
 
-    fun count(): Int = ALL.count { has(it.id) }
+    /** The trainers, and the one sheet the eight badges are cut from. */
+    fun count(): Int = ALL.count { has(it.id) } + if (has(BADGE_SHEET)) 1 else 0
+
+    /**
+     * One gym's badge, or null while the sheet is not on the device.
+     *
+     * The sheet alternates down its length — a gym leader's face, then that
+     * gym's badge, eight times over — so the badges are its odd tiles. [gym]
+     * is zero-based in the order Generation I awards them, which is the order
+     * the card draws them in.
+     */
+    fun badge(gym: Int): ImageBitmap? {
+        if (gym !in 0 until BADGES) return null
+        val key = "$tintId/badge/$gym"
+        memory[key]?.let { return it }
+
+        val source = file(BADGE_SHEET).takeIf { it.isFile } ?: return null
+        val sheet = runCatching {
+            BitmapFactory.decodeFile(source.path, BitmapFactory.Options().apply {
+                inScaled = false
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            })
+        }.getOrNull() ?: return null
+        if (sheet.width != BADGE_SIZE || sheet.height != BADGE_SIZE * BADGE_TILES) {
+            sheet.recycle()
+            return null
+        }
+
+        val cut = Bitmap.createBitmap(sheet, 0, (gym * 2 + 1) * BADGE_SIZE, BADGE_SIZE, BADGE_SIZE)
+        sheet.recycle()
+        val ramp = tintRamp
+        val finished = if (ramp == null) cut
+        else runCatching { recolourToRamp(cut, ramp) }.getOrNull() ?: cut
+        return finished.asImageBitmap().also { memory[key] = it }
+    }
 
     fun bytesOnDisk(): Long =
         directory.walkTopDown().filter { it.isFile }.sumOf { it.length() }
@@ -88,11 +122,14 @@ class TrainerStore(private val directory: File) {
 
     /** Fetches one if it is not here yet. */
     fun fetch(id: String): File? {
-        val known = ALL.firstOrNull { it.id == id } ?: return null
-        val target = file(known.id)
+        val badges = id == BADGE_SHEET
+        if (!badges && ALL.none { it.id == id }) return null
+        val target = file(id)
         if (target.isFile && target.length() > 0) return target
 
-        val url = URL("$BASE_URL/${known.id}.png")
+        val url =
+            if (badges) URL("$CARD_URL/badges.png")
+            else URL("$BASE_URL/$id.png")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 20_000
@@ -104,14 +141,18 @@ class TrainerStore(private val directory: File) {
         val bytes = connection.inputStream.use { it.readBytes() }
         if (bytes.isEmpty()) return null
 
-        // It must be the square this expects before it lands, so a proxy's
+        // It must be the shape this expects before it lands, so a proxy's
         // error page cannot sit on disk looking like a trainer.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth != SIZE || bounds.outHeight != SIZE) return null
+        val wanted =
+            if (badges) bounds.outWidth == BADGE_SIZE &&
+                bounds.outHeight == BADGE_SIZE * BADGE_TILES
+            else bounds.outWidth == SIZE && bounds.outHeight == SIZE
+        if (!wanted) return null
 
         directory.mkdirs()
-        val staged = File(directory, "${known.id}.png.part")
+        val staged = File(directory, "$id.png.part")
         staged.writeBytes(bytes)
         if (!staged.renameTo(target)) {
             staged.delete()
@@ -123,9 +164,12 @@ class TrainerStore(private val directory: File) {
     /** Fetches every trainer that is not already here, reporting after each. */
     suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
         withContext(Dispatchers.IO) {
-            val total = ALL.size
+            // The badge sheet goes with them: it is the other half of what a
+            // trainer card is drawn from, and one more file among forty-five.
+            val wanted = ALL.map { it.id } + BADGE_SHEET
+            val total = wanted.size
             onProgress(DownloadProgress(0, total))
-            val failed = fetchInParallel(ALL, total, onProgress) { fetch(it.id) }
+            val failed = fetchInParallel(wanted, total, onProgress) { fetch(it) }
             memory.clear()
             DownloadProgress(total, total, failed, finished = true).also(onProgress)
         }
@@ -146,6 +190,26 @@ class TrainerStore(private val directory: File) {
 
         private const val BASE_URL =
             "https://raw.githubusercontent.com/pret/pokered/$COMMIT/gfx/trainers"
+
+        /** Where the card's own art lives, which is where the badges are. */
+        private const val CARD_URL =
+            "https://raw.githubusercontent.com/pret/pokered/$COMMIT/gfx/trainer_card"
+
+        /** The badge sheet, kept under this name beside the trainers. */
+        const val BADGE_SHEET = "badges"
+
+        /** The eight gyms. */
+        const val BADGES = 8
+
+        /** One tile of the badge sheet, in real pixels. */
+        const val BADGE_SIZE = 16
+
+        /**
+         * Tiles down the sheet: a gym leader's face and that gym's badge,
+         * eight times over. Only the badges are wanted here, which is every
+         * odd one.
+         */
+        const val BADGE_TILES = BADGES * 2
 
         /**
          * Every trainer pic the game has, in the order `gfx/pics.asm` lists

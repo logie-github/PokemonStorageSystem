@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
@@ -33,6 +35,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
@@ -50,6 +53,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -291,11 +296,26 @@ fun Modifier.gen1Ground(): Modifier {
     // stepping where a window began. One strip, one height, and every piece of
     // ground on screen reads the same row of it at the same height.
     val windowHeight = LocalWindowInfo.current.containerSize.height.coerceAtLeast(1)
+    val windowWidth = LocalWindowInfo.current.containerSize.width.coerceAtLeast(1)
     val image = remember(unit, windowHeight, ramp) { ditherRamp(unit, windowHeight, ramp) }
     // Repeated across, clamped down: the strip is already the window's height,
     // so only the horizontal axis has anything to tile.
     val brush = remember(image) {
         ShaderBrush(ImageShader(image, TileMode.Repeated, TileMode.Clamp))
+    }
+
+    // The ball lies on the ground in window coordinates, the same as the ramp
+    // does, so a window sitting over part of it hides that part and the pieces
+    // of ground either side of a window still agree about where it is.
+    val ballInk = palette.lightest.toArgb()
+    val step = remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            withInfiniteAnimationFrameNanos { nanos ->
+                val position = nanos / 1_000_000L / Gen1Pokeball.STEP_MS
+                step.value = (position % Gen1Pokeball.STEPS).toInt()
+            }
+        }
     }
 
     // Where this piece of ground sits in the window, so the strip can be drawn
@@ -308,6 +328,20 @@ fun Modifier.gen1Ground(): Modifier {
             val area = size
             translate(left = -origin.x, top = -origin.y) {
                 drawRect(brush, topLeft = origin, size = area)
+                // Read here rather than in composition: a turn of the ball is a
+                // redraw and nothing more.
+                val ball = Gen1Pokeball.frame(windowWidth, unit, ballInk, step.value)
+                if (ball != null) {
+                    val drawn = ball.sidePx * unit
+                    drawImage(
+                        image = ball.image,
+                        dstOffset = IntOffset(windowWidth - drawn, windowHeight - drawn),
+                        dstSize = IntSize(drawn, drawn),
+                        // Whole multiples of one cell; smoothing would undo the
+                        // thing that makes it pixels.
+                        filterQuality = FilterQuality.None,
+                    )
+                }
             }
         }
 }

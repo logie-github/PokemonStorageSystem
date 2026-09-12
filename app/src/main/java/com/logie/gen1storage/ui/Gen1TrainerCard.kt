@@ -152,7 +152,12 @@ fun Gen1TrainerCard(
                         Spacer(Modifier.weight(1f))
                         badges()
                     }
-                    Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+                    // Standing on the same line the badge case ends on: the
+                    // case is the last thing in the column beside it, so the
+                    // bottom of this box is the bottom of the badges, and a
+                    // trainer with their feet on it is a trainer standing on
+                    // the card rather than floating over the corner of it.
+                    Box(Modifier.matchParentSize(), contentAlignment = Alignment.BottomEnd) {
                         portrait(Modifier.fillMaxHeight(), spare)
                     }
                 }
@@ -222,7 +227,7 @@ private fun Portrait(
         // portrait, and never a smeared one.
         val leadSide = with(density) { (((scale + 1) / 2) * ART_PIXELS).toDp() }
 
-        Box(Modifier.size(side).align(Alignment.Center)) {
+        Box(Modifier.size(side).align(Alignment.BottomCenter)) {
             if (trainerSprite != null) {
                 Gen1TrainerSprite(
                     id = trainerSprite,
@@ -391,18 +396,21 @@ fun TrainerSpritePicker(
     val rows = TrainerStore.ALL
     // The player, then every trainer, then the way out.
     val count = rows.size + 2
-    val at = rememberCursorLayer(count) { index ->
+    val cursor = rememberCursorLayerHandle(count) { index ->
         when (index) {
             0 -> onChoose(null)
             count - 1 -> onCancel()
             else -> onChoose(rows[index - 1].id)
         }
     }
+    val at = cursor.index
     val scroll = rememberLazyListState()
     LaunchedEffect(at) { scroll.scrollToRow(at) }
 
     Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth(), opening = true) {
-        GbText("TRAINER")
+        // What the card is wearing, said out loud. A tick against a row forty
+        // rows down a list is not an answer to "which one is on it".
+        GbText("TRAINER/" + (rows.firstOrNull { it.id == chosen }?.label ?: "PLAYER"))
         LazyColumn(Modifier.heightIn(max = 360.dp), state = scroll) {
             item {
                 // The card's own default, shown as itself. It read as "NONE"
@@ -414,11 +422,17 @@ fun TrainerSpritePicker(
                         store = store,
                         revision = revision,
                         sizeInPixels = PICKER_SPRITE_PIXELS,
+                        cutout = true,
                     )
                     Gen1MenuRow(
                         "PLAYER",
                         selected = at == 0,
-                        onSelect = {},
+                        // The cursor goes where the finger went. Driving it by
+                        // swipe and taking a row by tap are the same choice,
+                        // and a cursor left pointing at a different row than
+                        // the one that was taken is a list that looks as
+                        // though it took the wrong one.
+                        onSelect = { cursor.index = 0 },
                         onConfirm = { onChoose(null) },
                         mark = chosen == null,
                     )
@@ -431,11 +445,12 @@ fun TrainerSpritePicker(
                         store = store,
                         revision = revision,
                         sizeInPixels = PICKER_SPRITE_PIXELS,
+                        cutout = true,
                     )
                     Gen1MenuRow(
                         trainer.label,
                         selected = at == index + 1,
-                        onSelect = {},
+                        onSelect = { cursor.index = index + 1 },
                         onConfirm = { onChoose(trainer.id) },
                         mark = chosen == trainer.id,
                     )
@@ -445,7 +460,7 @@ fun TrainerSpritePicker(
                 Gen1MenuRow(
                     "CANCEL",
                     selected = at == count - 1,
-                    onSelect = {},
+                    onSelect = { cursor.index = count - 1 },
                     onConfirm = onCancel,
                 )
             }

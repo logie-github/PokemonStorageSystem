@@ -5,7 +5,6 @@ import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -35,10 +34,13 @@ class StorageSlotsTest {
     )
 
     @Test
-    fun `a box is six across and five down`() {
+    fun `the box is six across and a hundred down`() {
+        assertEquals(1, StorageLayout.BOX_COUNT)
         assertEquals(6, StorageLayout.BOX_COLUMNS)
-        assertEquals(5, StorageLayout.BOX_ROWS)
-        assertEquals(30, StorageLayout.BOX_CAPACITY)
+        assertEquals(100, StorageLayout.BOX_ROWS)
+        assertEquals(600, StorageLayout.BOX_CAPACITY)
+        // Everything a twelve-box file could have held still fits.
+        assertTrue(StorageLayout.BOX_CAPACITY >= 12 * 30)
     }
 
     @Test
@@ -61,12 +63,13 @@ class StorageSlotsTest {
         val repository = StorageRepository(temporaryFolder.newFolder())
         val stored = repository.deposit(SaveFixtures.pokemon(nickname = "SPARKY"), provenance())!!
 
-        assertTrue(repository.moveToSlot(stored.uid, 3, 17))
+        // Well down the box, which is a real spot now rather than a box away.
+        assertTrue(repository.moveToSlot(stored.uid, StorageLayout.THE_BOX, 317))
 
         val state = repository.state()
         assertNull(state.boxes[0].slots[0])
-        assertEquals(stored.uid, state.boxes[2].slots[17]?.uid)
-        assertEquals(3, state.find(stored.uid)!!.first)
+        assertEquals(stored.uid, state.boxes[0].slots[317]?.uid)
+        assertEquals(StorageLayout.THE_BOX, state.find(stored.uid)!!.first)
     }
 
     @Test
@@ -85,15 +88,16 @@ class StorageSlotsTest {
     }
 
     @Test
-    fun `a swap across boxes keeps both`() {
+    fun `a swap far down the box keeps both`() {
         val repository = StorageRepository(temporaryFolder.newFolder())
         val first = repository.deposit(SaveFixtures.pokemon(nickname = "ONE"), provenance())!!
-        val second = repository.deposit(SaveFixtures.pokemon(nickname = "TWO"), provenance(), preferredBox = 5)!!
+        val second = repository.deposit(SaveFixtures.pokemon(nickname = "TWO"), provenance())!!
+        assertTrue(repository.moveToSlot(second.uid, StorageLayout.THE_BOX, 420))
 
-        assertTrue(repository.moveToSlot(first.uid, 5, 0))
+        assertTrue(repository.moveToSlot(first.uid, StorageLayout.THE_BOX, 420))
 
         val state = repository.state()
-        assertEquals(first.uid, state.boxes[4].slots[0]?.uid)
+        assertEquals(first.uid, state.boxes[0].slots[420]?.uid)
         assertEquals(second.uid, state.boxes[0].slots[0]?.uid)
         assertEquals(2, state.total)
     }
@@ -103,13 +107,13 @@ class StorageSlotsTest {
         val directory = temporaryFolder.newFolder()
         val stored = StorageRepository(directory).let { repository ->
             val stored = repository.deposit(SaveFixtures.pokemon(nickname = "SPARKY"), provenance())!!
-            repository.moveToSlot(stored.uid, 2, 23)
+            repository.moveToSlot(stored.uid, StorageLayout.THE_BOX, 523)
             stored
         }
 
         val reopened = StorageRepository(directory).state()
 
-        assertEquals(stored.uid, reopened.boxes[1].slots[23]?.uid)
+        assertEquals(stored.uid, reopened.boxes[0].slots[523]?.uid)
         assertEquals(1, reopened.total)
     }
 
@@ -119,8 +123,8 @@ class StorageSlotsTest {
         val source = StorageRepository(directory)
         val first = source.deposit(SaveFixtures.pokemon(nickname = "ONE"), provenance())!!
         val second = source.deposit(SaveFixtures.pokemon(nickname = "TWO"), provenance())!!
-        source.moveToSlot(first.uid, 1, 29)
-        source.moveToSlot(second.uid, 4, 11)
+        source.moveToSlot(first.uid, StorageLayout.THE_BOX, 29)
+        source.moveToSlot(second.uid, StorageLayout.THE_BOX, 311)
 
         val archive = StorageArchive
             .decode(StorageArchive.encode(source.state(), 1L))
@@ -130,7 +134,7 @@ class StorageSlotsTest {
 
         val state = target.state()
         assertEquals(first.uid, state.boxes[0].slots[29]?.uid)
-        assertEquals(second.uid, state.boxes[3].slots[11]?.uid)
+        assertEquals(second.uid, state.boxes[0].slots[311]?.uid)
     }
 
     @Test
@@ -139,7 +143,7 @@ class StorageSlotsTest {
         val source = StorageRepository(directory)
         val first = source.deposit(SaveFixtures.pokemon(nickname = "ONE"), provenance())!!
         val second = source.deposit(SaveFixtures.pokemon(nickname = "TWO"), provenance())!!
-        source.moveToSlot(second.uid, 1, 20)
+        source.moveToSlot(second.uid, StorageLayout.THE_BOX, 20)
 
         // The old shape is this file with the slots taken back out of it.
         val file = java.io.File(directory, StorageRepository.FILE_NAME)
@@ -156,16 +160,16 @@ class StorageSlotsTest {
     }
 
     @Test
-    fun `a full box refuses a thirty-first`() {
+    fun `a full box refuses the six hundred and first`() {
         val repository = StorageRepository(temporaryFolder.newFolder())
         repeat(StorageLayout.BOX_CAPACITY) {
             repository.deposit(SaveFixtures.pokemon(nickname = "MON$it"), provenance())
         }
 
         assertTrue(repository.state().boxes[0].isFull)
-        assertFalse(repository.state().boxes[1].isFull)
-        // The wrap-around puts the next one in the following box, not nowhere.
-        val overflow = repository.deposit(SaveFixtures.pokemon(nickname = "EXTRA"), provenance())
-        assertEquals(2, repository.state().find(overflow!!.uid)!!.first)
+        // There is nowhere else for it to go, and a refusal is how the
+        // transfer engine knows not to take it out of the save.
+        assertNull(repository.deposit(SaveFixtures.pokemon(nickname = "EXTRA"), provenance()))
+        assertEquals(StorageLayout.BOX_CAPACITY, repository.state().total)
     }
 }

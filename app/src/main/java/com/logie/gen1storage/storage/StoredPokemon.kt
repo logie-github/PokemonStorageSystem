@@ -91,7 +91,7 @@ data class StoredPokemon(
     }
 }
 
-/** One of this app's storage boxes: twelve of them, each a 6x5 grid. */
+/** This app's storage box: one grid, six across and a hundred down. */
 data class StorageBox(
     val index: Int,
     /** What the player called it, or null if they never did. */
@@ -108,22 +108,39 @@ data class StorageBox(
     val contents: List<StoredPokemon> get() = slots.filterNotNull()
 
     /**
-     * "BOX 4", or "BOX 4 SHINIES" once it has been named. The number always
-     * leads, so a renamed box is still findable by the number it has always
-     * had.
+     * "THE BOX", or whatever the player has called it.
+     *
+     * There is only one, so there is no number to lead with — a number would
+     * only raise the question of where the others are.
      */
-    val label: String get() = if (name.isNullOrBlank()) "BOX $index" else "BOX $index $name"
+    val label: String get() = if (name.isNullOrBlank()) "THE BOX" else name.uppercase()
 
     val isFull: Boolean get() = slots.none { it == null }
     val freeSlots: Int get() = slots.count { it == null }
 }
 
+/**
+ * The shape of this app's PC: one box, six across and a hundred down.
+ *
+ * It was twelve boxes of thirty, the cartridge's own arrangement, and that is
+ * the wrong shape for a machine whose whole job is to hold what the cartridges
+ * cannot. Twelve boxes meant choosing one on the way in, remembering which one
+ * a Pokémon went to, and moving things between them by hand. One long box that
+ * scrolls is the same six hundred spots with none of that: everything arrives
+ * in the same place and is always where it was left.
+ *
+ * Anything a twelve-box file held still fits — 12 x 30 is 360, and this is
+ * 600 — so the change costs nothing that was already stored.
+ */
 object StorageLayout {
-    const val BOX_COUNT = 12
+    const val BOX_COUNT = 1
 
-    /** The grid a box is drawn as, and so the shape it is stored in. */
+    /** The one box, which everything in this app lives in. */
+    const val THE_BOX = 1
+
+    /** The grid the box is drawn as, and so the shape it is stored in. */
     const val BOX_COLUMNS = 6
-    const val BOX_ROWS = 5
+    const val BOX_ROWS = 100
     const val BOX_CAPACITY = BOX_COLUMNS * BOX_ROWS
     const val TOTAL_CAPACITY = BOX_COUNT * BOX_CAPACITY
 }

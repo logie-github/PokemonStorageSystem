@@ -14,11 +14,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,7 +35,10 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import com.logie.gen1storage.sprites.FollowerStore
@@ -151,13 +158,13 @@ private fun CursorBrackets(modifier: Modifier = Modifier) {
 }
 
 /**
- * A box as the games draw one: six across, five down, every Pokémon on its own
- * spot.
+ * The box as a grid: six across, a hundred down, scrolling.
  *
- * The gestures live on the grid rather than on each cell, and the spot is
- * worked out from where the finger is. One detector over a fixed grid is both
- * simpler and the only way a drag can know what it is being dragged over —
- * per-cell handlers only ever hear about the cell the drag started in.
+ * The gestures live on each row rather than on the grid as a whole, because a
+ * hundred rows have to be a lazy list and a lazy list has no single surface to
+ * put one detector on. A row knows which row it is, so a tap needs only the
+ * column; a drag converts its own position into the grid's so it can still be
+ * dragged over a neighbour the way it always could.
  */
 @Composable
 fun Gen1BoxGrid(
@@ -174,70 +181,106 @@ fun Gen1BoxGrid(
     val cellPx = with(LocalDensity.current) { cell.toPx() }
     val columns = StorageLayout.BOX_COLUMNS
     val rows = StorageLayout.BOX_ROWS
+    val scroll = rememberLazyListState()
 
-    fun slotAt(position: Offset): Int? {
-        val column = (position.x / cellPx).toInt()
-        val row = (position.y / cellPx).toInt()
+    // Every row is exactly one cell tall, so how far the list has travelled is
+    // arithmetic rather than a measurement.
+    fun scrolledPx(): Float =
+        scroll.firstVisibleItemIndex * cellPx + scroll.firstVisibleItemScrollOffset
+
+    /** A point on the grid's own face, scrolling included, as a spot. */
+    fun slotAt(onGrid: Offset): Int? {
+        val column = (onGrid.x / cellPx).toInt()
+        val row = ((onGrid.y + scrolledPx()) / cellPx).toInt()
         if (column !in 0 until columns || row !in 0 until rows) return null
         return row * columns + column
     }
 
-    var dragFrom by remember(box.index) { mutableIntStateOf(-1) }
-    var dragAt by remember(box.index) { mutableStateOf<Offset?>(null) }
+    var gridTop by remember { mutableFloatStateOf(0f) }
+    var dragFrom by remember { mutableIntStateOf(-1) }
+    // Where the finger is, on the grid's face.
+    var dragAt by remember { mutableStateOf<Offset?>(null) }
 
-    // A new box arrives a column at a time rather than all at once, which is
-    // how the games change anything that fills the screen.
-    var revealed by remember(box.index) { mutableIntStateOf(0) }
-    LaunchedEffect(box.index) {
-        revealed = 0
+    // The box arrives a column at a time rather than all at once, which is how
+    // the games change anything that fills the screen. Only on the way in: a
+    // box that did this every time it was scrolled would be unusable.
+    var revealed by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
         while (revealed < columns) {
             delay(COLUMN_MILLIS)
             revealed++
         }
     }
 
+    // The cursor can walk past the bottom of what is on screen, so the list
+    // follows it. Only when it has actually gone out of sight — scrolling on
+    // every step would drag the whole box about under a cursor that was
+    // perfectly visible where it was.
+    LaunchedEffect(cursorSlot) {
+        val row = (cursorSlot ?: return@LaunchedEffect) / columns
+        val first = scroll.firstVisibleItemIndex
+        val visible = scroll.layoutInfo.visibleItemsInfo
+        val last = visible.lastOrNull()?.index ?: first
+        if (row <= first) scroll.animateScrollToItem(row)
+        // Stops one short of the end so the row lands inside the window rather
+        // than half under its bottom edge.
+        else if (row >= last) scroll.animateScrollToItem((row - (last - first) + 1).coerceAtLeast(0))
+    }
+
     Box(
         modifier
-            .size(width = cell * columns, height = cell * rows)
-            // Claims the hold, so picking a Pokémon up is not also a request
-            // to go back a screen.
-            .gen1HoldRegion()
-            .pointerInput(box.index, columns, rows, cellPx) {
-                detectTapGestures { position -> slotAt(position)?.let(onTap) }
-            }
-            .pointerInput(box.index, columns, rows, cellPx) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { position ->
-                        val slot = slotAt(position)
-                        dragFrom = if (slot != null && box.slots.getOrNull(slot) != null) slot else -1
-                        dragAt = position
-                    },
-                    onDrag = { change, _ ->
-                        change.consume()
-                        dragAt = change.position
-                    },
-                    onDragEnd = {
-                        val to = dragAt?.let(::slotAt)
-                        if (dragFrom >= 0 && to != null && to != dragFrom) onMove(dragFrom, to)
-                        dragFrom = -1
-                        dragAt = null
-                    },
-                    onDragCancel = {
-                        dragFrom = -1
-                        dragAt = null
-                    },
-                )
-            }
+            .width(cell * columns)
+            .onGloballyPositioned { gridTop = it.positionInRoot().y }
     ) {
-        Column {
-            repeat(rows) { row ->
-                Row {
+        LazyColumn(state = scroll) {
+            items(rows, key = { it }) { row ->
+                var rowTop by remember { mutableFloatStateOf(0f) }
+
+                fun onGrid(local: Offset) = Offset(local.x, rowTop - gridTop + local.y)
+
+                Row(
+                    Modifier
+                        .onGloballyPositioned { rowTop = it.positionInRoot().y }
+                        // Claims the hold, so picking a Pokémon up is not also
+                        // a request to go back a screen.
+                        .gen1HoldRegion()
+                        .pointerInput(row, columns, cellPx) {
+                            detectTapGestures { at -> slotAt(onGrid(at))?.let(onTap) }
+                        }
+                        .pointerInput(row, columns, cellPx) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { at ->
+                                    val slot = slotAt(onGrid(at))
+                                    dragFrom =
+                                        if (slot != null && box.slots.getOrNull(slot) != null) slot
+                                        else -1
+                                    dragAt = onGrid(at)
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    dragAt = onGrid(change.position)
+                                },
+                                onDragEnd = {
+                                    val to = dragAt?.let(::slotAt)
+                                    if (dragFrom >= 0 && to != null && to != dragFrom) {
+                                        onMove(dragFrom, to)
+                                    }
+                                    dragFrom = -1
+                                    dragAt = null
+                                },
+                                onDragCancel = {
+                                    dragFrom = -1
+                                    dragAt = null
+                                },
+                            )
+                        }
+                ) {
                     repeat(columns) { column ->
                         val slot = row * columns + column
                         val stored = box.slots.getOrNull(slot)
-                        // Nothing drawn around a Pokémon: thirty ruled-off
-                        // cells stop reading as a boxful and start reading as
-                        // a table. Only the one under the cursor is marked.
+                        // Nothing drawn around a Pokémon: six hundred ruled-off
+                        // cells stop reading as a boxful and start reading as a
+                        // table. Only the one under the cursor is marked.
                         Box(Modifier.size(cell), contentAlignment = Alignment.Center) {
                             if (slot == cursorSlot) CursorBrackets()
                             // The one being carried is not drawn in its old
@@ -302,13 +345,20 @@ private fun BoxHead(
     val end = Gen1Text.copy(textAlign = TextAlign.End)
     Row(modifier) {
         Column(Modifier.width(gen1Dp(HEAD_SPRITE_PIXELS))) {
-            Gen1Sprite(
-                pokemon?.speciesId,
-                stored?.provenance?.gameVersion,
-                sprites,
-                revision = spriteRevision,
-                sizeInPixels = HEAD_SPRITE_PIXELS,
-            )
+            // An empty spot leaves the block blank rather than showing the
+            // bracketed mark: the mark means "there is no art for this one",
+            // and on an empty spot there is no "this one" to have art.
+            if (pokemon == null) {
+                Spacer(Modifier.size(gen1Dp(HEAD_SPRITE_PIXELS)))
+            } else {
+                Gen1Sprite(
+                    pokemon.speciesId,
+                    stored.provenance.gameVersion,
+                    sprites,
+                    revision = spriteRevision,
+                    sizeInPixels = HEAD_SPRITE_PIXELS,
+                )
+            }
             Spacer(Modifier.height(gen1Dp(2)))
             GbText(
                 pokemon?.species?.let { "No.%03d".format(it.dexNumber) } ?: " ",
@@ -346,10 +396,9 @@ private fun BoxHead(
  * across the top, the grid under it — but drawn as one Generation I window, so
  * it sits on the same screen as the menu it came from rather than replacing it.
  *
- * The arrows either side of the box's name are the only way between boxes. The
- * cursor deliberately stops at the edges of the grid instead: walking off the
- * right-hand side into the next box is a surprise, and a box is a place rather
- * than a list.
+ * There is one box and it scrolls, so there is nowhere else to go: the cursor
+ * walks down it and the grid follows. It stops at the left and right edges
+ * rather than wrapping, because a row is a row.
  */
 @Composable
 fun BoxGridOverlay(
@@ -367,8 +416,6 @@ fun BoxGridOverlay(
     startSlot: Int?,
     onTap: (Int) -> Unit,
     onMove: (from: Int, to: Int) -> Unit,
-    onPreviousBox: () -> Unit,
-    onNextBox: () -> Unit,
     onCancel: () -> Unit,
 ) {
     // The grid owns the cursor while this window is open, and a tap puts the
@@ -396,16 +443,7 @@ fun BoxGridOverlay(
                 modifier = Modifier.width(gen1Dp(HEAD_PIXELS)),
             )
             Spacer(Modifier.height(gen1Dp(3)))
-            Row(
-                Modifier.width(gen1Dp(HEAD_PIXELS)),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.gen1Clickable(onClick = onPreviousBox)) { GbText("◀") }
-                Spacer(Modifier.width(gen1Dp(3)))
-                GbText(box.label, modifier = Modifier.weight(1f), maxLines = 1)
-                Spacer(Modifier.width(gen1Dp(3)))
-                Box(Modifier.gen1Clickable(onClick = onNextBox)) { GbText("▶") }
-            }
+            GbText(box.label, modifier = Modifier.width(gen1Dp(HEAD_PIXELS)), maxLines = 1)
             GbText(
                 when {
                     heldName != null -> "PUT $heldName WHERE?"
@@ -425,7 +463,12 @@ fun BoxGridOverlay(
                     onTap(slot)
                 },
                 onMove = onMove,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+                // Whole rows, and never taller than the screen can hold: the
+                // box is a hundred rows deep and the window has to end
+                // somewhere above CANCEL.
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .height(gen1Dp(CELL_PIXELS * visibleRows())),
             )
             Spacer(Modifier.height(gen1Dp(2)))
             Gen1MenuRow("CANCEL", selected = false, onSelect = {}, onConfirm = onCancel)
@@ -433,7 +476,27 @@ fun BoxGridOverlay(
     }
 }
 
-/** How long each column of a new box waits for the one before it. */
+/**
+ * How many rows of the box the window shows at once.
+ *
+ * Worked out from the screen rather than fixed, so the box fills a tall phone
+ * and still leaves room for the block above it and CANCEL below on a short
+ * one. In whole rows: half a row of Pokémon along the bottom edge reads as the
+ * window having been cut off.
+ */
+@Composable
+private fun visibleRows(): Int {
+    val screen = LocalConfiguration.current.screenHeightDp
+    val cell = gen1Dp(CELL_PIXELS).value
+    val forTheRest = gen1Dp(HEAD_SPRITE_PIXELS + ROOM_AROUND_THE_GRID).value
+    return (((screen - forTheRest) / cell).toInt()).coerceIn(MIN_ROWS_SHOWN, StorageLayout.BOX_ROWS)
+}
+
+/** The block above the grid and CANCEL below it, in game pixels. */
+private const val ROOM_AROUND_THE_GRID = 60
+private const val MIN_ROWS_SHOWN = 3
+
+/** How long each column of the box waits for the one before it. */
 private const val COLUMN_MILLIS = 26L
 
 /** A spot's side, in game pixels: the sprite with a little air around it. */

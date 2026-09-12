@@ -127,7 +127,6 @@ fun StorageSystemScreen(
     onDeposit: () -> Unit,
     onView: () -> Unit,
     onChangeCart: () -> Unit,
-    onChangeBox: () -> Unit,
     onRenameBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
     /** What the two directions are called, which is the player's to choose. */
@@ -184,18 +183,15 @@ fun StorageSystemScreen(
                 // The far corner, because the message wants the menu's edge.
                 contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
             ) {
-                // Tap to change box, hold to rename it — the same window,
-                // because it is the same subject, and there is nowhere better
-                // to put a rename than on the thing being renamed.
+                // Hold to rename it. There is one box, so there is nothing
+                // to change to and a tap has nothing to do — but a rename
+                // still belongs on the thing being renamed.
                 Gen1Frame(
                     Modifier
                         .wrapContentWidth()
                         .gen1HoldRegion()
-                        .pointerInput(onChangeBox, onRenameBox) {
-                            detectTapGestures(
-                                onTap = { onChangeBox() },
-                                onLongPress = { onRenameBox() },
-                            )
+                        .pointerInput(onRenameBox) {
+                            detectTapGestures(onLongPress = { onRenameBox() })
                         }
                 ) {
                     GbText(boxLabel.uppercase())
@@ -364,39 +360,3 @@ fun MonActionOverlay(
 
 /** How far down the screen the window on a chosen Pokémon starts. */
 private const val LIST_OVERLAP = 0.34f
-
-/** The CHANGE BOX list. */
-@Composable
-fun ChangeBoxOverlay(
-    boxes: List<Triple<Int, String, String>>,
-    onConfirm: (Int) -> Unit,
-    onCancel: () -> Unit,
-) {
-    val selected = rememberCursorLayer(boxes.size + 1) { index ->
-        val box = boxes.getOrNull(index)
-        if (box == null) onCancel() else onConfirm(box.first)
-    }
-    val scroll = rememberLazyListState()
-    LaunchedEffect(selected) { scroll.animateScrollToItem(selected) }
-    Box(
-        Modifier.fillMaxSize(),
-        contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
-    ) {
-        Gen1Frame(Modifier.wrapContentWidth().padding(top = gen1Dp(5)), opening = true) {
-            LazyColumn(Modifier.heightIn(max = 380.dp), state = scroll) {
-                itemsIndexed(boxes) { index, (number, label, count) ->
-                    Gen1MenuRow(
-                        label,
-                        selected == index,
-                        {},
-                        { onConfirm(number) },
-                        trailing = count,
-                    )
-                }
-                item {
-                    Gen1MenuRow("CANCEL", selected == boxes.size, {}, onCancel)
-                }
-            }
-        }
-    }
-}

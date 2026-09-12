@@ -36,17 +36,17 @@ class StorageArchiveTest {
     private fun repository() = StorageRepository(temporaryFolder.newFolder())
 
     @Test
-    fun `every Pokemon comes back with its uid, its box and its data`() {
+    fun `every Pokemon comes back with its uid, its spot and its data`() {
         val source = repository()
         val first = source.deposit(SaveFixtures.pokemon(nickname = "SPARKY"), provenance())!!
-        val second = source.deposit(SaveFixtures.pokemon(nickname = "BULBY"), provenance(), preferredBox = 4)!!
-        source.renameBox(4, "GARDEN")
+        val second = source.deposit(SaveFixtures.pokemon(nickname = "BULBY"), provenance())!!
+        source.renameBox(StorageLayout.THE_BOX, "GARDEN")
 
         val bytes = StorageArchive.encode(source.state(), 1_700_000_000_000)
         val archive = StorageArchive.decode(bytes).getOrThrow()
         assertEquals(2, archive.entries.size)
         assertEquals(0, archive.unreadable)
-        assertEquals("GARDEN", archive.boxNames[4])
+        assertEquals("GARDEN", archive.boxNames[StorageLayout.THE_BOX])
 
         val target = repository()
         val report = target.importArchive(archive)
@@ -57,15 +57,18 @@ class StorageArchiveTest {
 
         val state = target.state()
         assertEquals(2, state.total)
-        assertEquals(1, state.find(first.uid)!!.first)
-        assertEquals(4, state.find(second.uid)!!.first)
+        assertEquals(StorageLayout.THE_BOX, state.find(first.uid)!!.first)
+        assertEquals(StorageLayout.THE_BOX, state.find(second.uid)!!.first)
+        // Back on the spots they were exported from, not merely present.
+        assertEquals(first.uid, state.boxes[0].slots[0]?.uid)
+        assertEquals(second.uid, state.boxes[0].slots[1]?.uid)
         assertEquals("SPARKY", state.find(first.uid)!!.second.pokemon.displayName)
         // The Generation I data is the same bytes, not a rebuilt equivalent.
         assertEquals(
             first.pokemon.fingerprint,
             state.find(first.uid)!!.second.pokemon.fingerprint,
         )
-        assertEquals("GARDEN", state.boxes[3].name)
+        assertEquals("GARDEN", state.boxes[0].name)
     }
 
     @Test
@@ -104,11 +107,11 @@ class StorageArchiveTest {
     fun `a box the player has named keeps their name`() {
         val source = repository()
         source.deposit(SaveFixtures.pokemon(nickname = "SPARKY"), provenance())
-        source.renameBox(1, "OLD")
+        source.renameBox(StorageLayout.THE_BOX, "OLD")
         val archive = StorageArchive.decode(StorageArchive.encode(source.state(), 1L)).getOrThrow()
 
         val target = repository()
-        target.renameBox(1, "MINE")
+        target.renameBox(StorageLayout.THE_BOX, "MINE")
         target.importArchive(archive)
 
         assertEquals("MINE", target.state().boxes[0].name)
@@ -117,12 +120,13 @@ class StorageArchiveTest {
     @Test
     fun `what will not fit is counted rather than dropped in silence`() {
         val source = repository()
-        repeat(StorageLayout.BOX_CAPACITY + 1) {
+        val coming = 5
+        repeat(coming) {
             source.deposit(SaveFixtures.pokemon(nickname = "MON$it"), provenance())
         }
         val archive = StorageArchive.decode(StorageArchive.encode(source.state(), 1L)).getOrThrow()
 
-        // A PC with exactly one slot left anywhere.
+        // A PC with exactly one spot left in it.
         val target = repository()
         repeat(StorageLayout.TOTAL_CAPACITY - 1) {
             target.deposit(SaveFixtures.pokemon(nickname = "FILL$it"), provenance())
@@ -130,7 +134,7 @@ class StorageArchiveTest {
         val report = target.importArchive(archive)
 
         assertEquals(1, report.added)
-        assertEquals(StorageLayout.BOX_CAPACITY, report.unplaced)
+        assertEquals(coming - 1, report.unplaced)
         assertEquals(StorageLayout.TOTAL_CAPACITY, target.state().total)
     }
 

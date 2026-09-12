@@ -12,6 +12,7 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
+import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
 import com.logie.gen1storage.sync.AccountState
@@ -148,7 +149,6 @@ sealed interface Prompt {
         val onConfirm: () -> Unit,
         val cancelLabel: String = "CANCEL",
     ) : Prompt
-    data class ChooseBox(val title: String, val onChoose: (Int) -> Unit) : Prompt
     /** Naming a box, from the window that shows which one is open. */
     data class RenameBox(val index: Int) : Prompt
     /** Naming a cartridge, from the cartridge itself. */
@@ -179,7 +179,11 @@ data class UiState(
     val recoveryNotes: List<String> = emptyList(),
     val prompt: Prompt? = null,
     val lastSyncedAtMillis: Long? = null,
-    val currentStorageBox: Int = 1,
+    /**
+     * There is one box, so this is always it. Kept as a name rather than a
+     * bare 1 so the places that mean "where things go" still say so.
+     */
+    val currentStorageBox: Int = StorageLayout.THE_BOX,
     val showAllSaves: Boolean = false,
     val showAllItems: Boolean = false,
     /** The [GbPalette] id everything is drawn through. */
@@ -328,7 +332,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         return true
     }
 
-    fun setStorageBox(box: Int) = mutable.update { it.copy(currentStorageBox = box, prompt = null) }
 
     fun home() = mutable.update { it.copy(stack = listOf(Screen.Home), prompt = null) }
 
@@ -1069,7 +1072,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun boxLabel(index: Int): String =
-        storage.state().boxes.getOrNull(index - 1)?.label ?: "BOX $index"
+        storage.state().boxes.getOrNull(index - 1)?.label ?: "THE BOX"
 
     /** The Pokémon a save location points at, for naming it before it moves. */
     private fun pokemonAt(save: Gen1RecompSave, location: SaveLocation) = when (location) {
@@ -1349,14 +1352,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             it.copy(storage = storage.state(), items = itemStorage.state(), prompt = null)
         }
         message("TOOK THE ${item.replace('_', ' ')}.")
-    }
-
-    fun moveStored(uid: String, targetBox: Int) {
-        if (!storage.moveTo(uid, targetBox)) {
-            message("BOX $targetBox IS FULL.")
-            return
-        }
-        mutable.update { it.copy(storage = storage.state(), prompt = null) }
     }
 
     // ------- maintenance

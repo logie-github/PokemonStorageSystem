@@ -99,13 +99,16 @@ class StorageRepositoryTest {
     }
 
     @Test
-    fun `deposit overflows into the next box with room, like Bill's PC`() {
+    fun `deposit fills the box from the top, one spot after another`() {
         val repository = StorageRepository(temporaryFolder.newFolder())
-        repeat(StorageLayout.BOX_CAPACITY) {
+        repeat(12) {
             assertNotNull(repository.deposit(SaveFixtures.pokemon(level = it + 1), provenance(), 1))
         }
-        val overflow = repository.deposit(SaveFixtures.pokemon(species = "ODDISH"), provenance(), 1)!!
-        assertEquals(2, repository.state().find(overflow.uid)!!.first)
+        val slots = repository.state().boxes[0].slots
+        assertEquals(12, slots.count { it != null })
+        // Straight down the box rather than into a second one: there is no
+        // second one, and the thirty-first spot is an ordinary spot now.
+        assertTrue(slots.take(12).all { it != null })
     }
 
     @Test
@@ -131,11 +134,11 @@ class StorageRepositoryTest {
     }
 
     @Test
-    fun `moving between boxes keeps a single instance`() {
+    fun `moving keeps a single instance`() {
         val repository = StorageRepository(temporaryFolder.newFolder())
         val stored = repository.deposit(SaveFixtures.pokemon(), provenance())!!
-        assertTrue(repository.moveTo(stored.uid, 5))
-        assertEquals(5, repository.state().find(stored.uid)!!.first)
+        assertTrue(repository.moveTo(stored.uid, StorageLayout.THE_BOX))
+        assertEquals(StorageLayout.THE_BOX, repository.state().find(stored.uid)!!.first)
         assertEquals(1, repository.state().total)
     }
 
@@ -182,42 +185,42 @@ class StorageRepositoryTest {
     }
 
     @Test
-    fun `box names persist and are bounded`() {
+    fun `the box name persists and is bounded`() {
         val directory = temporaryFolder.newFolder()
-        StorageRepository(directory).renameBox(3, "TRADES FOR LATER")
+        StorageRepository(directory).renameBox(StorageLayout.THE_BOX, "TRADES FOR LATER")
         assertEquals(
             "TRADES FOR",
-            StorageRepository(directory).state().boxes[2].name,
+            StorageRepository(directory).state().boxes[0].name,
         )
     }
 
     @Test
-    fun `an unnamed box has no name, and is labelled by its number alone`() {
+    fun `an unnamed box is THE BOX`() {
         val directory = temporaryFolder.newFolder()
         val boxes = StorageRepository(directory).state().boxes
 
         assertNull(boxes[0].name)
-        assertEquals("BOX 1", boxes[0].label)
+        assertEquals("THE BOX", boxes[0].label)
     }
 
     @Test
-    fun `a named box keeps its number in front of the name`() {
+    fun `a named box is called what it was named`() {
         val directory = temporaryFolder.newFolder()
         val repository = StorageRepository(directory)
-        repository.renameBox(4, "SHINIES")
+        repository.renameBox(StorageLayout.THE_BOX, "SHINIES")
 
-        assertEquals("BOX 4 SHINIES", repository.state().boxes[3].label)
+        assertEquals("SHINIES", repository.state().boxes[0].label)
     }
 
     @Test
-    fun `clearing a name puts the box back to its number`() {
+    fun `clearing the name puts the box back to THE BOX`() {
         val directory = temporaryFolder.newFolder()
         val repository = StorageRepository(directory)
-        repository.renameBox(2, "TRADES")
-        repository.renameBox(2, "  ")
+        repository.renameBox(StorageLayout.THE_BOX, "TRADES")
+        repository.renameBox(StorageLayout.THE_BOX, "  ")
 
-        assertNull(repository.state().boxes[1].name)
-        assertEquals("BOX 2", repository.state().boxes[1].label)
+        assertNull(repository.state().boxes[0].name)
+        assertEquals("THE BOX", repository.state().boxes[0].label)
     }
 
     @Test

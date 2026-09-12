@@ -188,8 +188,8 @@ fun StorageSystemScreen(
         marked = if (index in marked) marked - index else marked + index
     }
 
-    val box = state.storage.boxes.getOrNull(state.currentStorageBox - 1)
-    val thisBoxLabel = box?.label ?: "BOX ${state.currentStorageBox}"
+    val box = state.storage.boxes.firstOrNull()
+    val thisBoxLabel = box?.label ?: "THE BOX"
     val boxContents = box?.contents.orEmpty()
     // WITHDRAW offers everything the app holds; VIEW is about the box that is
     // open, because that is the one being rearranged.
@@ -334,7 +334,7 @@ fun StorageSystemScreen(
     StorageSystemScreen(
         outLabel = state.outLabel,
         inLabel = state.inLabel,
-        boxLabel = box?.label ?: "BOX ${state.currentStorageBox}",
+        boxLabel = thisBoxLabel,
         // Hidden rather than drawn under a message that would cover it.
         showBox = refusal == null && emptiness == null,
         // Both directions need a cartridge in the machine. If there is not one
@@ -365,8 +365,7 @@ fun StorageSystemScreen(
         },
         onView = { mode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
-        onChangeBox = { mode = PcMode.CHANGE_BOX },
-        onRenameBox = { model.prompt(Prompt.RenameBox(state.currentStorageBox)) },
+        onRenameBox = { model.prompt(Prompt.RenameBox(StorageLayout.THE_BOX)) },
         onOptions = onOptions,
         message = refusal
             ?: emptiness
@@ -418,18 +417,6 @@ fun StorageSystemScreen(
                                 model.moveStoredToSlot(it.uid, open.index, to)
                             }
                             gridSlot = null
-                        },
-                        onPreviousBox = {
-                            gridSlot = null
-                            model.setStorageBox(
-                                if (open.index <= 1) StorageLayout.BOX_COUNT else open.index - 1
-                            )
-                        },
-                        onNextBox = {
-                            gridSlot = null
-                            model.setStorageBox(
-                                if (open.index >= StorageLayout.BOX_COUNT) 1 else open.index + 1
-                            )
                         },
                         onCancel = {
                             if (heldUid != null) heldUid = null else mode = PcMode.MENU
@@ -486,19 +473,9 @@ fun StorageSystemScreen(
                             motion = TransferMotion.IN,
                             alsoSpeciesIds = rest,
                         ) {
-                            model.depositFromSave(picks, state.currentStorageBox)
+                            model.depositFromSave(picks, StorageLayout.THE_BOX)
                         }
                     },
-                )
-            })
-
-            PcMode.CHANGE_BOX -> ({
-                ChangeBoxOverlay(
-                    boxes = state.storage.boxes.map {
-                        Triple(it.index, it.label, "${it.contents.size}/${StorageLayout.BOX_CAPACITY}")
-                    },
-                    onConfirm = { model.setStorageBox(it); mode = PcMode.MENU },
-                    onCancel = { mode = PcMode.MENU },
                 )
             })
         },
@@ -602,7 +579,7 @@ fun StorageSystemScreen(
                                     model.depositFromSave(
                                         pick.key,
                                         pick.location,
-                                        state.currentStorageBox,
+                                        StorageLayout.THE_BOX,
                                     )
                                 }
                             },
@@ -626,7 +603,7 @@ fun StorageSystemScreen(
     )
 }
 
-private enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW, CHANGE_BOX }
+private enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW }
 
 /** The full status screen for one Pokémon, wherever it lives. */
 @Composable
@@ -788,9 +765,7 @@ private fun transferAction(
     StatusTransfer.DEPOSIT -> {
         if (key == null || area <= 0) null else state.inLabel to {
             model.back()
-            val where = state.storage.boxes
-                .getOrNull(state.currentStorageBox - 1)?.label
-                ?: "BOX ${state.currentStorageBox}"
+            val where = state.storage.boxes.firstOrNull()?.label ?: "THE BOX"
             model.askToSend(
                 TransferScene(
                     speciesId = pokemon.speciesId,
@@ -805,7 +780,7 @@ private fun transferAction(
                 model.depositFromSave(
                     key,
                     SaveLocation.Box(area, slot + 1),
-                    state.currentStorageBox,
+                    StorageLayout.THE_BOX,
                 )
             }
         }
@@ -1542,40 +1517,8 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 )
             }
 
-            is Prompt.ChooseBox -> Gen1Frame(opening = true) {
-                // The twelve boxes and the way out, all on the one cursor,
-                // with the list scrolling to keep up with it.
-                val boxes = (1..StorageLayout.BOX_COUNT).toList()
-                val at = rememberCursorLayer(boxes.size + 1) { index ->
-                    if (index >= boxes.size) model.dismissPrompt()
-                    else if ((state.storage.boxes.getOrNull(index)?.freeSlots ?: 0) > 0) {
-                        prompt.onChoose(boxes[index])
-                    }
-                }
-                GbText(prompt.title)
-                val scroll = rememberLazyListState()
-                LaunchedEffect(at) {
-                    if (at < boxes.size) scroll.animateScrollToItem(at)
-                }
-                LazyColumn(Modifier.heightIn(max = 320.dp), state = scroll) {
-                    itemsIndexed(boxes) { position, index ->
-                        val box = state.storage.boxes.getOrNull(index - 1)
-                        Gen1MenuRow(
-                            box?.label ?: "BOX $index",
-                            selected = at == position,
-                            onSelect = {},
-                            onConfirm = { prompt.onChoose(index) },
-                            trailing = "${box?.contents?.size ?: 0}/${StorageLayout.BOX_CAPACITY}",
-                            enabled = (box?.freeSlots ?: 0) > 0,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Gen1Button("CANCEL", model::dismissPrompt, selected = at == boxes.size)
-            }
-
             is Prompt.RenameBox -> NamePrompt(
-                heading = "BOX ${prompt.index}",
+                heading = state.storage.boxes.firstOrNull()?.label ?: "THE BOX",
                 initial = state.storage.boxes.getOrNull(prompt.index - 1)?.name.orEmpty(),
                 onDone = { model.renameBox(prompt.index, it) },
                 onCancel = model::dismissPrompt,

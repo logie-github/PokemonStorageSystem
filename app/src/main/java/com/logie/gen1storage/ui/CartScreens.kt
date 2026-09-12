@@ -201,19 +201,7 @@ private fun TitleCard(
             // art showed through every one of them.
             .drawWithContent {
                 drawContent()
-                val tile = pixel * GEN1_TILE
-                drawRect(palette.lightest, Offset.Zero, Size(size.width, tile))
-                drawRect(
-                    palette.lightest,
-                    Offset(0f, size.height - tile),
-                    Size(size.width, tile),
-                )
-                drawRect(palette.lightest, Offset.Zero, Size(tile, size.height))
-                drawRect(
-                    palette.lightest,
-                    Offset(size.width - tile, 0f),
-                    Size(tile, size.height),
-                )
+                fillGen1BorderArea(palette.lightest, pixel)
                 drawGen1Border(ink, pixel)
             },
         contentAlignment = Alignment.Center,

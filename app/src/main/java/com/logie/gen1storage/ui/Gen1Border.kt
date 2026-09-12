@@ -75,6 +75,63 @@ private val EDGE_COLUMNS = listOf(2, 4)
 /** One Game Boy pixel is an eighth of a tile. */
 const val GEN1_TILE = 8
 
+/**
+ * How far in from each edge the border's rules actually reach, in Game Boy
+ * pixels — which is not the tile, and is not the same on all four sides.
+ *
+ * The cartridge's own tiles are lopsided: the left rule sits two and four
+ * pixels in while the right sits four and six, and the horizontal rule is one
+ * pixel, a gap, then two. Anything that wants to meet the frame exactly has to
+ * read these rather than assume a tile, or it leaves a band of panel showing
+ * on some sides and none on others.
+ */
+val GEN1_RULE_LEFT = EDGE_COLUMNS.max() + 1
+val GEN1_RULE_RIGHT = GEN1_TILE - EDGE_COLUMNS.min()
+val GEN1_RULE_TOP = EDGE_ROWS.max() + 1
+val GEN1_RULE_BOTTOM = GEN1_TILE - EDGE_ROWS.min()
+
+/**
+ * Fills the ground the border is drawn on, for a window whose contents run to
+ * its edges.
+ *
+ * The tiles are mostly holes — the corners are ring-and-jog line work, the
+ * edges are a rule and a gap — so a picture drawn underneath shows through
+ * every one of them and the frame stops reading as a frame. This paints the
+ * corners out whole and each edge out as far as its own rule reaches, so the
+ * picture meets the frame exactly and stops.
+ */
+fun DrawScope.fillGen1BorderArea(fill: Color, pixel: Float) {
+    val tile = pixel * GEN1_TILE
+    val width = size.width
+    val height = size.height
+
+    // The corners go whole: their line work uses the full tile.
+    drawRect(fill, Offset.Zero, Size(tile, tile))
+    drawRect(fill, Offset(width - tile, 0f), Size(tile, tile))
+    drawRect(fill, Offset(0f, height - tile), Size(tile, tile))
+    drawRect(fill, Offset(width - tile, height - tile), Size(tile, tile))
+
+    val span = (width - tile * 2).coerceAtLeast(0f)
+    if (span > 0f) {
+        drawRect(fill, Offset(tile, 0f), Size(span, pixel * GEN1_RULE_TOP))
+        drawRect(
+            fill,
+            Offset(tile, height - pixel * GEN1_RULE_BOTTOM),
+            Size(span, pixel * GEN1_RULE_BOTTOM),
+        )
+    }
+
+    val drop = (height - tile * 2).coerceAtLeast(0f)
+    if (drop > 0f) {
+        drawRect(fill, Offset(0f, tile), Size(pixel * GEN1_RULE_LEFT, drop))
+        drawRect(
+            fill,
+            Offset(width - pixel * GEN1_RULE_RIGHT, tile),
+            Size(pixel * GEN1_RULE_RIGHT, drop),
+        )
+    }
+}
+
 /** A horizontal run of set pixels in a tile, as (x, y, length). */
 private data class Run(val x: Int, val y: Int, val length: Int)
 

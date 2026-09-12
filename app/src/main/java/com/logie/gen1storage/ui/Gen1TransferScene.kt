@@ -166,8 +166,7 @@ fun Gen1TransferScene(
                 }
             } else if (scene.motion != TransferMotion.RELEASE) {
                 Gen1Frame(Modifier.wrapContentWidth()) {
-                    GbText("${scene.motion.gerund} ${scene.name} to")
-                    GbText("${scene.destination}.")
+                    GbText("${scene.motion.gerund} ${scene.name} to ${inSentence(scene.destination)}.")
                     // One is arriving and the other is leaving, and the same
                     // word cannot be right for both.
                     //
@@ -188,6 +187,17 @@ fun Gen1TransferScene(
         }
     }
 }
+
+/**
+ * A place named inside a sentence rather than over a window.
+ *
+ * The PC and the save are called "THE PC" and "THE SAVE" where they head a
+ * window, which is the register the menus are written in. In a sentence that
+ * article is not part of the name and reads as shouting, so it is let down: a
+ * trainer's name, which is a name all the way through, is left alone.
+ */
+private fun inSentence(place: String): String =
+    if (place.startsWith("THE ")) "the " + place.removePrefix("THE ") else place
 
 /**
  * The Poké Ball as the games draw it in the battle HUD — the first tile of

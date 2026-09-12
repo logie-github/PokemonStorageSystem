@@ -337,14 +337,18 @@ fun StorageSystemScreen(
         outLabel = state.outLabel,
         inLabel = state.inLabel,
         boxLabel = thisBoxLabel,
-        // Both belong to the menu and go when the menu does: a list open over
-        // them, a question in the middle of the screen, or a window come up at
-        // the foot of it. A message landing on top of the box's name is why
-        // the name goes rather than being drawn under it.
-        showBox = atMenu && state.prompt == null && state.transferScene == null,
-        // The exception is a list that would not open. The message is the only
-        // thing saying why, so it stays even though the menu has been left.
-        showMessage = atMenu || refusal != null || emptiness != null,
+        // The caption and the box's name belong to the menu and go when the
+        // menu does: a list open over them, a question in the middle of the
+        // screen, or a message come up at the foot of it. The name goes under
+        // a message rather than being drawn beneath it — half a window showing
+        // past the edge of another reads as a mistake.
+        notice = refusal ?: emptiness,
+        showCaption = atMenu && refusal == null && emptiness == null,
+        showBox = atMenu &&
+            refusal == null &&
+            emptiness == null &&
+            state.prompt == null &&
+            state.transferScene == null,
         // Both directions need a cartridge in the machine. If there is not one
         // yet, that is the only question worth asking, so it gets the whole
         // screen rather than a window over this one.
@@ -375,13 +379,11 @@ fun StorageSystemScreen(
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onRenameBox = { model.prompt(Prompt.RenameBox(StorageLayout.THE_BOX)) },
         onOptions = onOptions,
-        message = refusal
-            ?: emptiness
-            ?: when {
-                !state.linked -> "Link this device in OPTIONS."
-                needsCart -> "No cart in the machine."
-                else -> "What?"
-            },
+        caption = when {
+            !state.linked -> "Link this device in OPTIONS."
+            needsCart -> "No cart in the machine."
+            else -> "What?"
+        },
         overlay = if (emptiness != null) null else when (mode) {
             PcMode.MENU -> null
 

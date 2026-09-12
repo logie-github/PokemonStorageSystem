@@ -135,15 +135,22 @@ fun StorageSystemScreen(
     /**
      * Whether the window naming the box is on screen.
      *
-     * It belongs to the menu: once a list is open over it, or a message window
-     * has come up at the foot of the screen, it is furniture behind something
-     * nobody is looking at — and at the bottom of the screen it is the thing a
-     * message lands on top of.
+     * It belongs to the menu: once a list is open over it, or a message has
+     * come up at the foot of the screen, it is furniture behind something
+     * nobody is looking at — and down there it is the thing a message lands on
+     * top of.
      */
     showBox: Boolean = true,
-    /** Whether the PC is saying anything. Same reasoning as [showBox]. */
-    showMessage: Boolean = true,
-    message: String = "What?",
+    /** Whether the machine's own caption is on screen. Same as [showBox]. */
+    showCaption: Boolean = true,
+    /** What the machine says while it is waiting: "What?", and its like. */
+    caption: String = "What?",
+    /**
+     * An answer to something just done — a list that would not open, a
+     * transfer refused. It is an event rather than a state, so it comes up at
+     * the foot of the screen where messages come up, not hung off the menu.
+     */
+    notice: String? = null,
     overlay: @Composable (() -> Unit)? = null,
     action: @Composable (() -> Unit)? = null,
 ) {
@@ -159,12 +166,13 @@ fun StorageSystemScreen(
         if (onOptions != null) add(Triple("OPTIONS", onOptions, SoundEffect.OPTIONS))
     }
 
-    // The menu and what the PC is saying are one block in the top corner, in
-    // that order: the message is the menu talking, so it hangs off the bottom
-    // of the menu rather than sitting at the foot of the screen with the whole
+    // The menu and the machine's caption are one block in the top corner, in
+    // that order: the caption is the menu idling, so it hangs off the bottom of
+    // the menu rather than sitting at the foot of the screen with the whole
     // screen between it and the thing it is about. Then whatever list is open
     // over them, then the window naming the box in the far bottom corner, then
-    // the small window that opens on a chosen Pokémon above everything.
+    // an answer to something just done at the foot of the screen, then the
+    // small window that opens on a chosen Pokémon above everything.
     //
     // Which edge they sit against is a setting. Everything mirrors together, so
     // the menu and the list keep overlapping the same way round either way.
@@ -184,10 +192,10 @@ fun StorageSystemScreen(
                     Gen1MenuRow(label, selected == index, {}, action, sound = sound)
                 }
             }
-            if (showMessage) {
+            if (showCaption) {
                 Spacer(Modifier.height(gen1Dp(3)))
                 Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) {
-                    Gen1TypedLines(listOf(message))
+                    Gen1TypedLines(listOf(caption))
                 }
             }
         }
@@ -212,6 +220,19 @@ fun StorageSystemScreen(
                         }
                 ) {
                     GbText(boxLabel.uppercase())
+                }
+            }
+        }
+
+        if (notice != null) {
+            Box(
+                Modifier.fillMaxSize(),
+                // Where messages come up, against the same edge as the menu
+                // and the windows that open under it.
+                contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
+            ) {
+                Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth(), opening = true) {
+                    Gen1TypedLines(listOf(notice))
                 }
             }
         }

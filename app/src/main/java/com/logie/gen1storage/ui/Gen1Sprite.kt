@@ -52,8 +52,12 @@ fun Gen1Sprite(
      * like it had never arrived.
      */
     revision: Int = 0,
-    /** Width and height in Game Boy pixels; the games draw a front sprite at 56. */
-    sizeInPixels: Int = 56,
+    /**
+     * Width and height in Game Boy pixels; the games draw a front sprite at
+     * 56. Null leaves the size to the modifier, for a sprite that is meant to
+     * fill whatever it is given.
+     */
+    sizeInPixels: Int? = 56,
     onLongPress: ((String) -> Unit)? = null,
     onTap: (() -> Unit)? = null,
     /** Drops the sprite's white field, for a sprite that sits on a window. */
@@ -82,7 +86,7 @@ fun Gen1Sprite(
 
     Box(
         modifier
-            .size(gen1Dp(sizeInPixels))
+            .then(if (sizeInPixels == null) Modifier else Modifier.size(gen1Dp(sizeInPixels)))
             .then(
                 if (speciesId != null && (onLongPress != null || onTap != null)) {
                     // Claims the hold when it has one of its own, so the back

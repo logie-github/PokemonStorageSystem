@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -273,10 +275,7 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
     val fallback = "CARD $slot"
     val title = remember(key, state.cartRevision) { model.cartName(key) }?.uppercase() ?: fallback
     val chosen = remember(key, state.cartRevision) { model.trainerSprite(key) }
-    // The three things this card can be told to do, and then the way out. They
-    // are sized together so the stack reads as one control rather than as
-    // three windows that happen to be near each other; BACK is not one of the
-    // three and is left to its own width.
+    // The three things this card can be told to do, and then the way out.
     val actions = listOf<Pair<String, () -> Unit>>(
         "INSERT" to { model.chooseCart(key, thenOpenStorage = true) },
         "TRAINER" to { model.prompt(Prompt.ChooseTrainerSprite(key)) },
@@ -300,24 +299,24 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
                 full = true,
             )
         }
+        // One window with four rows in it, the way every other menu in the app
+        // is drawn. Four windows in a stack is four things to look at where
+        // there is one thing to choose from, and the cursor ends up outside
+        // them all pointing at whichever is nearest.
         item {
-            Column(
-                Modifier.width(IntrinsicSize.Max),
-                verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+            Gen1Frame(
+                Modifier.wrapContentWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
-                actions.dropLast(1).forEachIndexed { index, (label, action) ->
-                    Gen1BoxButton(
+                actions.forEachIndexed { index, (label, action) ->
+                    Gen1MenuRow(
                         label,
-                        action,
-                        modifier = Modifier.fillMaxWidth(),
                         selected = at == index,
+                        onSelect = {},
+                        onConfirm = action,
                     )
                 }
             }
-        }
-        item {
-            val index = actions.lastIndex
-            Gen1BoxButton(actions[index].first, actions[index].second, selected = at == index)
         }
     }
 }

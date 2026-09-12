@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -80,10 +81,11 @@ fun Gen1TrainerCard(
         fill = palette.lightest,
         ink = palette.darkest,
     ) {
-        // The portrait's column is as tall as everything beside it, and the
-        // sprite stands at the foot of it. A card is a picture of somebody
-        // with their details written next to them, and somebody floating in
-        // the top corner over a column of empty space is neither.
+        // Everything written about the card goes in one column and the
+        // portrait stands beside all of it, as tall as the card itself. A
+        // card is a picture of somebody with their details written next to
+        // them; somebody in a small window in the top corner, with a column
+        // of empty space under them, is neither.
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Column(Modifier.weight(1f)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -97,60 +99,62 @@ fun Gen1TrainerCard(
                 Field("NAME", trainer)
                 Field("MONEY", save?.money?.let { "¥$it" } ?: " ")
                 Field("TIME", save?.playTimeText ?: " ")
+
+                Badges(
+                    save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
+                    trainers,
+                    spriteRevision,
+                )
+
+                if (full) {
+                    Spacer(Modifier.height(gen1Dp(3)))
+                    Field("GAME", GameVersion.fromId(remote.version.id)?.label ?: "?")
+                    Field(
+                        "POKéMON",
+                        save?.let { "${it.partyCount} OUT, ${it.storedCount} STORED" } ?: " ",
+                    )
+                    Field("SEEN", save?.let { "${it.dexOwnedCount}" } ?: " ")
+                    Field("BOXES", save?.let { "${it.boxCount}" } ?: " ")
+                }
             }
 
-            // The card's own corner, as the games put the player there.
-            //
-            // The trainer the player picked, and until they pick one the
-            // party's lead — which is what this corner held before there were
-            // trainers to choose from, so a card is never empty for the sake
-            // of a choice nobody has made yet.
+            // The card's own corner, as the games put the player there: the
+            // trainer, and the first Pokémon in the party standing beside
+            // them. Both are as tall as everything written next to them and
+            // square, so the portrait grows with the card rather than sitting
+            // in a fixed little window in the corner of it.
             //
             // Cut out rather than painted: the decomps draw these on a white
-            // field, and on a tinted card that field is a white plate with a
-            // trainer standing on it.
-            val side = if (full) FULL_PORTRAIT_PIXELS else SMALL_PORTRAIT_PIXELS
-            Box(
-                Modifier.width(gen1Dp(side)).fillMaxHeight(),
-                contentAlignment = Alignment.BottomEnd,
+            // field, and on a tinted card that field is a white plate with
+            // somebody standing on it.
+            Row(
+                Modifier.fillMaxHeight(),
+                verticalAlignment = Alignment.Bottom,
             ) {
-                when {
-                    trainerSprite != null -> Gen1TrainerSprite(
-                        id = trainerSprite,
-                        store = trainers,
-                        revision = spriteRevision,
-                        modifier = Modifier.fillMaxSize(),
-                        sizeInPixels = null,
-                        cutout = true,
-                    )
-                    read -> Gen1Sprite(
-                        speciesId = lead?.speciesId,
+                if (read && lead != null) {
+                    Gen1Sprite(
+                        speciesId = lead.speciesId,
                         gameVersionId = remote.version.id,
                         store = sprites,
                         revision = spriteRevision,
-                        sizeInPixels = side,
+                        modifier = Modifier.fillMaxHeight().aspectRatio(1f, true),
+                        sizeInPixels = null,
+                        cutout = true,
+                    )
+                }
+                if (trainerSprite != null) {
+                    Gen1TrainerSprite(
+                        id = trainerSprite,
+                        store = trainers,
+                        revision = spriteRevision,
+                        modifier = Modifier.fillMaxHeight().aspectRatio(1f, true),
+                        sizeInPixels = null,
                         cutout = true,
                     )
                 }
             }
         }
 
-        Badges(
-            save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
-            trainers,
-            spriteRevision,
-        )
-
-        if (full) {
-            Spacer(Modifier.height(gen1Dp(3)))
-            Field("GAME", GameVersion.fromId(remote.version.id)?.label ?: "?")
-            Field(
-                "POKéMON",
-                save?.let { "${it.partyCount} OUT, ${it.storedCount} STORED" } ?: " ",
-            )
-            Field("SEEN", save?.let { "${it.dexOwnedCount}" } ?: " ")
-            Field("BOXES", save?.let { "${it.boxCount}" } ?: " ")
-        }
     }
 }
 
@@ -254,10 +258,6 @@ private fun Badge(gym: Int, earned: Boolean, trainers: TrainerStore, revision: I
         }
     }
 }
-
-/** How wide the portrait's column is, in game pixels. */
-private const val FULL_PORTRAIT_PIXELS = 56
-private const val SMALL_PORTRAIT_PIXELS = 32
 
 /** One badge's side, in game pixels — the sheet's own tile, scaled whole. */
 private const val BADGE_PIXELS = 16

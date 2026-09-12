@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The artwork on a flat shade, with the launcher free to mask it into whatever
-  shape the system is set to. The foreground keeps well inside the safe zone,
-  so a circular mask does not clip the machine.
+  The artwork alone, with the launcher free to mask it into whatever shape the
+  system is set to. The foreground keeps well inside the safe zone, so a
+  circular mask does not clip the machine.
+
+  Nothing behind it. A launcher draws its own container under an icon — the
+  grey rounded square the rest of the home screen sits on, or the tint of a
+  themed set — and an icon carrying its own flat shade sits inside that as a
+  second, paler tile with the machine stranded in the middle of it. Transparent,
+  the machine sits on the launcher's container the way every other icon does.
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/gb_light" />
+    <background android:drawable="@android:color/transparent" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
     <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>

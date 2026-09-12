@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -146,25 +145,13 @@ fun ChooseCartScreen(
 
         val scroll = rememberLazyListState()
         LaunchedEffect(cursor, columns) { scroll.scrollToRow(cursor / columns) }
-        val rows = saves.chunked(columns)
-        // A single card takes the rest of the screen rather than sitting in
-        // the top corner of it with the ground running out underneath — a
-        // card is the thing this screen is about, and one of them shown at
-        // its own small height left the screen looking half drawn. From two
-        // rows up they take their own heights and the list scrolls, because
-        // dividing the screen between them would squash every one of them
-        // instead.
-        val onlyRow = rows.size == 1
         LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
             state = scroll,
             verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
         ) {
-            items(rows) { row ->
+            items(saves.chunked(columns)) { row ->
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .then(if (onlyRow) Modifier.fillParentMaxHeight() else Modifier),
+                    Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
                 ) {
                     row.forEach { remote ->
@@ -177,9 +164,7 @@ fun ChooseCartScreen(
                             cursor = cursor == index,
                             loaded = !sending && state.activeSaveKey == remote.key,
                             onChoose = { choose(remote) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .then(if (onlyRow) Modifier.fillMaxHeight() else Modifier),
+                            modifier = Modifier.weight(1f),
                         )
                     }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }

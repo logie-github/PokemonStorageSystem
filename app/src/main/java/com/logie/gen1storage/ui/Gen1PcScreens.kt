@@ -143,6 +143,15 @@ fun StorageSystemScreen(
     showBox: Boolean = true,
     /** Whether the machine's own caption is on screen. Same as [showBox]. */
     showCaption: Boolean = true,
+    /**
+     * Whether the menu itself is on screen.
+     *
+     * The box takes the whole corner the menu sits in, so with both up the
+     * menu is not behind the box, it is shoving it along. Better to put the
+     * menu away while the box is open: B brings it back, which is the same
+     * gesture that closed it.
+     */
+    showMenu: Boolean = true,
     /** What the machine says while it is waiting: "What?", and its like. */
     caption: String = "What?",
     /**
@@ -153,6 +162,16 @@ fun StorageSystemScreen(
     notice: String? = null,
     overlay: @Composable (() -> Unit)? = null,
     action: @Composable (() -> Unit)? = null,
+    /**
+     * What the cursor is on, drawn in the half of the screen the menus do not
+     * use — only where there is a half to spare.
+     *
+     * A folded phone has one column and this never appears on one. Opened up
+     * there is a whole side sitting empty beside every list, and the thing
+     * worth putting in it is whatever the cursor is pointing at, so that
+     * walking a list reads the Pokémon as it goes rather than after it stops.
+     */
+    preview: @Composable (() -> Unit)? = null,
 ) {
     val rows: List<Triple<String, () -> Unit, SoundEffect>> = buildList {
         // Named for which way the Pokémon is going, not for which side of
@@ -182,20 +201,36 @@ fun StorageSystemScreen(
             .gen1Ground()
             .padding(gen1Dp(2)),
     ) {
-        val selected = rememberCursorLayer(rows.size) { rows[it].second() }
-        Column(
-            Modifier.align(Gen1Layout.corner(top = true, menuSide = true)),
-            horizontalAlignment = Gen1Layout.menuSide,
-        ) {
-            Gen1Frame(Modifier.wrapContentWidth()) {
-                rows.forEachIndexed { index, (label, action, sound) ->
-                    Gen1MenuRow(label, selected == index, {}, action, sound = sound)
+        // Under everything: the windows keep their own edge and the pane fills
+        // what is left, so neither has to know about the other.
+        if (preview != null && isUnfolded()) {
+            Row(Modifier.fillMaxSize()) {
+                if (Gen1Layout.windowsOnRight) {
+                    Box(Modifier.weight(1f)) { preview() }
+                    Spacer(Modifier.weight(1f))
+                } else {
+                    Spacer(Modifier.weight(1f))
+                    Box(Modifier.weight(1f)) { preview() }
                 }
             }
-            if (showCaption) {
-                Spacer(Modifier.height(gen1Dp(3)))
-                Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) {
-                    Gen1TypedLines(listOf(caption))
+        }
+
+        if (showMenu) {
+            val selected = rememberCursorLayer(rows.size) { rows[it].second() }
+            Column(
+                Modifier.align(Gen1Layout.corner(top = true, menuSide = true)),
+                horizontalAlignment = Gen1Layout.menuSide,
+            ) {
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    rows.forEachIndexed { index, (label, action, sound) ->
+                        Gen1MenuRow(label, selected == index, {}, action, sound = sound)
+                    }
+                }
+                if (showCaption) {
+                    Spacer(Modifier.height(gen1Dp(3)))
+                    Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth()) {
+                        Gen1TypedLines(listOf(caption))
+                    }
                 }
             }
         }
@@ -269,6 +304,12 @@ fun MonListOverlay(
     /** The row that acts on everything ticked. Absent while nothing is. */
     actionLabel: String? = null,
     onAction: () -> Unit = {},
+    /**
+     * Which row the cursor is on, as it moves — for the pane beside the list
+     * on a screen wide enough to have one. Null while it is on CANCEL or the
+     * button, where there is no Pokémon to be looking at.
+     */
+    onHighlight: (Int?) -> Unit = {},
 ) {
     // Once anything is ticked the list is choosing a set, so a row toggles
     // rather than opening the window on one Pokémon. That window is where a
@@ -295,6 +336,7 @@ fun MonListOverlay(
     // bottom.
     LaunchedEffect(selected) {
         if (selected <= cancelAt) scroll.animateScrollToItem(selected)
+        onHighlight(selected.takeIf { it < entries.size })
     }
     Box(
         Modifier.fillMaxSize(),

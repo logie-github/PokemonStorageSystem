@@ -417,6 +417,11 @@ fun BoxGridOverlay(
     onTap: (Int) -> Unit,
     onMove: (from: Int, to: Int) -> Unit,
     onCancel: () -> Unit,
+    /**
+     * Which spot the cursor is on, as it moves — for the pane beside the box
+     * on a screen wide enough to have one.
+     */
+    onHighlight: (Int) -> Unit = {},
 ) {
     // The grid owns the cursor while this window is open, and a tap puts the
     // cursor where the finger went so both ways of driving it agree about
@@ -430,6 +435,7 @@ fun BoxGridOverlay(
     // Once, on the way in: after that the cursor is the player's.
     LaunchedEffect(Unit) { startSlot?.let { layer.index = it.coerceIn(0, slots - 1) } }
     val cursorSlot = layer.index
+    LaunchedEffect(cursorSlot) { onHighlight(cursorSlot) }
 
     Box(
         Modifier.fillMaxSize(),

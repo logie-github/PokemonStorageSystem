@@ -48,6 +48,21 @@ fun Gen1StatusScreen(
     store: SpriteStore,
     spriteRevision: Int,
     modifier: Modifier = Modifier,
+    /**
+     * Whether this is the screen or a pane inside one.
+     *
+     * The screen keeps to half the width when there is a lot of it, so what
+     * it was opened from stays readable beside it. A pane has already been
+     * given its half and fills it.
+     */
+    inPane: Boolean = false,
+    /**
+     * Whether opening this Pokémon is worth hearing.
+     *
+     * A pane that follows the cursor would cry on every step of it, which is
+     * thirty cries crossing a box.
+     */
+    speaks: Boolean = true,
     onSpriteLongPress: ((String) -> Unit)? = null,
     footer: @Composable () -> Unit = {},
     /**
@@ -62,13 +77,15 @@ fun Gen1StatusScreen(
     // One cry, when a Pokémon is opened — not on every page turn, and not
     // again when something unrelated recomposes.
     val cries = LocalGen1Audio.current
-    LaunchedEffect(pokemon.fingerprint) { cries?.cry(pokemon.species?.dexNumber) }
+    LaunchedEffect(pokemon.fingerprint, speaks) {
+        if (speaks) cries?.cry(pokemon.species?.dexNumber)
+    }
 
     Row(modifier.fillMaxSize().padding(gen1Dp(4))) {
         // Unfolded, the pages keep to the left half in a window of their own
         // rather than turning that half into a white wall — the screen behind
         // stays visible around it, as it does everywhere else.
-        Column(Modifier.fillMaxWidth(if (isUnfolded()) 0.5f else 1f)) {
+        Column(Modifier.fillMaxWidth(if (isUnfolded() && !inPane) 0.5f else 1f)) {
         Gen1Frame(
             Modifier
                 .fillMaxWidth()
@@ -112,8 +129,10 @@ fun Gen1StatusScreen(
     }
 
     // Opposite the menus, so it never lands under whatever they are showing.
-    Box(Modifier.fillMaxSize().padding(gen1Dp(4))) {
-        Box(Modifier.align(Gen1Layout.corner(top = false, menuSide = false))) { footer() }
+    if (!inPane) {
+        Box(Modifier.fillMaxSize().padding(gen1Dp(4))) {
+            Box(Modifier.align(Gen1Layout.corner(top = false, menuSide = false))) { footer() }
+        }
     }
 }
 

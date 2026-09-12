@@ -44,6 +44,7 @@ import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sound.SoundEffect
+import com.logie.gen1storage.storage.StorageBox
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StoredPokemon
@@ -170,6 +171,9 @@ fun StorageSystemScreen(
     // Picked up by MOVE and waiting for somewhere to go. A drag does the same
     // journey in one gesture and never sets this.
     var heldUid by remember(mode) { mutableStateOf<String?>(null) }
+    // Where the cursor is in whatever is open, for the pane beside it. Only
+    // ever read on a screen wide enough to have a pane.
+    var highlighted by remember(mode) { mutableStateOf<Int?>(null) }
     // Cleared after a transfer, so the ticks do not outlive what they pointed
     // at — every index shifts the moment something leaves a list.
     //
@@ -344,6 +348,10 @@ fun StorageSystemScreen(
         // past the edge of another reads as a mistake.
         notice = refusal ?: emptiness,
         showCaption = atMenu && refusal == null && emptiness == null,
+        // The box opens into the corner the menu is in, so the menu goes
+        // rather than being pushed along by it. Every other list overlaps the
+        // menu the way the cartridge's do and leaves it where it is.
+        showMenu = mode != PcMode.VIEW,
         showBox = atMenu &&
             refusal == null &&
             emptiness == null &&
@@ -431,6 +439,7 @@ fun StorageSystemScreen(
                         onCancel = {
                             if (heldUid != null) heldUid = null else mode = PcMode.MENU
                         },
+                        onHighlight = { highlighted = it },
                     )
                 }
             })
@@ -449,6 +458,7 @@ fun StorageSystemScreen(
                         mode == PcMode.WITHDRAW && marked.isNotEmpty() && state.saves.isNotEmpty()
                     },
                     onAction = { startWithdraw(marked.mapNotNull { stored.getOrNull(it)?.uid }) },
+                    onHighlight = { highlighted = it },
                 )
             })
 
@@ -486,9 +496,15 @@ fun StorageSystemScreen(
                             model.depositFromSave(picks, StorageLayout.THE_BOX)
                         }
                     },
+                    onHighlight = { highlighted = it },
                 )
             })
         },
+        // The spare half of an opened screen, showing whatever the cursor is
+        // on: the same pages the status screen draws, so walking a list reads
+        // a Pokémon as it goes rather than after it stops. A folded phone has
+        // no spare half and never sees this.
+        preview = previewOf(mode, highlighted, box, stored, depositRows, state, model),
         action = when {
             mode == PcMode.WITHDRAW && storedPick != null -> ({
                 MonActionOverlay(
@@ -611,6 +627,62 @@ fun StorageSystemScreen(
             else -> null
         },
     )
+}
+
+/**
+ * The pane beside an open list: the Pokémon the cursor is on, drawn as the
+ * status screen draws one.
+ *
+ * Null wherever there is nothing to look at — on the menu, on an empty spot,
+ * on CANCEL — so the half simply stays empty rather than holding the last
+ * thing that happened to be under the cursor.
+ *
+ * It is the status screen itself rather than a summary of it, so the pages
+ * are the pages: stats, and moves behind a tap. It says nothing out loud,
+ * because a cry per step of the cursor is thirty cries across a box.
+ */
+@Composable
+private fun previewOf(
+    mode: PcMode,
+    highlighted: Int?,
+    box: StorageBox?,
+    stored: List<StoredPokemon>,
+    depositRows: List<PartyRow>,
+    state: UiState,
+    model: StorageViewModel,
+): (@Composable () -> Unit)? {
+    val index = highlighted ?: return null
+    val pokemon: Gen1Pokemon?
+    val gameVersionId: String?
+    when (mode) {
+        PcMode.VIEW -> {
+            val here = box?.slots?.getOrNull(index)
+            pokemon = here?.pokemon
+            gameVersionId = here?.provenance?.gameVersion
+        }
+        PcMode.WITHDRAW -> {
+            val here = stored.getOrNull(index)
+            pokemon = here?.pokemon
+            gameVersionId = here?.provenance?.gameVersion
+        }
+        PcMode.DEPOSIT -> {
+            val here = depositRows.getOrNull(index)
+            pokemon = here?.mon
+            gameVersionId = state.remote(here?.key)?.version?.id
+        }
+        PcMode.MENU -> return null
+    }
+    val shown = pokemon ?: return null
+    return {
+        Gen1StatusScreen(
+            pokemon = shown,
+            gameVersionId = gameVersionId,
+            store = model.sprites,
+            spriteRevision = state.spriteRevision,
+            inPane = true,
+            speaks = false,
+        )
+    }
 }
 
 /**

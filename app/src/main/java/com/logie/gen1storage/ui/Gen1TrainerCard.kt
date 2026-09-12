@@ -126,7 +126,11 @@ fun Gen1TrainerCard(
                 Portrait(
                     modifier = portraitModifier,
                     width = width,
-                    trainerSprite = trainerSprite,
+                    // A card nobody has dressed wears the player, which is who
+                    // is on a trainer card. It used to wear nothing at all,
+                    // and a card with only the party's lead on it reads as a
+                    // card that failed to load rather than as a default.
+                    trainerSprite = trainerSprite ?: TrainerStore.PLAYER,
                     trainers = trainers,
                     lead = if (read) lead else null,
                     gameVersionId = remote.version.id,
@@ -385,7 +389,7 @@ fun TrainerSpritePicker(
     onCancel: () -> Unit,
 ) {
     val rows = TrainerStore.ALL
-    // NONE, then every trainer, then the way out.
+    // The player, then every trainer, then the way out.
     val count = rows.size + 2
     val at = rememberCursorLayer(count) { index ->
         when (index) {
@@ -401,13 +405,24 @@ fun TrainerSpritePicker(
         GbText("TRAINER")
         LazyColumn(Modifier.heightIn(max = 360.dp), state = scroll) {
             item {
-                Gen1MenuRow(
-                    "NONE",
-                    selected = at == 0,
-                    onSelect = {},
-                    onConfirm = { onChoose(null) },
-                    mark = chosen == null,
-                )
+                // The card's own default, shown as itself. It read as "NONE"
+                // with nothing beside it, which named the one row that is not
+                // an absence of anything: taking it puts the player back.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Gen1TrainerSprite(
+                        id = TrainerStore.PLAYER,
+                        store = store,
+                        revision = revision,
+                        sizeInPixels = PICKER_SPRITE_PIXELS,
+                    )
+                    Gen1MenuRow(
+                        "PLAYER",
+                        selected = at == 0,
+                        onSelect = {},
+                        onConfirm = { onChoose(null) },
+                        mark = chosen == null,
+                    )
+                }
             }
             itemsIndexed(rows) { index, trainer ->
                 Row(verticalAlignment = Alignment.CenterVertically) {

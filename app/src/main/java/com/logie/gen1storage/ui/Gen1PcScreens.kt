@@ -175,16 +175,20 @@ fun StorageSystemScreen(
     preview: @Composable (() -> Unit)? = null,
 ) {
     val rows: List<Triple<String, () -> Unit, SoundEffect>> = buildList {
-        // The box first, because it is the one row that always works and the
-        // one a player wants most of the time. Taking a Pokémon out starts
-        // there too: picking one in the box is how you say which one, and a
+        // The card first. It is the first thing that happens — the machine
+        // asks for a card before it will do anything else — and it is what
+        // the row under it depends on, so it leads the menu the way inserting
+        // one leads everything else.
+        add(Triple("TRAINER CARD", onChangeCart, SoundEffect.CURSOR))
+        // Then the box, which is the row that always works and the one a
+        // player wants most of the time. Taking a Pokémon out starts there
+        // too: picking one in the box is how you say which one, and a
         // separate list saying the same thing was the same trip twice.
         add(Triple("VIEW PC BOX", onView, SoundEffect.SELECT))
         // Bringing one in needs somewhere to bring it from, so it is not
         // offered until there is a card in the machine. A row that always
         // answers "put a card in first" is a row that never did anything.
         if (hasCard) add(Triple("$inLabel PKMN", onDeposit, SoundEffect.SELECT))
-        add(Triple("TRAINER CARD", onChangeCart, SoundEffect.CURSOR))
         if (onTrade != null) add(Triple("TRADE", onTrade, SoundEffect.SELECT))
         if (onDex != null) add(Triple("POKéDEX", onDex, SoundEffect.SELECT))
         // Everything the cartridge's PC does not have lives behind this row.

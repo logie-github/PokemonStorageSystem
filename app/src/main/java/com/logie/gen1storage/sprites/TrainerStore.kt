@@ -163,7 +163,9 @@ class TrainerStore(private val directory: File) {
      * trainer stands on the card rather than on a white plate.
      */
     fun load(id: String, cutout: Boolean = false): ImageBitmap? {
-        if (ALL.none { it.id == id }) return null
+        // The player is not one of the trainer classes and is still a picture
+        // a card can wear, so the extras are askable for by name too.
+        if (ALL.none { it.id == id } && id !in EXTRA_ART) return null
         val key = "$tintId/${if (cutout) "cut/" else ""}$id"
         memory[key]?.let { return it }
 
@@ -252,6 +254,16 @@ class TrainerStore(private val directory: File) {
 
         private const val ROOT_URL = "https://raw.githubusercontent.com/pret/pokered/$COMMIT"
 
+        /**
+         * The player's own pic, which is who a trainer card has on it.
+         *
+         * `gfx/player/red.png` — the picture the cartridge draws in the Hall
+         * of Fame and on the card itself, at the same fifty-six pixels every
+         * other trainer is drawn at. It is what a card wears until its owner
+         * picks somebody else.
+         */
+        const val PLAYER = "player"
+
         /** The badge sheet, kept under this name beside the trainers. */
         const val BADGE_SHEET = "badges"
 
@@ -293,6 +305,7 @@ class TrainerStore(private val directory: File) {
          * download standing between them and a trade.
          */
         val EXTRA_ART: Map<String, String> = linkedMapOf(
+            PLAYER to "gfx/player/red.png",
             BADGE_SHEET to "gfx/trainer_card/badges.png",
             TRADE_GAME_BOY to "gfx/trade/game_boy.png",
             TRADE_CABLE to "gfx/trade/link_cable.png",

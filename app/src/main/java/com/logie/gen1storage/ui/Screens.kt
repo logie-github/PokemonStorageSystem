@@ -1382,6 +1382,14 @@ fun CreditsScreen() {
                 item { GbText("CREDITS", style = Gen1TextLarge) }
                 item {
                     Credit(
+                        "GEN 1 RECOMP",
+                        "BY BRYANTHABOI",
+                        "github.com/bryanthaboi/",
+                        "gen1recomp",
+                    )
+                }
+                item {
+                    Credit(
                         "SPRITES",
                         "THE RBY SPRITES PROJECT",
                         "BY SHIRATHEMOGUL",
@@ -1435,14 +1443,6 @@ fun CreditsScreen() {
                         "GAME DATA",
                         "PRET/POKERED",
                         "github.com/pret/pokered",
-                    )
-                }
-                item {
-                    Credit(
-                        "SAVES",
-                        "GEN1RECOMP",
-                        "github.com/bryanthaboi/",
-                        "gen1recomp",
                     )
                 }
                 item { Spacer(Modifier.height(gen1Dp(4))) }

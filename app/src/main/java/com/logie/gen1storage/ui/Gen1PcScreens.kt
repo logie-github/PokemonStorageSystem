@@ -396,6 +396,8 @@ fun MonActionOverlay(
     actions: List<MonAction>,
     onCancel: () -> Unit,
     note: String? = null,
+    /** What the way out is called, where the menu is a step rather than a question. */
+    cancelLabel: String = "CANCEL",
 ) {
     val selected = rememberCursorLayer(actions.size + 1) { index ->
         val action = actions.getOrNull(index)
@@ -420,7 +422,7 @@ fun MonActionOverlay(
                     enabled = entry.enabled,
                 )
             }
-            Gen1MenuRow("CANCEL", selected == actions.size, {}, onCancel)
+            Gen1MenuRow(cancelLabel, selected == actions.size, {}, onCancel)
             if (note != null) GbText(note, style = Gen1TextSmall)
         }
     }

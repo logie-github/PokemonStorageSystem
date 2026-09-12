@@ -162,7 +162,6 @@ fun StorageSystemScreen(
     model: StorageViewModel,
     onOptions: (() -> Unit)? = null,
 ) {
-    val shareContext = LocalContext.current
     var mode by remember { mutableStateOf(PcMode.MENU) }
     var chosen by remember(mode) { mutableStateOf<Int?>(null) }
     // Which rows of the open list a transfer will act on. Empty is the plain
@@ -390,11 +389,13 @@ fun StorageSystemScreen(
                         revision = state.spriteRevision,
                         heldName = held,
                         startSlot = gridSlot,
-                        // Tapping a Pokémon opens its stats, because that
-                        // is what tapping one is asking for nine times in ten.
-                        // Tapping the same one again — after coming back from
-                        // those stats — is the second question, and opens what
-                        // can be done with it.
+                        // Tapping a Pokémon opens what can be done with it.
+                        // It used to open its stats and want a second tap for
+                        // the list, which left the one thing a player came to
+                        // the box to do — send it to a cartridge — two taps
+                        // and a screen away, with nothing on the stats screen
+                        // saying it was there. Stats are the first row of the
+                        // list instead, so the first tap answers both.
                         onTap = { slot ->
                             val carrying = heldUid
                             val here = open.slots.getOrNull(slot)
@@ -405,10 +406,9 @@ fun StorageSystemScreen(
                                     gridSlot = null
                                 }
                                 here == null -> gridSlot = null
-                                gridSlot == slot -> chosen = slot
                                 else -> {
                                     gridSlot = slot
-                                    statusOf(here.uid, null)?.let(model::open)
+                                    chosen = slot
                                 }
                             }
                         },
@@ -557,71 +557,29 @@ fun StorageSystemScreen(
             })
 
             mode == PcMode.VIEW && storedPick != null -> ({
-                // Deliberately cannot transfer: this side only rearranges the
-                // PC or releases — so there is no way to reach a save from
-                // here by accident. Stats are the first tap on the grid.
                 val name = storedPick.pokemon.displayName.uppercase()
                 MonActionOverlay(
                     actions = listOf(
+                        // Sending it to a cartridge starts here: the box is
+                        // where a Pokémon is picked, so it is where the choice
+                        // to send it belongs. With no card in the machine this
+                        // asks which one rather than not being offered — there
+                        // is always somewhere for it to go, and a row that is
+                        // missing looks like a thing the app cannot do.
+                        MonAction(TRANSFER_LABEL, {
+                            startWithdraw(listOf(storedPick.uid))
+                            gridSlot = null
+                        }),
+                        MonAction("STATS", {
+                            chosen = null
+                            statusOf(storedPick.uid, null)?.let(model::open)
+                        }),
                         // Picks it up. From here a tap on any spot puts it
                         // down, and the box arrows still work, so moving one
                         // to another box is the same gesture as moving it two
                         // spots left.
-                        // Taking it out starts here now: the box is where a
-                        // Pokémon is picked, so it is where the choice to send
-                        // it belongs. Only with a card in the machine — there
-                        // is nowhere for it to go otherwise.
-                        *if (!needsCart) {
-                            arrayOf(
-                                MonAction(state.outLabel, {
-                                    startWithdraw(listOf(storedPick.uid))
-                                    gridSlot = null
-                                })
-                            )
-                        } else emptyArray(),
                         MonAction("MOVE", {
                             heldUid = storedPick.uid
-                            chosen = null
-                            gridSlot = null
-                        }),
-                        // Only when there is something to take. Generation I
-                        // Pokémon hold nothing, so this row simply never
-                        // appears for one out of Red, Blue or Yellow.
-                        *storedPick.pokemon.heldItem?.let { item ->
-                            arrayOf(
-                                MonAction("TAKE ${item.replace('_', ' ')}", {
-                                    model.takeHeldItem(storedPick.uid)
-                                    chosen = null
-                                    gridSlot = null
-                                })
-                            )
-                        }.orEmpty(),
-                        // Ticks it and hands the box back. With one ticked, a
-                        // hold on any other spot ticks that one too, so several
-                        // go in one trip without a mode to switch into first.
-                        MonAction("SELECT", {
-                            chosen?.let { toggle(it) }
-                            chosen = null
-                            gridSlot = null
-                        }),
-                        // A picture of it, for somewhere that is not this app.
-                        MonAction("SHARE", {
-                            val uid = storedPick.uid
-                            val card = model.cardImage(uid)
-                            if (card == null ||
-                                !com.logie.gen1storage.share.ShareCard.share(
-                                    shareContext,
-                                    card,
-                                    model.cardName(uid),
-                                )
-                            ) {
-                                model.prompt(Prompt.Message(listOf("IT COULD NOT BE SHARED.")))
-                            }
-                            chosen = null
-                            gridSlot = null
-                        }),
-                        MonAction("NICKNAME", {
-                            model.prompt(Prompt.RenameMon(storedPick.uid))
                             chosen = null
                             gridSlot = null
                         }),
@@ -643,9 +601,10 @@ fun StorageSystemScreen(
                             )
                         }),
                     ),
-                    // Both cleared, so the next tap on that Pokémon is the
-                    // first tap again and opens its stats.
+                    // Both cleared, so the next tap on that Pokémon opens this
+                    // list again rather than something else.
                     onCancel = { chosen = null; gridSlot = null },
+                    cancelLabel = BACK_LABEL,
                 )
             })
 

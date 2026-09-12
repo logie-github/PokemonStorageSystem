@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.sprites.SpriteSet
+import com.logie.gen1storage.sprites.TrainerStore
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Pokemon
@@ -349,10 +350,8 @@ fun StorageSystemScreen(
         // past the edge of another reads as a mistake.
         notice = refusal ?: emptiness,
         showCaption = atMenu && refusal == null && emptiness == null,
-        // The box opens into the corner the menu is in, so the menu goes
-        // rather than being pushed along by it. Every other list overlaps the
-        // menu the way the cartridge's do and leaves it where it is.
-        showMenu = mode != PcMode.VIEW,
+        // Whatever is open has the screen to itself.
+        showMenu = atMenu,
         showBox = atMenu &&
             refusal == null &&
             emptiness == null &&
@@ -1032,6 +1031,23 @@ fun FollowersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
 )
 
 @Composable
+fun TrainersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
+    heading = "TRAINER SPRITES",
+    progress = state.trainerProgress,
+    installedPercent = percentOf(state.trainersInstalled, TrainerStore.ALL.size),
+    spaceUsed = if (state.trainersInstalled > 0) "${model.trainerBytesOnDisk() / 1024} KB"
+    else "UNDER 100 KB TO DOWNLOAD",
+    hasSome = state.trainersInstalled > 0,
+    confirmLine = "Download trainer sprites from pret/pokered?",
+    deleteLine = "DELETE EVERY TRAINER SPRITE?",
+    model = model,
+    onDownload = model::downloadTrainers,
+    onStop = model::cancelTrainerDownload,
+    onDismiss = model::dismissTrainerProgress,
+    onDelete = model::deleteTrainers,
+)
+
+@Composable
 fun SpritesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
     heading = "POKéMON SPRITES",
     progress = state.spriteProgress,
@@ -1230,6 +1246,10 @@ private fun OptionsDrawerContent(
                 add(OptionRow("FOLLOWERS", "${percentOf(state.followersInstalled, 251)}%") {
                     model.open(Screen.Followers)
                 })
+                add(OptionRow(
+                    "TRAINERS",
+                    "${percentOf(state.trainersInstalled, TrainerStore.ALL.size)}%",
+                ) { model.open(Screen.Trainers) })
                 add(OptionRow("DOWNLOAD ALL") { model.downloadEverything() })
             }
 
@@ -1283,7 +1303,7 @@ private fun OptionsDrawerContent(
         }
 
         // Whatever is being fetched, said here as well as on its own screen —
-        // DOWNLOAD ALL starts three of them and never left this drawer.
+        // DOWNLOAD ALL starts all four and never left this drawer.
         if (drawer == OptionsDrawer.DOWNLOADS) {
             val busy = listOfNotNull(
                 state.spriteProgress?.let { "SPRITES" to it },
@@ -1672,6 +1692,14 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 title = prompt.title,
                 max = prompt.max,
                 onChoose = { count -> model.dismissPrompt(); prompt.onChoose(count) },
+                onCancel = model::dismissPrompt,
+            )
+
+            is Prompt.ChooseTrainerSprite -> TrainerSpritePicker(
+                chosen = model.trainerSprite(prompt.key),
+                store = model.trainers,
+                revision = state.spriteRevision,
+                onChoose = { model.setTrainerSprite(prompt.key, it) },
                 onCancel = model::dismissPrompt,
             )
 

@@ -5,12 +5,30 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.logie.gen1storage.sprites.TrainerStore
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.Image
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -42,6 +60,10 @@ fun Gen1TrainerCard(
     /** What the player has called this one, if they have. */
     title: String,
     sprites: SpriteStore,
+    /** The trainer art, for the portrait the player has chosen. */
+    trainers: TrainerStore,
+    /** Which trainer this card wears, or null while it wears none. */
+    trainerSprite: String?,
     spriteRevision: Int,
     modifier: Modifier = Modifier,
     /** Where the cursor is, drawn as the arrow every other row uses. */
@@ -76,16 +98,27 @@ fun Gen1TrainerCard(
                 Field("TIME", save?.playTimeText ?: " ")
             }
             // The card's own corner, as the games put the player there.
-            if (read) {
-                Gen1Sprite(
+            //
+            // The trainer the player picked, and until they pick one the
+            // party's lead — which is what this corner held before there were
+            // trainers to choose from, so a card is never empty for the sake
+            // of a choice nobody has made yet.
+            val side = if (full) 56 else 32
+            when {
+                trainerSprite != null -> Gen1TrainerSprite(
+                    id = trainerSprite,
+                    store = trainers,
+                    revision = spriteRevision,
+                    sizeInPixels = side,
+                )
+                read -> Gen1Sprite(
                     speciesId = lead?.speciesId,
                     gameVersionId = remote.version.id,
                     store = sprites,
                     revision = spriteRevision,
-                    sizeInPixels = if (full) 56 else 32,
+                    sizeInPixels = side,
                 )
-            } else {
-                Spacer(Modifier.size(gen1Dp(if (full) 56 else 32)))
+                else -> Spacer(Modifier.size(gen1Dp(side)))
             }
         }
 
@@ -102,6 +135,39 @@ fun Gen1TrainerCard(
             )
             Field("SEEN", save?.let { "${it.dexOwnedCount}" } ?: " ")
             Field("BOXES", save?.let { "${it.boxCount}" } ?: " ")
+        }
+    }
+}
+
+/**
+ * One trainer's battle sprite, off the device.
+ *
+ * Blank where that one has not been downloaded: the bracketed mark a Pokémon
+ * gets means "there is no art for this species", and a trainer the player
+ * deliberately chose is better shown as a gap than as a shrug.
+ */
+@Composable
+fun Gen1TrainerSprite(
+    id: String,
+    store: TrainerStore,
+    revision: Int,
+    modifier: Modifier = Modifier,
+    sizeInPixels: Int = TrainerStore.SIZE,
+) {
+    var image by remember(id, revision) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(id, revision, store) {
+        image = withContext(Dispatchers.IO) { store.load(id) }
+    }
+    Box(modifier.size(gen1Dp(sizeInPixels)), contentAlignment = Alignment.Center) {
+        image?.let {
+            Image(
+                bitmap = it,
+                contentDescription = id,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                // Pixel art at a whole multiple; smoothing would undo it.
+                filterQuality = FilterQuality.None,
+            )
         }
     }
 }
@@ -154,3 +220,80 @@ private fun Badges(won: List<Boolean>) {
 
 /** One badge slot's side, in game pixels. */
 private const val BADGE_PIXELS = 7
+
+/**
+ * Which trainer a card wears.
+ *
+ * Every trainer the game has, in the game's own order, each shown as itself
+ * rather than named in a list: a row of words would be asking the player to
+ * remember what a CHANNELER looks like. NONE is first and puts the card back
+ * to showing the party's lead.
+ *
+ * A trainer whose art is not on the device is still offered and still picked;
+ * it simply shows as a gap until DOWNLOADS has fetched it. Hiding them would
+ * mean the list changing shape depending on what had arrived.
+ */
+@Composable
+fun TrainerSpritePicker(
+    chosen: String?,
+    store: TrainerStore,
+    revision: Int,
+    onChoose: (String?) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val rows = TrainerStore.ALL
+    // NONE, then every trainer, then the way out.
+    val count = rows.size + 2
+    val at = rememberCursorLayer(count) { index ->
+        when (index) {
+            0 -> onChoose(null)
+            count - 1 -> onCancel()
+            else -> onChoose(rows[index - 1].id)
+        }
+    }
+    val scroll = rememberLazyListState()
+    LaunchedEffect(at) { scroll.animateScrollToItem(at) }
+
+    Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth(), opening = true) {
+        GbText("TRAINER")
+        LazyColumn(Modifier.heightIn(max = 360.dp), state = scroll) {
+            item {
+                Gen1MenuRow(
+                    "NONE",
+                    selected = at == 0,
+                    onSelect = {},
+                    onConfirm = { onChoose(null) },
+                    mark = chosen == null,
+                )
+            }
+            itemsIndexed(rows) { index, trainer ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Gen1TrainerSprite(
+                        id = trainer.id,
+                        store = store,
+                        revision = revision,
+                        sizeInPixels = PICKER_SPRITE_PIXELS,
+                    )
+                    Gen1MenuRow(
+                        trainer.label,
+                        selected = at == index + 1,
+                        onSelect = {},
+                        onConfirm = { onChoose(trainer.id) },
+                        mark = chosen == trainer.id,
+                    )
+                }
+            }
+            item {
+                Gen1MenuRow(
+                    "CANCEL",
+                    selected = at == count - 1,
+                    onSelect = {},
+                    onConfirm = onCancel,
+                )
+            }
+        }
+    }
+}
+
+/** Small enough that a row is still a row, big enough to recognise. */
+private const val PICKER_SPRITE_PIXELS = 24

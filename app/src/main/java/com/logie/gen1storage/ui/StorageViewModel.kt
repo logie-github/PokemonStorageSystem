@@ -27,6 +27,7 @@ import com.logie.gen1storage.sprites.SpriteDownloader
 import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.SpriteStore
+import com.logie.gen1storage.sprites.TrainerStore
 import com.logie.gen1storage.sync.SyncResult
 import com.logie.gen1storage.transfer.RecoveryReport
 import com.logie.gen1storage.update.UpdateChecker
@@ -102,6 +103,7 @@ sealed interface Screen {
     data object Sprites : Screen
     data object Cries : Screen
     data object Followers : Screen
+    data object Trainers : Screen
     data object Options : Screen
     data object Credits : Screen
 }
@@ -159,6 +161,8 @@ sealed interface Prompt {
     data class Update(val version: String, val url: String) : Prompt
     /** The long-press sprite picker for one species. */
     data class ChooseSpriteSet(val speciesId: String) : Prompt
+    /** Which trainer a playthrough's card wears. */
+    data class ChooseTrainerSprite(val key: String) : Prompt
     /** How many of a stack to move. */
     data class ChooseQuantity(
         val title: String,
@@ -216,6 +220,8 @@ data class UiState(
     val criesInstalled: Int = 0,
     val followerProgress: DownloadProgress? = null,
     val followersInstalled: Int = 0,
+    val trainerProgress: DownloadProgress? = null,
+    val trainersInstalled: Int = 0,
     /** This app's own item PC. */
     val items: List<ItemStack> = emptyList(),
     /** Bumped whenever sprites change, so drawn sprites re-read the store. */
@@ -246,7 +252,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val cries = CryStore(application)
     private var cryJob: Job? = null
     val followers = FollowerStore(application)
+    val trainers = TrainerStore(application)
     private var followerJob: Job? = null
+    private var trainerJob: Job? = null
     private val credentials = SyncAccount(application)
     private val api = SyncApi(credentials = credentials::credentials)
     private val saves = SaveRepository(api, backups)
@@ -275,7 +283,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val app = getApplication<Application>()
         if (progress == null || progress.finished) {
             val stillGoing = mutable.value.let {
-                listOfNotNull(it.spriteProgress, it.cryProgress, it.followerProgress)
+                listOfNotNull(it.spriteProgress, it.cryProgress, it.followerProgress, it.trainerProgress)
                     .any { p -> !p.finished }
             }
             if (!stillGoing) DownloadService.hide(app)
@@ -314,6 +322,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
                 criesInstalled = cries.count(),
                 followersInstalled = followers.count(),
+                trainersInstalled = trainers.count(),
             )
         }
         if (credentials.isLinked) sync()
@@ -650,6 +659,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             if (palette.tintsSprites) palette.ramp.map { it.toArgb() }.toIntArray() else null
         sprites.setTint(palette.id, ramp)
         followers.setTint(palette.id, ramp)
+        trainers.setTint(palette.id, ramp)
     }
 
     /**
@@ -853,8 +863,65 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun followerBytesOnDisk(): Long = followers.bytesOnDisk()
 
+    // ------- trainers
+
+    /** Downloads the trainer battle sprites a trainer card's portrait uses. */
+    fun downloadTrainers() {
+        if (trainerJob?.isActive == true) return
+        trainerJob = downloads.launch {
+            mutable.update { it.copy(prompt = null, trainerProgress = DownloadProgress(0, 1)) }
+            val result = runCatching {
+                trainers.downloadAll { progress ->
+                    mutable.update { it.copy(trainerProgress = progress) }
+                    showDownload("TRAINERS", progress)
+                }
+            }
+            mutable.update { state ->
+                state.copy(
+                    trainersInstalled = trainers.count(),
+                    spriteRevision = state.spriteRevision + 1,
+                    trainerProgress = result.getOrNull()
+                        ?: DownloadProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
+                )
+            }
+        }
+    }
+
+    fun cancelTrainerDownload() {
+        trainerJob?.cancel()
+        trainerJob = null
+        DownloadService.hide(getApplication())
+        mutable.update {
+            it.copy(
+                trainerProgress = null,
+                trainersInstalled = trainers.count(),
+                spriteRevision = it.spriteRevision + 1,
+            )
+        }
+    }
+
+    fun dismissTrainerProgress() = mutable.update { it.copy(trainerProgress = null) }
+
+    fun deleteTrainers() {
+        trainers.clear()
+        mutable.update {
+            it.copy(trainersInstalled = 0, spriteRevision = it.spriteRevision + 1, prompt = null)
+        }
+    }
+
+    fun trainerBytesOnDisk(): Long = trainers.bytesOnDisk()
+
+    /** Which trainer a playthrough's card wears, or null while it wears none. */
+    fun trainerSprite(key: String): String? = settings.trainerSprite(key)
+
+    /** Sets it, or clears it when given nothing. */
+    fun setTrainerSprite(key: String, id: String?) {
+        settings.setTrainerSprite(key, id)
+        mutable.update { it.copy(cartRevision = it.cartRevision + 1, prompt = null) }
+    }
+
     /**
-     * Fetches all three sets, one after another rather than at once.
+     * Fetches all four sets, one after another rather than at once.
      *
      * Three downloads racing each other over one connection finish no sooner
      * and each report a percentage that stalls while the others have the
@@ -868,6 +935,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             cryJob?.join()
             downloadFollowers()
             followerJob?.join()
+            downloadTrainers()
+            trainerJob?.join()
         }
     }
 

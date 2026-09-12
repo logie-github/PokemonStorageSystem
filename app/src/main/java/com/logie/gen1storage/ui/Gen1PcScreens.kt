@@ -146,10 +146,11 @@ fun StorageSystemScreen(
     /**
      * Whether the menu itself is on screen.
      *
-     * The box takes the whole corner the menu sits in, so with both up the
-     * menu is not behind the box, it is shoving it along. Better to put the
-     * menu away while the box is open: B brings it back, which is the same
-     * gesture that closed it.
+     * Off whenever anything has been opened from it. The cartridge stacks its
+     * windows and lets the one underneath show around the edges, which is how
+     * a Game Boy showed you where you were; on a phone it reads as two menus
+     * fighting over the same corner rather than as depth. One thing at a time
+     * is what a modern screen expects, and B brings the last one back.
      */
     showMenu: Boolean = true,
     /** What the machine says while it is waiting: "What?", and its like. */
@@ -235,7 +236,10 @@ fun StorageSystemScreen(
             }
         }
 
-        overlay?.invoke()
+        // Only the innermost thing that is open. A window on a chosen Pokémon
+        // replaces the list it was chosen from rather than sitting on top of
+        // it, for the same reason the list replaces the menu.
+        if (action == null) overlay?.invoke()
 
         if (showBox) {
             Box(
@@ -406,17 +410,15 @@ fun MonActionOverlay(
         val action = actions.getOrNull(index)
         if (action == null) onCancel() else if (action.enabled) action.onAction()
     }
-    // Against the far edge, so it does not sit on top of the list it was
-    // opened from, and raised off the floor so it overlaps that list's lower
-    // corner the way the cartridge's submenus do rather than stranding itself
-    // at the bottom of the screen.
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(top = maxHeight * LIST_OVERLAP),
-            contentAlignment = Gen1Layout.corner(top = true, menuSide = false),
-        ) {
+    // In the corner the list it replaced was using. It used to sit against the
+    // far edge and part way down, so it would overlap that list's lower corner
+    // the way the cartridge's submenus do — but the list is no longer behind
+    // it to overlap, and a window floating a third of the way down an empty
+    // screen reads as a mistake rather than as depth.
+    Box(
+        Modifier.fillMaxSize().padding(gen1Dp(2)),
+        contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
+    ) {
         Gen1Frame(Modifier.wrapContentWidth(), opening = true) {
             actions.forEachIndexed { index, entry ->
                 Gen1MenuRow(
@@ -430,9 +432,6 @@ fun MonActionOverlay(
             Gen1MenuRow("CANCEL", selected == actions.size, {}, onCancel)
             if (note != null) GbText(note, style = Gen1TextSmall)
         }
-        }
     }
 }
 
-/** How far down the screen the window on a chosen Pokémon starts. */
-private const val LIST_OVERLAP = 0.34f

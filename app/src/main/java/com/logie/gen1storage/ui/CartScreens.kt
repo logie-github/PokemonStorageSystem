@@ -235,6 +235,10 @@ private fun TrainerCardRow(
         save = state.save(remote.key)?.save,
         title = title,
         sprites = model.sprites,
+        trainers = model.trainers,
+        trainerSprite = remember(remote.key, state.cartRevision) {
+            model.trainerSprite(remote.key)
+        },
         spriteRevision = state.spriteRevision,
         modifier = modifier
             .gen1HoldRegion()
@@ -266,8 +270,10 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
     val slot = state.saves.indexOfFirst { it.key == key } + 1
     val fallback = "CARD $slot"
     val title = remember(key, state.cartRevision) { model.cartName(key) }?.uppercase() ?: fallback
+    val chosen = remember(key, state.cartRevision) { model.trainerSprite(key) }
     val actions = listOf<Pair<String, () -> Unit>>(
         "INSERT" to { model.chooseCart(key, thenOpenStorage = true) },
+        "TRAINER" to { model.prompt(Prompt.ChooseTrainerSprite(key)) },
         "RENAME" to { model.prompt(Prompt.RenameCart(key, fallback)) },
         "BACK" to { model.back() },
     )
@@ -280,6 +286,8 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
                 save = state.save(key)?.save,
                 title = title,
                 sprites = model.sprites,
+                trainers = model.trainers,
+                trainerSprite = chosen,
                 spriteRevision = state.spriteRevision,
                 modifier = Modifier.fillMaxWidth(),
                 inserted = state.activeSaveKey == key,

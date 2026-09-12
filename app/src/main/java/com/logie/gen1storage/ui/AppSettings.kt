@@ -91,6 +91,25 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = TextSpeed.fromId(prefs.getString(KEY_TEXT_SPEED, null))
         set(value) = prefs.edit().putString(KEY_TEXT_SPEED, value.id).apply()
 
+    /**
+     * Which trainer a playthrough's card wears, by its sprite id.
+     *
+     * Kept per save and on disk, because it is a choice about a playthrough
+     * rather than about this sitting — unlike which card is inserted, which
+     * is deliberately forgotten. Null is not "none chosen yet" being treated
+     * as a choice: a card with nothing set falls back to showing the party's
+     * lead, which is what it showed before trainers could be picked at all.
+     */
+    fun trainerSprite(key: String): String? =
+        prefs.getString(KEY_TRAINER_PREFIX + key, null)?.takeIf { it.isNotBlank() }
+
+    fun setTrainerSprite(key: String, id: String?) {
+        prefs.edit().apply {
+            if (id.isNullOrBlank()) remove(KEY_TRAINER_PREFIX + key)
+            else putString(KEY_TRAINER_PREFIX + key, id)
+        }.apply()
+    }
+
     /** One switch over the lot, for when none of it is wanted. */
     var soundOff: Boolean
         get() = prefs.getBoolean(KEY_SOUND_OFF, false)
@@ -111,6 +130,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
         const val KEY_WINDOWS_RIGHT = "windows-on-right"
         const val KEY_CART_PREFIX = "cart-name-"
+        const val KEY_TRAINER_PREFIX = "trainer-sprite-"
         const val KEY_CLASSIC_LABELS = "classic-transfer-labels"
         const val KEY_SOUND_OFF = "sound-off"
         const val KEY_SOUND_PREFIX = "sound-"

@@ -71,6 +71,7 @@ import com.logie.gen1storage.ui.ItemPcScreen
 import com.logie.gen1storage.ui.MainMenuScreen
 import com.logie.gen1storage.ui.StorageHomeScreen
 import com.logie.gen1storage.ui.FollowersScreen
+import com.logie.gen1storage.ui.TrainersScreen
 import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
 import com.logie.gen1storage.ui.TrainerCardScreen
@@ -324,6 +325,7 @@ private fun ScreenContent(
         Screen.Sprites -> SpritesScreen(state, model)
         Screen.Cries -> CriesScreen(state, model)
         Screen.Followers -> FollowersScreen(state, model)
+        Screen.Trainers -> TrainersScreen(state, model)
         Screen.Credits -> CreditsScreen()
         Screen.Options -> OptionsScreen(
             state = state,

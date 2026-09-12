@@ -48,6 +48,7 @@ import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.Gen1Typing
+import com.logie.gen1storage.ui.RestoreScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
@@ -326,6 +327,7 @@ private fun ScreenContent(
         Screen.Cries -> CriesScreen(state, model)
         Screen.Followers -> FollowersScreen(state, model)
         Screen.Trainers -> TrainersScreen(state, model)
+        Screen.Restore -> RestoreScreen(state, model)
         Screen.Credits -> CreditsScreen()
         Screen.Options -> OptionsScreen(
             state = state,

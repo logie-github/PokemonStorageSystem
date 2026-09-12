@@ -42,6 +42,7 @@ import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.TrainerStore
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
+import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sound.SoundEffect
@@ -562,6 +563,11 @@ fun StorageSystemScreen(
                                 })
                             )
                         }.orEmpty(),
+                        MonAction("NICKNAME", {
+                            model.prompt(Prompt.RenameMon(storedPick.uid))
+                            chosen = null
+                            gridSlot = null
+                        }),
                         MonAction("RELEASE", {
                             model.prompt(
                                 Prompt.Confirm(
@@ -1277,6 +1283,7 @@ private fun OptionsDrawerContent(
                 } else {
                     add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
                 }
+                add(OptionRow("SAVE FILES") { model.open(Screen.Restore) })
             }
 
             OptionsDrawer.ABOUT -> {
@@ -1515,6 +1522,7 @@ private fun NamePrompt(
     initial: String,
     onDone: (String) -> Unit,
     onCancel: () -> Unit,
+    maxLength: Int = StorageRepository.MAX_BOX_NAME,
 ) {
     var name by remember(heading) { mutableStateOf(initial) }
     // The field itself belongs to the keyboard; the three choices under it are
@@ -1532,7 +1540,7 @@ private fun NamePrompt(
         OutlinedTextField(
             value = name,
             onValueChange = { text ->
-                name = text.filter { it != '\n' }.take(StorageRepository.MAX_BOX_NAME)
+                name = text.filter { it != '\n' }.take(maxLength)
             },
             singleLine = true,
             textStyle = Gen1Text,
@@ -1662,6 +1670,19 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 onDone = { model.renameBox(prompt.index, it) },
                 onCancel = model::dismissPrompt,
             )
+
+            is Prompt.RenameMon -> {
+                val stored = state.storage.find(prompt.uid)?.second
+                NamePrompt(
+                    heading = stored?.pokemon?.let {
+                        Gen1Data.speciesName(it.speciesId).uppercase()
+                    } ?: "POKéMON",
+                    initial = stored?.pokemon?.nickname.orEmpty(),
+                    maxLength = StorageRepository.MAX_NICKNAME,
+                    onDone = { model.renameStored(prompt.uid, it) },
+                    onCancel = model::dismissPrompt,
+                )
+            }
 
             is Prompt.RenameCart -> NamePrompt(
                 heading = prompt.fallback,

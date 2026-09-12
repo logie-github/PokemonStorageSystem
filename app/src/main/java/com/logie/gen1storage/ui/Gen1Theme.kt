@@ -330,13 +330,17 @@ fun Modifier.gen1Ground(): Modifier {
                 drawRect(brush, topLeft = origin, size = area)
                 // Read here rather than in composition: a turn of the ball is a
                 // redraw and nothing more.
-                val ball = Gen1Pokeball.frame(windowWidth, unit, ballInk, step.value)
+                val ball = Gen1Pokeball.frame(windowWidth, windowHeight, unit, ballInk, step.value)
                 if (ball != null) {
-                    val drawn = ball.sidePx * unit
                     drawImage(
                         image = ball.image,
-                        dstOffset = IntOffset(windowWidth - drawn, windowHeight - drawn),
-                        dstSize = IntSize(drawn, drawn),
+                        // Anchored to the window's bottom right, which is the
+                        // ball's own centre.
+                        dstOffset = IntOffset(
+                            windowWidth - ball.cellsWide * unit,
+                            windowHeight - ball.cellsHigh * unit,
+                        ),
+                        dstSize = IntSize(ball.cellsWide * unit, ball.cellsHigh * unit),
                         // Whole multiples of one cell; smoothing would undo the
                         // thing that makes it pixels.
                         filterQuality = FilterQuality.None,

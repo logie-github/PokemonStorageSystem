@@ -1,5 +1,6 @@
 package com.logie.gen1storage.storage
 
+import com.logie.gen1storage.lua.LuaKey
 import com.logie.gen1storage.lua.LuaParser
 import com.logie.gen1storage.lua.LuaText
 import com.logie.gen1storage.lua.LuaValue
@@ -211,6 +212,35 @@ class StorageRepository(private val directory: File) {
         boxes[fromBox][fromSlot] = displaced
         persist()
         true
+    }
+
+    /**
+     * Gives a stored Pokémon a nickname, or takes its nickname away.
+     *
+     * Generation I spells "not nicknamed" as no `nickname` field at all, and
+     * every display site upstream reads `mon.nickname or def.name`, so clearing
+     * one removes the field rather than writing an empty string — a Pokémon
+     * whose nickname is cleared goes back to being called what it is.
+     *
+     * Only that one field is touched. The rest of the table, including anything
+     * this app has never heard of, is written back exactly as it was read.
+     */
+    fun rename(uid: String, nickname: String): Boolean = synchronized(lock) {
+        ensureLoaded()
+        val cleaned = cleanNickname(nickname)
+        for (box in boxes) {
+            val position = box.indexOfFirst { it?.uid == uid }
+            if (position < 0) continue
+            val stored = box[position] ?: return false
+            if (stored.pokemon.nickname.orEmpty() == cleaned) return true
+            val data = stored.data.deepCopy()
+            if (cleaned.isEmpty()) data.remove(LuaKey.Name("nickname"))
+            else data["nickname"] = luaStr(cleaned)
+            box[position] = stored.copy(data = data)
+            persist()
+            return true
+        }
+        false
     }
 
     fun renameBox(index: Int, name: String): Boolean = synchronized(lock) {
@@ -463,5 +493,28 @@ class StorageRepository(private val directory: File) {
          */
         const val RELEASED_FILE_NAME = "released.lua.log"
         const val MAX_BOX_NAME = 10
+
+        /** As long as a nickname can be on a Generation I cartridge. */
+        const val MAX_NICKNAME = 10
+
+        /**
+         * The characters a Generation I cartridge can actually draw.
+         *
+         * A nickname written here can be withdrawn into a save and shown by
+         * the game, so it has to stay inside the charmap upstream encodes
+         * against. Anything else is dropped rather than substituted: a name
+         * that silently became something else would be worse than a shorter
+         * one.
+         */
+        fun cleanNickname(name: String): String =
+            name.trim()
+                .filter { it in NICKNAME_CHARACTERS }
+                .take(MAX_NICKNAME)
+
+        private const val NICKNAME_CHARACTERS =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+                "abcdefghijklmnopqrstuvwxyz" +
+                "0123456789" +
+                " .,'!?-/♀♂é"
     }
 }

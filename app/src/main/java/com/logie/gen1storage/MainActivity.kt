@@ -76,14 +76,10 @@ import com.logie.gen1storage.ui.UiState
 import com.logie.gen1storage.ui.isUnfolded
 import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
-import com.logie.gen1storage.ui.CriesScreen
 import com.logie.gen1storage.ui.Gen1TransferScene
 import com.logie.gen1storage.ui.ItemPcScreen
 import com.logie.gen1storage.ui.MainMenuScreen
 import com.logie.gen1storage.ui.StorageHomeScreen
-import com.logie.gen1storage.ui.FollowersScreen
-import com.logie.gen1storage.ui.TrainersScreen
-import com.logie.gen1storage.ui.SpritesScreen
 import com.logie.gen1storage.ui.StatusScreen
 import com.logie.gen1storage.ui.TrainerCardScreen
 import com.logie.gen1storage.ui.gen1Gestures
@@ -348,10 +344,6 @@ private fun ScreenContent(
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
         is Screen.TrainerCard -> TrainerCardScreen(state, model, screen.key)
-        Screen.Sprites -> SpritesScreen(state, model)
-        Screen.Cries -> CriesScreen(state, model)
-        Screen.Followers -> FollowersScreen(state, model)
-        Screen.Trainers -> TrainersScreen(state, model)
         Screen.Restore -> RestoreScreen(state, model)
         Screen.Trade -> TradeScreen(state, model)
         Screen.Dex -> DexScreen(state, model)

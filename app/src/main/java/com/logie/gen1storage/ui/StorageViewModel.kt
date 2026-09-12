@@ -111,10 +111,6 @@ sealed interface Screen {
     ) : Screen
     /** One playthrough's trainer card, read at full size. */
     data class TrainerCard(val key: String) : Screen
-    data object Sprites : Screen
-    data object Cries : Screen
-    data object Followers : Screen
-    data object Trainers : Screen
     data object Options : Screen
     /** Every copy the app kept of a save before it wrote over it. */
     data object Restore : Screen
@@ -1131,6 +1127,75 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // ------- the download, as one thing
+    //
+    // There are four sets and no reason for a player to be asked about them
+    // one at a time: the app wants all of it, a set that is missing shows as
+    // a gap wherever it was needed, and choosing to have three quarters of
+    // the art is not a choice worth offering. So everything below reads the
+    // four as one download.
+
+    /** Everything already fetched, as a share of everything there is. */
+    fun downloadedPercent(): Int {
+        val have = mutable.value.let {
+            it.spritesInstalled + it.criesInstalled + it.followersInstalled + it.trainersInstalled
+        }
+        return if (DOWNLOAD_TOTAL <= 0) 0
+        else ((have.coerceAtMost(DOWNLOAD_TOTAL) * 100) / DOWNLOAD_TOTAL)
+    }
+
+    /** How far the download in flight has got, or null when none is. */
+    fun downloadProgress(): DownloadProgress? {
+        val current = mutable.value
+        val all = listOfNotNull(
+            current.spriteProgress,
+            current.cryProgress,
+            current.followerProgress,
+            current.trainerProgress,
+        )
+        if (all.isEmpty()) return null
+        // One bar over the lot rather than four in a row: the sets run one
+        // after another and a bar that restarts three times reads as three
+        // downloads rather than as one that is three quarters done.
+        val done = current.spritesInstalled + current.criesInstalled +
+            current.followersInstalled + current.trainersInstalled
+        val running = all.any { !it.finished }
+        return DownloadProgress(
+            done = done.coerceAtMost(DOWNLOAD_TOTAL),
+            total = DOWNLOAD_TOTAL,
+            failed = all.sumOf { it.failed },
+            finished = !running,
+            error = all.firstNotNullOfOrNull { it.error },
+        )
+    }
+
+    fun downloadBytesOnDisk(): Long =
+        sprites.bytesOnDisk() + cries.bytesOnDisk() +
+            followers.bytesOnDisk() + trainers.bytesOnDisk()
+
+    fun cancelDownload() {
+        cancelSpriteDownload()
+        cancelCryDownload()
+        cancelFollowerDownload()
+        cancelTrainerDownload()
+    }
+
+    fun dismissDownloadProgress() = mutable.update {
+        it.copy(
+            spriteProgress = null,
+            cryProgress = null,
+            followerProgress = null,
+            trainerProgress = null,
+        )
+    }
+
+    fun deleteDownloads() {
+        deleteSprites()
+        deleteCries()
+        deleteFollowers()
+        deleteTrainers()
+    }
+
     // ------- export and import
 
     /**
@@ -1846,3 +1911,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }.take(12000)
     }
 }
+
+/**
+ * Every file the download fetches, counted once.
+ *
+ * The sprite sets, the hundred and fifty one cries, the follower sheets, and
+ * the trainers with the sheets that come down beside them.
+ */
+private val DOWNLOAD_TOTAL: Int =
+    SpriteSet.downloadable.size * 151 + 151 + 251 +
+        (TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size)

@@ -963,179 +963,7 @@ private fun transferAction(
     null -> null
 }
 
-/** Every sprite the normal download fetches: each set, every species. */
-private val SPRITE_TOTAL = SpriteSet.downloadable.size * 151
 
-private fun percentOf(have: Int, whole: Int): Int =
-    if (whole <= 0) 0 else ((have.coerceAtMost(whole) * 100) / whole)
-
-/**
- * One downloadable set's screen: a question, then a share and a bar.
- *
- * Shared by all three because they differ only in what they are counting.
- * Every choice on it is on the one cursor, so a swipe reaches the buttons
- * here exactly as it reaches a menu row anywhere else.
- */
-@Composable
-private fun DownloadPage(
-    heading: String,
-    progress: DownloadProgress?,
-    /** How much of the set is here, as a share of the whole. */
-    installedPercent: Int,
-    spaceUsed: String,
-    hasSome: Boolean,
-    confirmLine: String,
-    deleteLine: String,
-    model: StorageViewModel,
-    onDownload: () -> Unit,
-    onStop: () -> Unit,
-    onDismiss: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val running = progress != null && !progress.finished
-
-    val choices = buildList<Pair<String, () -> Unit>> {
-        if (running) {
-            add("STOP" to onStop)
-        } else {
-            if (progress != null) add("OK" to onDismiss)
-            add((if (hasSome) "DOWNLOAD MISSING" else "DOWNLOAD") to {
-                model.prompt(
-                    Prompt.Confirm(
-                        lines = listOf(confirmLine),
-                        confirmLabel = "YES",
-                        cancelLabel = "NO",
-                        onConfirm = onDownload,
-                    )
-                )
-            })
-            if (hasSome) add("DELETE" to {
-                model.prompt(
-                    Prompt.Confirm(
-                        lines = listOf(deleteLine),
-                        confirmLabel = "YES",
-                        cancelLabel = "NO",
-                        onConfirm = onDelete,
-                    )
-                )
-            })
-        }
-        add("BACK" to { model.back() })
-    }
-    val cursor = rememberCursorLayer(choices.size) { choices[it].second() }
-
-    ScreenColumn {
-        item { Gen1Frame(Modifier.wrapContentWidth()) { GbText(heading) } }
-
-        if (progress != null) {
-            item {
-                Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
-                    // The share, and nothing else. A running count of files is
-                    // the machine's business, not the player's.
-                    DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
-                    if (progress.finished) {
-                        Spacer(Modifier.height(10.dp))
-                        // What did not arrive, said out loud. It was counted
-                        // all along and never shown, so a run that lost twenty
-                        // files to the network read as a complete success and
-                        // the art was simply missing afterwards with nothing
-                        // to explain it. DOWNLOAD MISSING will go back for
-                        // them, which is why the number is worth knowing.
-                        GbText(
-                            when {
-                                progress.error != null -> "STOPPED: ${progress.error.uppercase()}"
-                                progress.failed > 0 -> "DONE. ${progress.failed} DID NOT ARRIVE."
-                                else -> "DONE."
-                            },
-                            style = Gen1TextSmall,
-                        )
-                    }
-                }
-            }
-        }
-
-        if (!running) {
-            item {
-                Gen1Frame(Modifier.wrapContentWidth()) {
-                    Gen1Field("ON THIS DEVICE", "$installedPercent%")
-                    Gen1Field("SPACE USED", spaceUsed)
-                }
-            }
-        }
-
-        itemsIndexed(choices) { index, (label, action) ->
-            Gen1BoxButton(label, action, selected = cursor == index)
-        }
-    }
-}
-
-@Composable
-fun CriesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
-    heading = "POKéMON CRIES",
-    progress = state.cryProgress,
-    installedPercent = percentOf(state.criesInstalled, 151),
-    spaceUsed = if (state.criesInstalled > 0) "${model.cryBytesOnDisk() / 1024} KB"
-    else "ABOUT 2 MB TO DOWNLOAD",
-    hasSome = state.criesInstalled > 0,
-    confirmLine = "Download Pokémon cries from repo?",
-    deleteLine = "DELETE EVERY DOWNLOADED CRY?",
-    model = model,
-    onDownload = model::downloadCries,
-    onStop = model::cancelCryDownload,
-    onDismiss = model::dismissCryProgress,
-    onDelete = model::deleteCries,
-)
-
-@Composable
-fun FollowersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
-    heading = "OVERWORLD FOLLOWERS",
-    progress = state.followerProgress,
-    installedPercent = percentOf(state.followersInstalled, 251),
-    spaceUsed = if (state.followersInstalled > 0) "${model.followerBytesOnDisk() / 1024} KB"
-    else "ABOUT 1 MB TO DOWNLOAD",
-    hasSome = state.followersInstalled > 0,
-    confirmLine = "Download follower sprites from repo?",
-    deleteLine = "DELETE EVERY FOLLOWER SHEET?",
-    model = model,
-    onDownload = model::downloadFollowers,
-    onStop = model::cancelFollowerDownload,
-    onDismiss = model::dismissFollowerProgress,
-    onDelete = model::deleteFollowers,
-)
-
-@Composable
-fun TrainersScreen(state: UiState, model: StorageViewModel) = DownloadPage(
-    heading = "TRAINER SPRITES",
-    progress = state.trainerProgress,
-    installedPercent = percentOf(state.trainersInstalled, TrainerStore.ALL.size),
-    spaceUsed = if (state.trainersInstalled > 0) "${model.trainerBytesOnDisk() / 1024} KB"
-    else "UNDER 100 KB TO DOWNLOAD",
-    hasSome = state.trainersInstalled > 0,
-    confirmLine = "Download trainer sprites from pret/pokered?",
-    deleteLine = "DELETE EVERY TRAINER SPRITE?",
-    model = model,
-    onDownload = model::downloadTrainers,
-    onStop = model::cancelTrainerDownload,
-    onDismiss = model::dismissTrainerProgress,
-    onDelete = model::deleteTrainers,
-)
-
-@Composable
-fun SpritesScreen(state: UiState, model: StorageViewModel) = DownloadPage(
-    heading = "POKéMON SPRITES",
-    progress = state.spriteProgress,
-    installedPercent = percentOf(state.spritesInstalled, SPRITE_TOTAL),
-    spaceUsed = if (state.spritesInstalled > 0) "${model.spriteBytesOnDisk() / (1024 * 1024)} MB"
-    else "ABOUT 25 MB TO DOWNLOAD",
-    hasSome = state.spritesInstalled > 0,
-    confirmLine = "Download Pokémon sprites from repo?",
-    deleteLine = "DELETE EVERY DOWNLOADED SPRITE?",
-    model = model,
-    onDownload = model::downloadSprites,
-    onStop = model::cancelSpriteDownload,
-    onDismiss = model::dismissSpriteProgress,
-    onDelete = model::deleteSprites,
-)
 
 /**
  * Everything the cartridge's PC menu does not have, sorted into its own
@@ -1359,20 +1187,53 @@ private fun OptionsDrawerContent(
             }
 
             OptionsDrawer.DOWNLOADS -> {
-                add(OptionRow("SPRITES", "${percentOf(state.spritesInstalled, SPRITE_TOTAL)}%") {
-                    model.open(Screen.Sprites)
-                })
-                add(OptionRow("CRIES", "${percentOf(state.criesInstalled, 151)}%") {
-                    model.open(Screen.Cries)
-                })
-                add(OptionRow("FOLLOWERS", "${percentOf(state.followersInstalled, 251)}%") {
-                    model.open(Screen.Followers)
-                })
-                add(OptionRow(
-                    "TRAINERS",
-                    "${percentOf(state.trainersInstalled, TrainerStore.ALL.size)}%",
-                ) { model.open(Screen.Trainers) })
-                add(OptionRow("DOWNLOAD ALL") { model.downloadEverything() })
+                // One button. There are four sets of art and no reason to ask
+                // about them one at a time: the app wants all of it, anything
+                // missing shows as a gap wherever it was needed, and choosing
+                // to have three quarters of it is not a choice worth offering.
+                val progress = model.downloadProgress()
+                val running = progress != null && !progress.finished
+                val here = model.downloadedPercent()
+                when {
+                    running -> add(OptionRow("STOP", "${progress!!.percent}%") {
+                        model.cancelDownload()
+                    })
+                    here >= 100 -> add(OptionRow("EVERYTHING IS HERE", "100%", enabled = false) {})
+                    else -> add(
+                        OptionRow(
+                            if (here > 0) "DOWNLOAD THE REST" else "DOWNLOAD",
+                            "$here%",
+                        ) {
+                            model.prompt(
+                                Prompt.Confirm(
+                                    lines = listOf(
+                                        "Download the sprites, cries,",
+                                        "followers and trainers?",
+                                        "About 28 MB.",
+                                    ),
+                                    confirmLabel = "YES",
+                                    cancelLabel = "NO",
+                                    onConfirm = model::downloadEverything,
+                                )
+                            )
+                        }
+                    )
+                }
+                if (!running && here > 0) {
+                    add(OptionRow("DELETE", "${model.downloadBytesOnDisk() / (1024 * 1024)} MB") {
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("DELETE EVERYTHING DOWNLOADED?"),
+                                confirmLabel = "YES",
+                                cancelLabel = "NO",
+                                onConfirm = model::deleteDownloads,
+                            )
+                        )
+                    })
+                }
+                if (!running && progress != null) {
+                    add(OptionRow("OK") { model.dismissDownloadProgress() })
+                }
             }
 
             OptionsDrawer.SAVES -> {
@@ -1425,21 +1286,34 @@ private fun OptionsDrawerContent(
             }
         }
 
-        // Whatever is being fetched, said here as well as on its own screen —
-        // DOWNLOAD ALL starts all four and never left this drawer.
+        // One bar over the whole download rather than four in a row: the sets
+        // run one after another, and a bar that restarts three times reads as
+        // three downloads rather than as one that is three quarters done.
         if (drawer == OptionsDrawer.DOWNLOADS) {
-            val busy = listOfNotNull(
-                state.spriteProgress?.let { "SPRITES" to it },
-                state.cryProgress?.let { "CRIES" to it },
-                state.followerProgress?.let { "FOLLOWERS" to it },
-                state.trainerProgress?.let { "TRAINERS" to it },
-            ).firstOrNull { !it.second.finished }
-            if (busy != null) {
+            val progress = model.downloadProgress()
+            if (progress != null) {
                 item {
                     Gen1Frame(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
-                        GbText(busy.first, style = Gen1TextSmall)
-                        Spacer(Modifier.height(gen1Dp(2)))
-                        DownloadProgressBar(busy.second.percent, Modifier.fillMaxWidth())
+                        DownloadProgressBar(progress.percent, Modifier.fillMaxWidth())
+                        if (progress.finished) {
+                            Spacer(Modifier.height(gen1Dp(3)))
+                            // What did not arrive, said out loud. It was
+                            // counted all along and never shown, so a run that
+                            // lost twenty files read as a complete success and
+                            // the art was simply missing afterwards with
+                            // nothing to explain it.
+                            GbText(
+                                when {
+                                    progress.error != null ->
+                                        "STOPPED: ${progress.error.uppercase()}"
+                                    progress.failed > 0 ->
+                                        "DONE. ${progress.failed} DID NOT ARRIVE."
+                                    else -> "DONE."
+                                },
+                                style = Gen1TextSmall,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }

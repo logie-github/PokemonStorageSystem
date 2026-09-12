@@ -29,8 +29,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.pokemon.Gen1Growth
 import com.logie.gen1storage.sound.LocalGen1Audio
+import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
+import com.logie.gen1storage.pokemon.Gen1TradeEvolution
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.storage.Provenance
@@ -101,7 +103,7 @@ fun Gen1StatusScreen(
         Gen1Frame(
             Modifier
                 .fillMaxWidth()
-                .gen1Clickable { page = 1 - page },
+                .gen1Clickable { page = (page + 1) % PAGES },
         ) {
             // Drawn here rather than inside either page. Turning the page used
             // to build a new sprite whose image started empty, and the
@@ -125,14 +127,22 @@ fun Gen1StatusScreen(
                 }
                 Spacer(Modifier.width(gen1Dp(4)))
                 Gen1CornerRule(Modifier.weight(1f)) {
-                    if (page == 0) StatusHeaderOne(pokemon) else StatusHeaderTwo(pokemon)
+                    when (page) {
+                        0 -> StatusHeaderOne(pokemon)
+                        1 -> StatusHeaderTwo(pokemon)
+                        else -> StatusHeaderThree(pokemon)
+                    }
                 }
             }
             Spacer(Modifier.height(gen1Dp(4)))
             // No prompt to turn the page. The whole window takes a tap and
-            // there are only two pages: a player finds that in one tap and
-            // never needs telling again.
-            if (page == 0) StatusPageOne(pokemon) else StatusPageTwo(pokemon)
+            // there are only three: a player finds that in one tap and never
+            // needs telling again.
+            when (page) {
+                0 -> StatusPageOne(pokemon)
+                1 -> StatusPageTwo(pokemon)
+                else -> StatusPageThree(pokemon, gameVersionId)
+            }
             provenance?.let {
                 Spacer(Modifier.height(gen1Dp(3)))
                 CameFrom(it)
@@ -243,6 +253,13 @@ private fun StatusPageOne(pokemon: Gen1Pokemon) {
             GbText(" ${pokemon.otId?.let { "%05d".format(it) } ?: "-----"}")
             GbText("OT/")
             GbText(" ${pokemon.otName ?: "-----"}")
+            // The one thing a cartridge cannot do on its own, said where a
+            // player is already looking at what this Pokémon is.
+            if (Gen1TradeEvolution.evolves(pokemon.speciesId)) {
+                Spacer(Modifier.height(gen1Dp(3)))
+                GbText("EVOLVES BY", style = Gen1TextSmall, maxLines = 1)
+                GbText("TRADE", style = Gen1TextSmall, maxLines = 1)
+            }
         }
     }
 }
@@ -285,3 +302,77 @@ private fun StatusPageTwo(pokemon: Gen1Pokemon) {
         }
     }
 }
+
+/**
+ * The Pokédex header: what the cartridge calls this kind of Pokémon.
+ *
+ * "SEED POKéMON", "MOUSE POKéMON" — the classification is printed as its own
+ * line above the entry in every game in the series, and it is the one part of
+ * a dex page that is not a sentence.
+ */
+@Composable
+private fun StatusHeaderThree(pokemon: Gen1Pokemon) {
+    val entry = Gen1Data.dexEntry(pokemon.speciesId)
+    GbText(
+        pokemon.displayName.uppercase(),
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    Spacer(Modifier.height(gen1Dp(3)))
+    GbText(
+        entry?.let { "${it.category} POKéMON" } ?: "POKéMON",
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+        maxLines = 1,
+    )
+    GbText(
+        entry?.let { "HT ${it.heightText}" } ?: "HT ---",
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+        maxLines = 1,
+    )
+    GbText(
+        entry?.let { "WT ${it.weightText}" } ?: "WT ---",
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+        maxLines = 1,
+    )
+}
+
+/**
+ * The Pokédex entry itself, in the words of the game it came from.
+ *
+ * Red and Blue share a set of entries and Yellow rewrote nearly all of them,
+ * so the text here follows the save rather than the species: a Pikachu out of
+ * a Yellow cartridge reads differently from one out of Red, and it should.
+ *
+ * Set as the cartridge sets it — the Pokédex's own two pages of three short
+ * lines, kept as written rather than reflowed, because the line breaks are
+ * part of how the entry reads.
+ */
+@Composable
+private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
+    val entry = Gen1Data.dexEntry(pokemon.speciesId)
+    Gen1Frame(contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2))) {
+        if (entry == null) {
+            // A modded species, or one the tables never had. Said plainly
+            // rather than left blank, which would read as a bug.
+            GbText("NO DATA", maxLines = 1)
+            GbText("ON THIS POKéMON.", style = Gen1TextSmall, maxLines = 1)
+            return@Gen1Frame
+        }
+        entry.lines(gameVersionId).forEach { line ->
+            if (line.isEmpty()) Spacer(Modifier.height(gen1Dp(3)))
+            else GbText(line, style = Gen1TextSmall, maxLines = 1)
+        }
+        Spacer(Modifier.height(gen1Dp(2)))
+        GbText(
+            "AS ${(GameVersion.fromId(gameVersionId)?.label ?: "RED").uppercase()} TELLS IT",
+            style = Gen1TextSmall,
+            maxLines = 1,
+        )
+    }
+}
+
+/** Stats, moves, and the Pokédex entry. */
+private const val PAGES = 3

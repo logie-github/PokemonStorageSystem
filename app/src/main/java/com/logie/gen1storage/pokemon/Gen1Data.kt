@@ -43,6 +43,45 @@ data class Gen1Move(
 )
 
 /**
+ * One species' Pokédex entry, as the cartridge prints it.
+ *
+ * Two entries rather than one, because Yellow rewrote almost all of them and a
+ * Pokémon should be read in the words of the game it came out of. [red] is what
+ * Red and Blue print — pokered builds both from the same text — and [yellow] is
+ * Yellow's, null only if that cartridge has none.
+ *
+ * Height and weight are stored the way the cartridge stores them: feet and
+ * inches, and pounds to one decimal place. Converting them here would be this
+ * app quietly disagreeing with the screen it is copying.
+ */
+data class Gen1DexEntry(
+    val speciesId: String,
+    /** The classification the Pokédex prints over the entry: "MOUSE", "SEED". */
+    val category: String,
+    val heightFeet: Int,
+    val heightInches: Int,
+    val weightTenthsOfAPound: Int,
+    val red: String,
+    val yellow: String?,
+) {
+    val heightText: String get() = "$heightFeet'${"%02d".format(heightInches)}\""
+
+    val weightText: String get() =
+        "%d.%dlb".format(weightTenthsOfAPound / 10, weightTenthsOfAPound % 10)
+
+    /**
+     * The entry the given game prints. Anything that is not Yellow — including
+     * a save whose version cannot be read — gets Red and Blue's, which is the
+     * one two of the three cartridges use.
+     */
+    fun forGame(gameVersionId: String?): String =
+        if (gameVersionId?.lowercase() == "yellow") yellow ?: red else red
+
+    /** The entry as separate lines, with the page break kept as a blank one. */
+    fun lines(gameVersionId: String?): List<String> = forGame(gameVersionId).split("\n")
+}
+
+/**
  * The five Generation I stats, in `src/pokemon/Stats.lua`'s ORDER. Special is a
  * single stat in Gen I — the split arrives in Gen II, which is out of scope.
  */
@@ -73,11 +112,17 @@ object Gen1Data {
     val species: List<Gen1Species> = GEN1_SPECIES_TABLE
     val moves: List<Gen1Move> = GEN1_MOVE_TABLE
 
+    val dex: List<Gen1DexEntry> = GEN1_DEX_TABLE
+
     private val speciesById: Map<String, Gen1Species> = species.associateBy { it.id }
+    private val dexById: Map<String, Gen1DexEntry> = dex.associateBy { it.speciesId }
     private val movesById: Map<String, Gen1Move> = moves.associateBy { it.id }
 
     fun species(id: String?): Gen1Species? = id?.let { speciesById[it] }
     fun move(id: String?): Gen1Move? = id?.let { movesById[it] }
+
+    /** The Pokédex entry for a species, or null for one the tables never had. */
+    fun dexEntry(id: String?): Gen1DexEntry? = id?.let { dexById[it] }
 
     fun speciesName(id: String?): String = species(id)?.displayName ?: id.orEmpty()
     fun moveName(id: String?): String = move(id)?.displayName ?: id.orEmpty()

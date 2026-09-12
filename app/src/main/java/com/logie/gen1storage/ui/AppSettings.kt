@@ -121,6 +121,43 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_BILLS_PC, false)
         set(value) = prefs.edit().putBoolean(KEY_BILLS_PC, value).apply()
 
+    /**
+     * Whether the PC will trade with itself, and so evolve the four that only
+     * evolve by trading.
+     *
+     * Off. It is the one thing in this app that changes a Pokémon into another
+     * Pokémon, and that should be asked for rather than found.
+     */
+    var tradeEvolution: Boolean
+        get() = prefs.getBoolean(KEY_TRADE_EVOLUTION, false)
+        set(value) = prefs.edit().putBoolean(KEY_TRADE_EVOLUTION, value).apply()
+
+    /**
+     * Whether a trade plays the cartridge's own animation on the way through.
+     *
+     * Off, because it takes about eight seconds and the result is the same
+     * either way. On, the link cable is drawn, the ball travels down it
+     * ticking, and the Pokémon comes out the far end.
+     */
+    var tradeAnimation: Boolean
+        get() = prefs.getBoolean(KEY_TRADE_ANIMATION, false)
+        set(value) = prefs.edit().putBoolean(KEY_TRADE_ANIMATION, value).apply()
+
+    /**
+     * Stop the interface moving. Off by default; on, nothing animates and
+     * everything still draws.
+     */
+    var reduceMotion: Boolean
+        get() = prefs.getBoolean(KEY_REDUCE_MOTION, false)
+        set(value) = prefs.edit().putBoolean(KEY_REDUCE_MOTION, value).apply()
+
+    fun motionEnabled(motion: Motion): Boolean =
+        !reduceMotion && prefs.getBoolean(KEY_MOTION_PREFIX + motion.id, true)
+
+    fun setMotionEnabled(motion: Motion, enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MOTION_PREFIX + motion.id, enabled).apply()
+    }
+
     /** One switch over the lot, for when none of it is wanted. */
     var soundOff: Boolean
         get() = prefs.getBoolean(KEY_SOUND_OFF, false)
@@ -144,6 +181,10 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_TRAINER_PREFIX = "trainer-sprite-"
         const val KEY_CLASSIC_LABELS = "classic-transfer-labels"
         const val KEY_BILLS_PC = "bills-pc"
+        const val KEY_TRADE_EVOLUTION = "trade-evolution"
+        const val KEY_TRADE_ANIMATION = "trade-animation"
+        const val KEY_REDUCE_MOTION = "reduce-motion"
+        const val KEY_MOTION_PREFIX = "motion-"
         const val KEY_SOUND_OFF = "sound-off"
         const val KEY_SOUND_PREFIX = "sound-"
         /** As long as a name can be and still fit a cartridge label. */

@@ -12,6 +12,9 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
+import com.logie.gen1storage.pokemon.Gen1Data
+import com.logie.gen1storage.pokemon.Gen1TradeEvolution
+import com.logie.gen1storage.storage.StoredPokemon
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
@@ -111,6 +114,8 @@ sealed interface Screen {
     data object Options : Screen
     /** Every copy the app kept of a save before it wrote over it. */
     data object Restore : Screen
+    /** The four that only evolve by being traded, and the machine to do it. */
+    data object Trade : Screen
     data object Credits : Screen
 }
 
@@ -146,6 +151,22 @@ data class TransferScene(
     /** Whether the Pokémon is the last thing on screen rather than the first. */
     val arriving: Boolean get() = motion != TransferMotion.OUT
 }
+
+/**
+ * A trade in progress: what went in, and what is coming back out.
+ *
+ * The app is both ends of the cable, so there is one Pokémon rather than two —
+ * it goes out one side and its evolved form comes back the other.
+ */
+data class TradeScene(
+    val fromSpeciesId: String?,
+    val toSpeciesId: String?,
+    /** What it is called, which does not change by evolving. */
+    val name: String,
+    val gameVersionId: String?,
+    /** The cry to play when it arrives, by Pokédex number. */
+    val toDexNumber: Int?,
+)
 
 /** The transfer a status screen was opened from, and can finish. */
 enum class StatusTransfer { WITHDRAW, DEPOSIT }
@@ -211,6 +232,12 @@ data class UiState(
     val textSpeed: TextSpeed = TextSpeed.DEFAULT,
     /** Shown while a transfer is in flight, and cleared by its result. */
     val transferScene: TransferScene? = null,
+    /** Shown while a trade is running, when the player has asked to see it. */
+    val tradeScene: TradeScene? = null,
+    /** Whether the PC will trade with itself at all. */
+    val tradeEvolution: Boolean = false,
+    /** Whether a trade is drawn on its way through. */
+    val tradeAnimation: Boolean = false,
     /**
      * The save the top-level PC menu deposits from and withdraws to. Set by
      * opening one, so the menu is never asking which save it means.
@@ -223,6 +250,9 @@ data class UiState(
     /** All sound off, and which individual effects are on under that. */
     val soundOff: Boolean = false,
     val soundsOn: Set<String> = emptySet(),
+    /** Nothing moves, and which kinds of movement are on under that. */
+    val reduceMotion: Boolean = false,
+    val motionsOn: Set<String> = emptySet(),
     val loadingAll: Boolean = false,
     val spriteProgress: DownloadProgress? = null,
     val spritesInstalled: Int = 0,
@@ -238,6 +268,9 @@ data class UiState(
     val spriteRevision: Int = 0,
 ) {
     val screen: Screen get() = stack.last()
+
+    /** Whether a given kind of movement is on, as [Gen1Motion] reads it. */
+    fun moves(motion: Motion): Boolean = !reduceMotion && motion.id in motionsOn
 
     /** What this app's own storage is called on the screen that offers it. */
     val pokemonPcLabel: String get() = if (billsPc) "BILL'S PC" else "LOGIE'S PC"
@@ -331,6 +364,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 windowsOnRight = settings.windowsOnRight,
                 classicTransferLabels = settings.classicTransferLabels,
                 billsPc = settings.billsPc,
+                tradeEvolution = settings.tradeEvolution,
+                tradeAnimation = settings.tradeAnimation,
+                reduceMotion = settings.reduceMotion,
+                motionsOn = enabledMotions(),
                 textSpeed = settings.textSpeed,
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
@@ -636,6 +673,84 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(classicTransferLabels = on) }
     }
 
+    fun setReduceMotion(on: Boolean) {
+        settings.reduceMotion = on
+        mutable.update { it.copy(reduceMotion = on, motionsOn = enabledMotions()) }
+    }
+
+    fun setMotionEnabled(motion: Motion, enabled: Boolean) {
+        settings.setMotionEnabled(motion, enabled)
+        mutable.update { it.copy(motionsOn = enabledMotions()) }
+    }
+
+    fun setTradeEvolution(on: Boolean) {
+        settings.tradeEvolution = on
+        mutable.update { it.copy(tradeEvolution = on) }
+    }
+
+    fun setTradeAnimation(on: Boolean) {
+        settings.tradeAnimation = on
+        mutable.update { it.copy(tradeAnimation = on) }
+    }
+
+    /** Everything in the PC that a trade would evolve. */
+    fun tradeCandidates(): List<StoredPokemon> =
+        mutable.value.storage.boxes.flatMap { it.contents }
+            .filter { Gen1TradeEvolution.evolves(it.pokemon.speciesId) }
+
+    /**
+     * Trades a stored Pokémon with the machine, so that it evolves.
+     *
+     * Nothing leaves the PC and no save is written: the Pokémon is in this
+     * app's own storage on both sides of the trade, which is the only reason
+     * this can be offered at all. What changes is the species and the stats
+     * that follow from it.
+     */
+    fun tradeEvolve(uid: String) = viewModelScope.launch {
+        val current = mutable.value
+        val stored = storage.get(uid)
+        if (stored == null) {
+            message("THAT POKéMON IS NOT IN THE PC.")
+            return@launch
+        }
+        val from = stored.pokemon.speciesId
+        val to = Gen1TradeEvolution.evolutionOf(from)
+        if (to == null) {
+            message("${stored.pokemon.displayName.uppercase()} WOULD NOT CHANGE.")
+            return@launch
+        }
+        val name = stored.pokemon.displayName.uppercase()
+
+        if (current.tradeAnimation && current.moves(Motion.TRADE)) {
+            mutable.update {
+                it.copy(
+                    busy = true,
+                    prompt = null,
+                    tradeScene = TradeScene(
+                        fromSpeciesId = from,
+                        toSpeciesId = to,
+                        name = name,
+                        gameVersionId = stored.provenance.gameVersion,
+                        toDexNumber = Gen1Data.species(to)?.dexNumber,
+                    ),
+                )
+            }
+            delay(TRADE_SCENE_MILLIS)
+        } else {
+            mutable.update { it.copy(busy = true, prompt = null) }
+        }
+
+        val became = storage.evolveByTrade(uid)
+        mutable.update {
+            it.copy(busy = false, tradeScene = null, storage = storage.state())
+        }
+        if (became == null) {
+            message("NOTHING HAPPENED.")
+        } else {
+            message("$name evolved into ${Gen1Data.speciesName(became).uppercase()}!")
+        }
+    }
+
     fun setBillsPc(on: Boolean) {
         settings.billsPc = on
         mutable.update { it.copy(billsPc = on) }
@@ -650,6 +765,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     private fun enabledSounds(): Set<String> =
         SoundEffect.entries.filter { settings.soundEnabled(it) }.map { it.id }.toSet()
+
+    private fun enabledMotions(): Set<String> =
+        Motion.entries.filter { settings.motionEnabled(it) }.map { it.id }.toSet()
 
     fun setSoundOff(off: Boolean) {
         settings.soundOff = off

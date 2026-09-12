@@ -309,7 +309,11 @@ fun Modifier.gen1Ground(): Modifier {
     // of ground either side of a window still agree about where it is.
     val ballInk = palette.lightest.toArgb()
     val step = remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) {
+    // Held still rather than taken away: the ball is a graphic as much as a
+    // movement, so REDUCE MOTION stops it turning and leaves it drawn.
+    val turns = Gen1Motion.moves(Motion.BALL)
+    LaunchedEffect(turns) {
+        if (!turns) return@LaunchedEffect
         while (true) {
             withInfiniteAnimationFrameNanos { nanos ->
                 val position = nanos / 1_000_000L / Gen1Pokeball.STEP_MS

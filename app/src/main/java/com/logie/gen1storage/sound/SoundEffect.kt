@@ -19,4 +19,13 @@ enum class SoundEffect(val id: String, val label: String, val resourceName: Stri
      * moment in the app worth hearing confirmed.
      */
     TRANSFER("transfer", "TRANSFER", "sfx_withdraw_deposit"),
+
+    /**
+     * The two the trade animation makes, rendered from pokered's own note data
+     * through the Game Boy pulse channel it was written for — see
+     * `tools/synth_gb_sfx.py`. The cable's open end is SFX_HEAL_HP; the ball
+     * moving along it ticks SFX_TINK once per step, as `trade.asm` does.
+     */
+    TRADE_CABLE("trade-cable", "TRADE CABLE", "sfx_heal_hp"),
+    TRADE_BALL("trade-ball", "TRADE BALL", "sfx_tink"),
 }

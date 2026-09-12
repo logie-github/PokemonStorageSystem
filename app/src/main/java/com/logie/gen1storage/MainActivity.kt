@@ -48,7 +48,10 @@ import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.Gen1Typing
+import com.logie.gen1storage.ui.Gen1Motion
+import com.logie.gen1storage.ui.Gen1TradeScene
 import com.logie.gen1storage.ui.RestoreScreen
+import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
@@ -130,6 +133,8 @@ private fun StorageApp(model: StorageViewModel) {
         Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
         Gen1Layout.windowsOnRight = state.windowsOnRight
         Gen1Typing.speed = state.textSpeed
+        Gen1Motion.reduced = state.reduceMotion
+        Gen1Motion.allowed = state.motionsOn
     }
 
     // The game can save at any moment, and every revision this app is holding
@@ -287,6 +292,11 @@ private fun StorageApp(model: StorageViewModel) {
                 onCancel = model::cancelSend,
             )
         }
+        // A trade is the app talking to itself, so it owns the screen while
+        // it runs, over everything and under the message it ends with.
+        state.tradeScene?.let { scene ->
+            Gen1TradeScene(scene, model.sprites, model.trainers, state.spriteRevision)
+        }
         if (state.prompt != null) PromptWindow(state, model)
     }
     }
@@ -328,6 +338,7 @@ private fun ScreenContent(
         Screen.Followers -> FollowersScreen(state, model)
         Screen.Trainers -> TrainersScreen(state, model)
         Screen.Restore -> RestoreScreen(state, model)
+        Screen.Trade -> TradeScreen(state, model)
         Screen.Credits -> CreditsScreen()
         Screen.Options -> OptionsScreen(
             state = state,

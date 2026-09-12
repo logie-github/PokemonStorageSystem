@@ -56,8 +56,63 @@ class TrainerStore(private val directory: File) {
 
     fun has(id: String): Boolean = file(id).let { it.isFile && it.length() > 0 }
 
-    /** The trainers, and the one sheet the eight badges are cut from. */
-    fun count(): Int = ALL.count { has(it.id) } + if (has(BADGE_SHEET)) 1 else 0
+    /** The trainers, plus the sheets the badges and the trade are cut from. */
+    fun count(): Int = ALL.count { has(it.id) } + EXTRA_ART.keys.count { has(it) }
+
+    /**
+     * One of the extra sheets whole, recoloured onto the palette in force.
+     *
+     * The trade's Game Boy is already a picture and is used as one; the cable
+     * and the ball are tile strips and are cut up by [tile].
+     */
+    fun art(id: String): ImageBitmap? {
+        if (id !in EXTRA_ART) return null
+        val key = "$tintId/art/$id"
+        memory[key]?.let { return it }
+        val decoded = decode(file(id)) ?: return null
+        return tinted(decoded).asImageBitmap().also { memory[key] = it }
+    }
+
+    /**
+     * One 8x8 tile of a sheet, counted left to right and then down, which is
+     * the order the cartridge's own tilemaps index them in.
+     */
+    fun tile(id: String, index: Int): ImageBitmap? {
+        if (id !in EXTRA_ART) return null
+        val key = "$tintId/tile/$id/$index"
+        memory[key]?.let { return it }
+        val sheet = decode(file(id)) ?: return null
+        val across = sheet.width / TILE
+        val down = sheet.height / TILE
+        if (across <= 0 || index < 0 || index >= across * down) {
+            sheet.recycle()
+            return null
+        }
+        val cut = Bitmap.createBitmap(
+            sheet,
+            index % across * TILE,
+            index / across * TILE,
+            TILE,
+            TILE,
+        )
+        sheet.recycle()
+        return tinted(cut).asImageBitmap().also { memory[key] = it }
+    }
+
+    private fun decode(source: File): Bitmap? {
+        if (!source.isFile) return null
+        return runCatching {
+            BitmapFactory.decodeFile(source.path, BitmapFactory.Options().apply {
+                inScaled = false
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            })
+        }.getOrNull()
+    }
+
+    private fun tinted(bitmap: Bitmap): Bitmap {
+        val ramp = tintRamp ?: return bitmap
+        return runCatching { recolourToRamp(bitmap, ramp) }.getOrNull() ?: bitmap
+    }
 
     /**
      * One gym's badge, or null while the sheet is not on the device.
@@ -72,13 +127,7 @@ class TrainerStore(private val directory: File) {
         val key = "$tintId/badge/$gym"
         memory[key]?.let { return it }
 
-        val source = file(BADGE_SHEET).takeIf { it.isFile } ?: return null
-        val sheet = runCatching {
-            BitmapFactory.decodeFile(source.path, BitmapFactory.Options().apply {
-                inScaled = false
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            })
-        }.getOrNull() ?: return null
+        val sheet = decode(file(BADGE_SHEET)) ?: return null
         if (sheet.width != BADGE_SIZE || sheet.height != BADGE_SIZE * BADGE_TILES) {
             sheet.recycle()
             return null
@@ -86,10 +135,7 @@ class TrainerStore(private val directory: File) {
 
         val cut = Bitmap.createBitmap(sheet, 0, (gym * 2 + 1) * BADGE_SIZE, BADGE_SIZE, BADGE_SIZE)
         sheet.recycle()
-        val ramp = tintRamp
-        val finished = if (ramp == null) cut
-        else runCatching { recolourToRamp(cut, ramp) }.getOrNull() ?: cut
-        return finished.asImageBitmap().also { memory[key] = it }
+        return tinted(cut).asImageBitmap().also { memory[key] = it }
     }
 
     fun bytesOnDisk(): Long =
@@ -122,14 +168,12 @@ class TrainerStore(private val directory: File) {
 
     /** Fetches one if it is not here yet. */
     fun fetch(id: String): File? {
-        val badges = id == BADGE_SHEET
-        if (!badges && ALL.none { it.id == id }) return null
+        val extra = EXTRA_ART[id]
+        if (extra == null && ALL.none { it.id == id }) return null
         val target = file(id)
         if (target.isFile && target.length() > 0) return target
 
-        val url =
-            if (badges) URL("$CARD_URL/badges.png")
-            else URL("$BASE_URL/$id.png")
+        val url = URL(if (extra != null) "$ROOT_URL/$extra" else "$ROOT_URL/gfx/trainers/$id.png")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 20_000
@@ -145,11 +189,8 @@ class TrainerStore(private val directory: File) {
         // error page cannot sit on disk looking like a trainer.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        val wanted =
-            if (badges) bounds.outWidth == BADGE_SIZE &&
-                bounds.outHeight == BADGE_SIZE * BADGE_TILES
-            else bounds.outWidth == SIZE && bounds.outHeight == SIZE
-        if (!wanted) return null
+        val (width, height) = EXTRA_SIZE[id] ?: (SIZE to SIZE)
+        if (bounds.outWidth != width || bounds.outHeight != height) return null
 
         directory.mkdirs()
         val staged = File(directory, "$id.png.part")
@@ -164,9 +205,10 @@ class TrainerStore(private val directory: File) {
     /** Fetches every trainer that is not already here, reporting after each. */
     suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
         withContext(Dispatchers.IO) {
-            // The badge sheet goes with them: it is the other half of what a
-            // trainer card is drawn from, and one more file among forty-five.
-            val wanted = ALL.map { it.id } + BADGE_SHEET
+            // The sheets go with them: the badges are the other half of what a
+            // trainer card is drawn from, and the trade art is the rest of what
+            // pokered has that is not a Pokémon.
+            val wanted = ALL.map { it.id } + EXTRA_ART.keys
             val total = wanted.size
             onProgress(DownloadProgress(0, total))
             val failed = fetchInParallel(wanted, total, onProgress) { fetch(it) }
@@ -188,15 +230,45 @@ class TrainerStore(private val directory: File) {
          */
         private const val COMMIT = "a1a22aaf84d1675bcdbaeb194592379d586d838e"
 
-        private const val BASE_URL =
-            "https://raw.githubusercontent.com/pret/pokered/$COMMIT/gfx/trainers"
-
-        /** Where the card's own art lives, which is where the badges are. */
-        private const val CARD_URL =
-            "https://raw.githubusercontent.com/pret/pokered/$COMMIT/gfx/trainer_card"
+        private const val ROOT_URL = "https://raw.githubusercontent.com/pret/pokered/$COMMIT"
 
         /** The badge sheet, kept under this name beside the trainers. */
         const val BADGE_SHEET = "badges"
+
+        /** The Game Boy the trade animation draws, already a whole picture. */
+        const val TRADE_GAME_BOY = "trade-game-boy"
+
+        /** The cable's tiles, assembled by the tilemap in [Gen1TradeScene]. */
+        const val TRADE_CABLE = "trade-cable"
+
+        /** The ball that travels down the cable, as four flips of one tile. */
+        const val TRADE_BALL = "trade-ball"
+
+        /** One tile's side, which is what the cartridge counts in. */
+        const val TILE = 8
+
+        /**
+         * Everything from pokered that is not a trainer, by where it lives.
+         *
+         * Kept with the trainers rather than in a store of its own because it
+         * is the same download from the same pinned commit, and a player who
+         * has fetched the trainers should not then discover a second, smaller
+         * download standing between them and a trade.
+         */
+        val EXTRA_ART: Map<String, String> = linkedMapOf(
+            BADGE_SHEET to "gfx/trainer_card/badges.png",
+            TRADE_GAME_BOY to "gfx/trade/game_boy.png",
+            TRADE_CABLE to "gfx/trade/link_cable.png",
+            TRADE_BALL to "gfx/trade/cable_ball.png",
+        )
+
+        /** What each must measure, so a proxy's error page cannot land as art. */
+        val EXTRA_SIZE: Map<String, Pair<Int, Int>> = mapOf(
+            BADGE_SHEET to (BADGE_SIZE to BADGE_SIZE * BADGE_TILES),
+            TRADE_GAME_BOY to (48 to 64),
+            TRADE_CABLE to (24 to 40),
+            TRADE_BALL to (16 to 16),
+        )
 
         /** The eight gyms. */
         const val BADGES = 8

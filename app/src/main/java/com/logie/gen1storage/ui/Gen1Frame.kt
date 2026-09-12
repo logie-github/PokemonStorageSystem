@@ -157,8 +157,11 @@ fun Gen1SelectionArrow(visible: Boolean, modifier: Modifier = Modifier) {
  */
 @Composable
 private fun Modifier.gen1Opening(): Modifier {
-    val grown = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { grown.animateTo(1f, tween(OPEN_MILLIS, easing = LinearEasing)) }
+    val moves = Gen1Motion.moves(Motion.WINDOWS)
+    val grown = remember(moves) { Animatable(if (moves) 0f else 1f) }
+    LaunchedEffect(moves) {
+        if (moves) grown.animateTo(1f, tween(OPEN_MILLIS, easing = LinearEasing))
+    }
     return graphicsLayer {
         // Wider before it is tall, which is the order the games draw it in.
         scaleX = (grown.value * 2f).coerceAtMost(1f)

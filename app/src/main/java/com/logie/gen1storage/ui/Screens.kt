@@ -386,6 +386,7 @@ fun StorageSystemScreen(
         },
         onView = { mode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
+        onTrade = if (state.tradeEvolution) ({ model.open(Screen.Trade) }) else null,
         onRenameBox = { model.prompt(Prompt.RenameBox(StorageLayout.THE_BOX)) },
         onOptions = onOptions,
         caption = when {
@@ -1124,6 +1125,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
 enum class OptionsDrawer(val label: String) {
     VISUAL("VISUAL"),
     AUDIO("AUDIO"),
+    MOTION("ACCESSIBILITY"),
     LAYOUT("LAYOUT"),
     DOWNLOADS("DOWNLOADS"),
     SAVES("SAVES"),
@@ -1222,6 +1224,27 @@ private fun OptionsDrawerContent(
                 }
             }
 
+            OptionsDrawer.MOTION -> {
+                add(
+                    OptionRow("REDUCE MOTION", if (state.reduceMotion) "ON" else "OFF") {
+                        model.setReduceMotion(!state.reduceMotion)
+                    }
+                )
+                // Still listed while REDUCE MOTION is on, and still settable:
+                // turning that off should give a player back exactly the
+                // choices they had, not a set of defaults.
+                Motion.entries.forEach { motion ->
+                    val on = motion.id in state.motionsOn
+                    add(
+                        OptionRow(
+                            motion.label,
+                            trailing = if (state.reduceMotion) "OFF" else if (on) "ON" else "OFF",
+                            enabled = !state.reduceMotion,
+                        ) { model.setMotionEnabled(motion, !on) }
+                    )
+                }
+            }
+
             OptionsDrawer.LAYOUT -> {
                 add(
                     OptionRow("ALIGNMENT", if (state.windowsOnRight) "RIGHT" else "LEFT") {
@@ -1245,6 +1268,18 @@ private fun OptionsDrawerContent(
                         model.setBillsPc(!state.billsPc)
                     }
                 )
+                add(
+                    OptionRow("TRADE MACHINE", if (state.tradeEvolution) "ON" else "OFF") {
+                        model.setTradeEvolution(!state.tradeEvolution)
+                    }
+                )
+                if (state.tradeEvolution) {
+                    add(
+                        OptionRow("SHOW THE TRADE", if (state.tradeAnimation) "ON" else "OFF") {
+                            model.setTradeAnimation(!state.tradeAnimation)
+                        }
+                    )
+                }
             }
 
             OptionsDrawer.DOWNLOADS -> {

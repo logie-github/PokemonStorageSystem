@@ -140,7 +140,7 @@ fun ChooseCartScreen(
         }
 
         val scroll = rememberLazyListState()
-        LaunchedEffect(cursor, columns) { scroll.animateScrollToItem(cursor / columns) }
+        LaunchedEffect(cursor, columns) { scroll.scrollToRow(cursor / columns) }
         LazyColumn(
             state = scroll,
             verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),

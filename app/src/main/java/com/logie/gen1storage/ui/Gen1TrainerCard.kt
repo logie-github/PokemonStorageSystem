@@ -264,7 +264,7 @@ fun TrainerSpritePicker(
         }
     }
     val scroll = rememberLazyListState()
-    LaunchedEffect(at) { scroll.animateScrollToItem(at) }
+    LaunchedEffect(at) { scroll.scrollToRow(at) }
 
     Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth(), opening = true) {
         GbText("TRAINER")

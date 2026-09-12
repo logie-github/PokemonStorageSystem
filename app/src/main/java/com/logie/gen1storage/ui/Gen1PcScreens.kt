@@ -127,6 +127,12 @@ fun StorageSystemScreen(
     onDeposit: () -> Unit,
     onView: () -> Unit,
     onChangeCart: () -> Unit,
+    /**
+     * The trade machine, when the player has switched it on. Null keeps the
+     * row off the menu entirely rather than greying it out: a row nobody can
+     * take is a question the menu does not need to raise.
+     */
+    onTrade: (() -> Unit)? = null,
     onRenameBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
     /** What the two directions are called, which is the player's to choose. */
@@ -182,6 +188,7 @@ fun StorageSystemScreen(
         add(Triple("$inLabel PKMN", onDeposit, SoundEffect.SELECT))
         add(Triple("VIEW BOXES", onView, SoundEffect.SELECT))
         add(Triple("TRAINER CARD", onChangeCart, SoundEffect.CURSOR))
+        if (onTrade != null) add(Triple("TRADE", onTrade, SoundEffect.SELECT))
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add(Triple("OPTIONS", onOptions, SoundEffect.OPTIONS))
     }
@@ -339,7 +346,7 @@ fun MonListOverlay(
     // asking the list to scroll to a row it does not have just pins it to the
     // bottom.
     LaunchedEffect(selected) {
-        if (selected <= cancelAt) scroll.animateScrollToItem(selected)
+        if (selected <= cancelAt) scroll.scrollToRow(selected)
         onHighlight(selected.takeIf { it < entries.size })
     }
     Box(

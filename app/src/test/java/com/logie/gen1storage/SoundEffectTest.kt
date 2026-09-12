@@ -37,12 +37,19 @@ class SoundEffectTest {
         assertEquals("sfx_turn_off_pc", SoundEffect.LOG_OFF.resourceName)
         assertEquals("sfx_enter_pc", SoundEffect.SELECT.resourceName)
         assertEquals("sfx_withdraw_deposit", SoundEffect.TRANSFER.resourceName)
+        // Rendered from pokered's own note data rather than recorded; see
+        // tools/synth_gb_sfx.py.
+        assertEquals("sfx_heal_hp", SoundEffect.TRADE_CABLE.resourceName)
+        assertEquals("sfx_tink", SoundEffect.TRADE_BALL.resourceName)
     }
 
     @Test
     fun `the menu lists every effect`() {
         assertEquals(
-            listOf("OPEN PC", "CURSOR", "SAVE", "OPTIONS", "LOG OFF", "SELECT", "TRANSFER"),
+            listOf(
+                "OPEN PC", "CURSOR", "SAVE", "OPTIONS", "LOG OFF", "SELECT", "TRANSFER",
+                "TRADE CABLE", "TRADE BALL",
+            ),
             SoundEffect.entries.map { it.label },
         )
     }

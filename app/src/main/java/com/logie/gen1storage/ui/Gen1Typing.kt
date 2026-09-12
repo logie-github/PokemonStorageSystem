@@ -34,6 +34,13 @@ fun Gen1TypedLines(
     var typed by remember(lines) { mutableIntStateOf(0) }
 
     LaunchedEffect(lines) {
+        // Held still, the line is simply already printed: the words are the
+        // graphic here, and reduce motion takes the movement, not the text.
+        if (!Gen1Motion.moves(Motion.TEXT)) {
+            typed = whole
+            onFinished()
+            return@LaunchedEffect
+        }
         typed = 0
         while (typed < whole) {
             delay(Gen1Typing.speed.letterMillis)

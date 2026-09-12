@@ -66,8 +66,16 @@ fun Gen1TransferScene(
     // How far a released Pokémon has drifted off the top, nought to one.
     val leaving = remember(scene) { Animatable(0f) }
 
-    LaunchedEffect(scene) {
+    val moves = Gen1Motion.moves(Motion.TRANSFERS)
+    LaunchedEffect(scene, moves) {
         if (asking) return@LaunchedEffect
+        if (!moves) {
+            // Straight to where it would have ended: the Pokémon for one
+            // arriving, the ball for one leaving, and the puff already gone.
+            shown.snapTo(if (scene.arriving) 1f else 0f)
+            puff = 2f
+            return@LaunchedEffect
+        }
         if (scene.arriving) {
             // The ball is there to be looked at before it opens.
             delay(BALL_HOLD_MILLIS)

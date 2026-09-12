@@ -223,10 +223,10 @@ fun Gen1BoxGrid(
         val first = scroll.firstVisibleItemIndex
         val visible = scroll.layoutInfo.visibleItemsInfo
         val last = visible.lastOrNull()?.index ?: first
-        if (row <= first) scroll.animateScrollToItem(row)
+        if (row <= first) scroll.scrollToRow(row)
         // Stops one short of the end so the row lands inside the window rather
         // than half under its bottom edge.
-        else if (row >= last) scroll.animateScrollToItem((row - (last - first) + 1).coerceAtLeast(0))
+        else if (row >= last) scroll.scrollToRow((row - (last - first) + 1).coerceAtLeast(0))
     }
 
     Box(

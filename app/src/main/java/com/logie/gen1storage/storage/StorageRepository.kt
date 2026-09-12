@@ -10,6 +10,7 @@ import com.logie.gen1storage.lua.asString
 import com.logie.gen1storage.lua.asTable
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.lua.luaStr
+import com.logie.gen1storage.pokemon.Gen1TradeEvolution
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.UUID
@@ -241,6 +242,30 @@ class StorageRepository(private val directory: File) {
             return true
         }
         false
+    }
+
+    /**
+     * Trades a stored Pokémon with the machine, which is how the four that
+     * need a trade evolve.
+     *
+     * Returns what it became, or null when it was not one of the four or was
+     * not here — in which case nothing was written. The Pokémon stays in its
+     * own spot: it is the same Pokémon, and rearranging the box around an
+     * evolution would be the app moving something nobody asked it to move.
+     */
+    fun evolveByTrade(uid: String): String? = synchronized(lock) {
+        ensureLoaded()
+        for (box in boxes) {
+            val position = box.indexOfFirst { it?.uid == uid }
+            if (position < 0) continue
+            val stored = box[position] ?: return null
+            val data = stored.data.deepCopy()
+            val became = Gen1TradeEvolution.evolve(data) ?: return null
+            box[position] = stored.copy(data = data)
+            persist()
+            return became
+        }
+        null
     }
 
     fun renameBox(index: Int, name: String): Boolean = synchronized(lock) {

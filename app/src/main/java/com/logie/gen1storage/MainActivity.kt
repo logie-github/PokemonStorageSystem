@@ -47,6 +47,7 @@ import com.logie.gen1storage.ui.GbText
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
+import com.logie.gen1storage.ui.LocalGen1Narrow
 import com.logie.gen1storage.ui.Gen1Typing
 import com.logie.gen1storage.ui.Gen1Haptics
 import com.logie.gen1storage.ui.Gen1Motion
@@ -267,7 +268,18 @@ private fun StorageApp(model: StorageViewModel) {
                 if (isUnfolded() && state.screen is Screen.Status && beneath != null) {
                     Row(Modifier.fillMaxSize()) {
                         Spacer(Modifier.weight(1f))
-                        Box(Modifier.weight(1f)) { ScreenContent(beneath, state, model, context) }
+                        Box(Modifier.weight(1f)) {
+                            // Half a window is not an unfolded one. Without
+                            // this the screen in here splits its own half in
+                            // two again — a box that lays its preview beside
+                            // itself put the status pages in a quarter of the
+                            // screen, breaking a word to a letter a line, and
+                            // drew a second copy of what is already on the
+                            // left. See [LocalGen1Narrow].
+                            CompositionLocalProvider(LocalGen1Narrow provides true) {
+                                ScreenContent(beneath, state, model, context)
+                            }
+                        }
                     }
                 }
                 ScreenContent(state.screen, state, model, context)

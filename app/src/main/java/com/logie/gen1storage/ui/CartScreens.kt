@@ -334,10 +334,14 @@ private fun Notice(text: String) {
  *
  * Half the screen once there is a lot of it — a window that runs the width of
  * an opened foldable stops reading as a window and starts reading as a page.
+ *
+ * "The screen" is the room this screen has rather than the size of the device:
+ * one drawn beside another has half a window to work in, and a cap measured
+ * off the whole device would let its windows run past the edge of it.
  */
 @Composable
 fun Modifier.gen1MaxWidth(): Modifier {
-    val screen = LocalConfiguration.current.screenWidthDp
+    val screen = LocalConfiguration.current.screenWidthDp / if (LocalGen1Narrow.current) 2 else 1
     val cap = if (isUnfolded()) screen / 2 else (screen * 0.86f).toInt()
     return this.widthIn(max = cap.dp)
 }

@@ -7,9 +7,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -236,16 +236,31 @@ fun Modifier.gen1WindowBounds(): Modifier {
 }
 
 /**
- * Whether the screen is wide enough to be a foldable that has been opened.
+ * Set where a screen is drawn into part of the window rather than all of it.
+ *
+ * The unfolded layout draws two screens side by side, and the one in the
+ * second half is a whole screen that has been handed half a window. It has no
+ * way of knowing that: every layout in the app asks [isUnfolded], which reads
+ * the window, so each of them split its own half in two again. The status
+ * pages ended up a quarter of the screen wide, with the words breaking one
+ * letter to a line, and the pane beside them drew a second copy of what was
+ * already on the left.
+ */
+val LocalGen1Narrow = staticCompositionLocalOf { false }
+
+/**
+ * Whether there is a lot of width to lay out in.
  *
  * Read off the width rather than from a hinge API, so it is honest about what
  * it actually knows: this is "there is a lot of width here", which is the thing
  * every layout decision here cares about. A tablet and an unfolded phone are
- * treated the same, and a folded one is not.
+ * treated the same, and a folded one is not — and neither is half of either,
+ * which is what [LocalGen1Narrow] says.
  */
 @Composable
 fun isUnfolded(): Boolean =
-    androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= UNFOLDED_WIDTH_DP
+    !LocalGen1Narrow.current &&
+        androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= UNFOLDED_WIDTH_DP
 
 /** Roughly where a folded phone stops and an opened one begins. */
 const val UNFOLDED_WIDTH_DP = 600

@@ -33,7 +33,29 @@ class DownloadService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val percent = intent?.getIntExtra(EXTRA_PERCENT, 0) ?: 0
         val label = intent?.getStringExtra(EXTRA_LABEL) ?: "DOWNLOADING"
-        startForeground(NOTIFICATION_ID, notification(label, percent))
+
+        // Going foreground is allowed to fail, and it does: the system
+        // refuses a foreground service started while the app is not on
+        // screen, and a long download is exactly the thing a player walks
+        // away from. Refused, the right answer is to stand down — the
+        // download itself carries on in its own scope for as long as the
+        // process lives. Throwing here would take the whole app with it,
+        // which is what was happening partway through DOWNLOAD ALL.
+        val started = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification(label, percent),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification(label, percent))
+            }
+        }.isSuccess
+        if (!started) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         // Not sticky: a process that died mid-download should not have the
         // system restart a service with nothing left running behind it.
         return START_NOT_STICKY

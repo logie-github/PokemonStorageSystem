@@ -42,7 +42,13 @@ suspend fun <T> fetchInParallel(
                 gate.withPermit {
                     coroutineContext.ensureActive()
                     if (runCatching { fetch(item) }.getOrNull() == null) failed.incrementAndGet()
-                    onProgress(DownloadProgress(done.incrementAndGet(), total, failed.get()))
+                    // Reporting is not the work. Whatever the caller does with
+                    // a progress figure — a notification the system may refuse,
+                    // a screen that has since gone — must not be able to stop
+                    // the download or bring the app down with it.
+                    runCatching {
+                        onProgress(DownloadProgress(done.incrementAndGet(), total, failed.get()))
+                    }
                 }
             }
         }.awaitAll()

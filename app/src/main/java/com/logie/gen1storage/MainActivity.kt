@@ -56,6 +56,7 @@ import com.logie.gen1storage.ui.rememberCursorTick
 import com.logie.gen1storage.ui.Gen1TradeScene
 import com.logie.gen1storage.ui.RestoreScreen
 import com.logie.gen1storage.ui.DexEntryScreen
+import com.logie.gen1storage.ui.DexStatsScreen
 import com.logie.gen1storage.ui.DexScreen
 import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
@@ -355,6 +356,7 @@ private fun ScreenContent(
         Screen.Trade -> TradeScreen(state, model)
         Screen.Dex -> DexScreen(state, model)
         is Screen.DexEntry -> DexEntryScreen(state, model, screen.speciesId)
+        Screen.DexStats -> DexStatsScreen(state, model)
         Screen.Credits -> CreditsScreen()
         Screen.Options -> OptionsScreen(
             state = state,

@@ -77,9 +77,9 @@ class TrainerStore(private val directory: File) {
      * One 8x8 tile of a sheet, counted left to right and then down, which is
      * the order the cartridge's own tilemaps index them in.
      */
-    fun tile(id: String, index: Int): ImageBitmap? {
+    fun tile(id: String, index: Int, cutout: Boolean = false): ImageBitmap? {
         if (id !in EXTRA_ART) return null
-        val key = "$tintId/tile/$id/$index"
+        val key = "$tintId/tile/${if (cutout) "cut/" else ""}$id/$index"
         memory[key]?.let { return it }
         val sheet = decode(file(id)) ?: return null
         val across = sheet.width / TILE
@@ -96,7 +96,7 @@ class TrainerStore(private val directory: File) {
             TILE,
         )
         sheet.recycle()
-        return tinted(cut).asImageBitmap().also { memory[key] = it }
+        return tinted(cut, cutout).asImageBitmap().also { memory[key] = it }
     }
 
     private fun decode(source: File): Bitmap? {
@@ -109,9 +109,15 @@ class TrainerStore(private val directory: File) {
         }.getOrNull()
     }
 
-    private fun tinted(bitmap: Bitmap): Bitmap {
-        val ramp = tintRamp ?: return bitmap
-        return runCatching { recolourToRamp(bitmap, ramp) }.getOrNull() ?: bitmap
+    private fun tinted(bitmap: Bitmap, cutout: Boolean = false): Bitmap {
+        val ramp = tintRamp
+        return runCatching {
+            when {
+                ramp != null -> recolourToRamp(bitmap, ramp, cutout)
+                cutout -> cutOutLightest(bitmap)
+                else -> bitmap
+            }
+        }.getOrNull() ?: bitmap
     }
 
     /**
@@ -254,6 +260,23 @@ class TrainerStore(private val directory: File) {
         /** The ball that travels down the cable, as four flips of one tile. */
         const val TRADE_BALL = "trade-ball"
 
+        /**
+         * The battle HUD's four balls, the first of which is the mark the
+         * Pokédex puts beside a species the player has caught.
+         *
+         * `LoadPokedexTilePatterns` copies exactly one tile of this over the
+         * dex screen's own graphics for that job, and `bills_pc.asm` does the
+         * same — so a storage system marking its list with it is using the
+         * tile the cartridge uses, in the place the cartridge uses it.
+         */
+        const val DEX_BALLS = "balls"
+
+        /** Which of the four: caught, ailing, fainted, and an empty slot. */
+        const val BALL_CAUGHT = 0
+        const val BALL_AILING = 1
+        const val BALL_FAINTED = 2
+        const val BALL_EMPTY = 3
+
         /** One tile's side, which is what the cartridge counts in. */
         const val TILE = 8
 
@@ -270,6 +293,7 @@ class TrainerStore(private val directory: File) {
             TRADE_GAME_BOY to "gfx/trade/game_boy.png",
             TRADE_CABLE to "gfx/trade/link_cable.png",
             TRADE_BALL to "gfx/trade/cable_ball.png",
+            DEX_BALLS to "gfx/battle/balls.png",
         )
 
         /** What each must measure, so a proxy's error page cannot land as art. */
@@ -278,6 +302,7 @@ class TrainerStore(private val directory: File) {
             TRADE_GAME_BOY to (48 to 64),
             TRADE_CABLE to (24 to 40),
             TRADE_BALL to (16 to 16),
+            DEX_BALLS to (32 to 8),
         )
 
         /** The eight gyms. */

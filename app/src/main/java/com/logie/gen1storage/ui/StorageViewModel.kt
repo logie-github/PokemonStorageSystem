@@ -124,6 +124,8 @@ sealed interface Screen {
     data object Dex : Screen
     /** One species' Pokédex page, as the cartridge prints it. */
     data class DexEntry(val speciesId: String) : Screen
+    /** What each cartridge's Pokédex knows, one line each. */
+    data object DexStats : Screen
     data object Credits : Screen
 }
 

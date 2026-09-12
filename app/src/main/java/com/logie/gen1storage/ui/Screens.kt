@@ -1432,6 +1432,7 @@ private fun OptionsDrawerContent(
                 state.spriteProgress?.let { "SPRITES" to it },
                 state.cryProgress?.let { "CRIES" to it },
                 state.followerProgress?.let { "FOLLOWERS" to it },
+                state.trainerProgress?.let { "TRAINERS" to it },
             ).firstOrNull { !it.second.finished }
             if (busy != null) {
                 item {

@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.Font
@@ -419,6 +420,31 @@ private val LocalGen1TextStyle = compositionLocalOf { Gen1BaseText }
 @Composable
 fun GbText(
     text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = Gen1Text,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    MaterialText(
+        text = text,
+        modifier = modifier,
+        style = style,
+        color = style.color,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/**
+ * The same, for a line whose parts are not all drawn the same way.
+ *
+ * One piece of text rather than several side by side, which is what lets
+ * [Gen1TypedLines] hold a window at its finished size while it types: two
+ * Texts in a row wrap independently and the pair of them changes height as
+ * the split between them moves.
+ */
+@Composable
+fun GbText(
+    text: AnnotatedString,
     modifier: Modifier = Modifier,
     style: TextStyle = Gen1Text,
     maxLines: Int = Int.MAX_VALUE,

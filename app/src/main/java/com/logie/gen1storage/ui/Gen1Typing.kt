@@ -2,7 +2,6 @@ package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -11,7 +10,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import kotlinx.coroutines.delay
 
 /**
@@ -59,22 +61,33 @@ fun Gen1TypedLines(
     }
 }
 
-/** One line, with the part not yet typed drawn in the window's own colour. */
+/** One line, with the part not yet typed drawn in no colour at all. */
 @Composable
 private fun TypedLine(line: String, shown: Int, style: TextStyle) {
-    // Sized to the line, not to whatever it is sitting in: the untyped
-    // remainder already holds the full width open, so filling the width on
-    // top of that only made a one-word message as wide as the screen allowed.
-    Row {
-        // No line cap: a question that runs past the window should wrap, not
-        // be cut off mid-word with an ellipsis.
-        if (shown > 0) GbText(line.take(shown), style = style)
-        if (shown < line.length) {
-            // Invisible, not absent: it reserves the space the letters will
-            // land in, so the window is its final size from the start.
-            GbText(line.drop(shown), style = style.copy(color = Gen1Palette.Panel))
+    // The whole line, always, with the part that has not arrived yet made
+    // invisible where it stands. It used to be two Texts side by side — what
+    // was typed, then the rest of it in the window's own colour — and a line
+    // long enough to wrap then had each half wrapping on its own: three lines
+    // of remainder became two of typed and two of remainder as the split
+    // moved, and the window grew and shrank a row at a time while it spoke.
+    // One piece of text is laid out once, at its finished size, whatever is
+    // showing of it.
+    //
+    // Invisible rather than absent, and rather than the window's colour: the
+    // space the letters will land in is held either way, and transparent
+    // holds it over any fill.
+    //
+    // No line cap: a question that runs past the window should wrap, not be
+    // cut off mid-word with an ellipsis.
+    val text = remember(line, shown) {
+        buildAnnotatedString {
+            append(line)
+            if (shown < line.length) {
+                addStyle(SpanStyle(color = Color.Transparent), shown, line.length)
+            }
         }
     }
+    GbText(text, style = style)
 }
 
 /**

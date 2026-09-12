@@ -344,21 +344,13 @@ fun StorageSystemScreen(
     StorageSystemScreen(
         outLabel = state.outLabel,
         inLabel = state.inLabel,
-        boxLabel = thisBoxLabel,
-        // The caption and the box's name belong to the menu and go when the
-        // menu does: a list open over them, a question in the middle of the
-        // screen, or a message come up at the foot of it. The name goes under
-        // a message rather than being drawn beneath it — half a window showing
-        // past the edge of another reads as a mistake.
+        // The caption belongs to the menu and goes when the menu does: a list
+        // open over it, a question in the middle of the screen, or a message
+        // come up at the foot of it.
         notice = refusal ?: emptiness,
         showCaption = atMenu && refusal == null && emptiness == null,
         // Whatever is open has the screen to itself.
         showMenu = atMenu,
-        showBox = atMenu &&
-            refusal == null &&
-            emptiness == null &&
-            state.prompt == null &&
-            state.transferScene == null,
         // A transfer needs a cartridge in the machine, and the row is not
         // offered without one — so this is the check behind it rather than the
         // whole of the reason it exists. `BillsPCDeposit` in pokered guards
@@ -376,7 +368,6 @@ fun StorageSystemScreen(
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onTrade = if (state.tradeEvolution) ({ model.open(Screen.Trade) }) else null,
         onDex = { model.open(Screen.Dex) },
-        onRenameBox = { model.prompt(Prompt.RenameBox(StorageLayout.THE_BOX)) },
         onOptions = onOptions,
         caption = when {
             !state.linked -> "Link this device in OPTIONS."

@@ -28,7 +28,18 @@ sealed interface WithdrawTarget {
 }
 
 sealed interface TransferResult {
-    data class Success(val message: String, val storedUid: String?) : TransferResult
+    data class Success(
+        val message: String,
+        val storedUid: String?,
+        /**
+         * The touched save as it now stands, when one was written.
+         *
+         * Handed back so the caller can hold the cartridge at its new revision
+         * without fetching it again: these are the bytes the server just took.
+         * Null where nothing was written to a save.
+         */
+        val after: LoadedSave? = null,
+    ) : TransferResult
     data class Refused(val reason: String) : TransferResult
 
     /**
@@ -151,6 +162,7 @@ class TransferEngine(
                     TransferResult.Success(
                         "${Gen1Pokemon(removed).displayName.uppercase()} was stored in BOX $targetBox.",
                         uid,
+                        outcome.after,
                     )
                 }
             }
@@ -259,6 +271,7 @@ class TransferEngine(
                 TransferResult.Success(
                     "${stored.pokemon.displayName.uppercase()} is taken out.",
                     null,
+                    outcome.after,
                 )
             }
             is CommitOutcome.Refused -> { journal.clear(); TransferResult.Refused(outcome.reason) }

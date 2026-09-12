@@ -24,7 +24,18 @@ data class LoadedSave(
 }
 
 sealed interface CommitOutcome {
-    data class Committed(val rev: Long) : CommitOutcome
+    /**
+     * The write landed, at [rev].
+     *
+     * [after] is the save as it now stands: the bytes that were just uploaded,
+     * at the revision the server gave them. It is exact rather than a guess —
+     * the server took these bytes and answered with this revision — and it is
+     * here so that nothing has to download what it has this moment sent. A
+     * transfer used to finish by fetching the whole save back again, which on
+     * a phone is the difference between a transfer that takes a moment and one
+     * the player watches.
+     */
+    data class Committed(val rev: Long, val after: LoadedSave) : CommitOutcome
     data class Refused(val reason: String) : CommitOutcome
 
     /** The game saved over this playthrough since it was read. */
@@ -108,7 +119,18 @@ class SaveRepository(
             summary = summary,
         )
         return when (result) {
-            is SyncResult.Ok -> CommitOutcome.Committed(result.value)
+            is SyncResult.Ok -> CommitOutcome.Committed(
+                rev = result.value,
+                after = LoadedSave(
+                    // The summary that went up with the bytes, so the card
+                    // reads right without waiting for the account listing.
+                    remote = loaded.remote.copy(rev = result.value, summary = summary),
+                    blob = encoded,
+                    rev = result.value,
+                    // Already worked out above, off these same bytes.
+                    classification = check,
+                ),
+            )
             is SyncResult.Conflict ->
                 CommitOutcome.Conflict("THE GAME SAVED OVER THIS PLAYTHROUGH. REFRESH AND TRY AGAIN.")
             SyncResult.Unauthorized ->

@@ -130,7 +130,7 @@ class TrainerStore(private val directory: File) {
      */
     fun badge(gym: Int): ImageBitmap? {
         if (gym !in 0 until BADGES) return null
-        val key = "$tintId/badge/$gym"
+        val key = "$tintId/badge/cut/$gym"
         memory[key]?.let { return it }
 
         val sheet = decode(file(BADGE_SHEET)) ?: return null
@@ -141,7 +141,11 @@ class TrainerStore(private val directory: File) {
 
         val cut = Bitmap.createBitmap(sheet, 0, (gym * 2 + 1) * BADGE_SIZE, BADGE_SIZE, BADGE_SIZE)
         sheet.recycle()
-        return tinted(cut).asImageBitmap().also { memory[key] = it }
+        // Cut out of the white field the sheet draws them on, the same as the
+        // trainers are. A badge is a shape on the card, and the field around
+        // it read as a white plate laid over the card's own colour with eight
+        // badges sitting on it.
+        return tinted(cut, cutout = true).asImageBitmap().also { memory[key] = it }
     }
 
     fun bytesOnDisk(): Long =

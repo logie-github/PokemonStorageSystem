@@ -319,8 +319,9 @@ fun DexStatsScreen(state: UiState, model: StorageViewModel) {
  *
  * The sprite on the left with its number under it, the classification, height
  * and weight beside it, a rule, and then the entry — which is the arrangement
- * `engine/menus/pokedex.asm` draws and the reason the entry's own line breaks
- * are worth keeping.
+ * `engine/menus/pokedex.asm` draws. The entry's words are the cartridge's; the
+ * places it broke them are not, those being where its fourteen-character
+ * window ran out of room rather than where the sentence wanted a break.
  *
  * Which game's words are used follows the Pokémon rather than the species: one
  * in this PC is read in the words of the cartridge it came out of, and failing
@@ -395,14 +396,13 @@ fun DexEntryScreen(state: UiState, model: StorageViewModel, speciesId: String) {
 
         Spacer(Modifier.height(gen1Dp(4)))
         val style = Gen1TextSmall.copy(color = Gen1Palette.Ink)
-        val lines = entry?.lines(gameVersionId)
-        if (lines == null) {
+        // The cartridge's own line breaks are dropped and the words wrap to
+        // this window instead: see [Gen1DexEntry.flowing].
+        val text = entry?.flowing(gameVersionId)
+        if (text == null) {
             GbText("NO DATA ON THIS POKéMON.", style = style, maxLines = 1)
         } else {
-            lines.forEach { line ->
-                if (line.isEmpty()) Spacer(Modifier.height(gen1Dp(3)))
-                else GbText(line, style = style, maxLines = 1)
-            }
+            GbText(text, modifier = Modifier.fillMaxWidth(), style = style)
         }
 
         Spacer(Modifier.weight(1f))

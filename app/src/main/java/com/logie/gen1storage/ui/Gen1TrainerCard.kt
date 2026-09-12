@@ -136,6 +136,12 @@ fun Gen1TrainerCard(
             }
         }
 
+        // Whatever height the card has been given over its own, the badge
+        // case takes: it is the bottom of a trainer card, so on a card with
+        // room to spare it belongs at the bottom rather than tucked under the
+        // name with the rest of the card empty below it. A card sized to its
+        // own contents has nothing to spare and this changes nothing.
+        Spacer(Modifier.weight(1f))
         Badges(
             save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
             trainers,

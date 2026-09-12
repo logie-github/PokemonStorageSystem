@@ -124,7 +124,6 @@ fun Gen1DialogueBox(
  */
 @Composable
 fun StorageSystemScreen(
-    boxLabel: String,
     onDeposit: () -> Unit,
     /** Whether a trainer card is in the machine, which is what a transfer needs. */
     hasCard: Boolean,
@@ -138,21 +137,11 @@ fun StorageSystemScreen(
     onTrade: (() -> Unit)? = null,
     /** One Pokédex over every cartridge, which no cartridge could offer. */
     onDex: (() -> Unit)? = null,
-    onRenameBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
     /** What the two directions are called, which is the player's to choose. */
     outLabel: String,
     inLabel: String,
-    /**
-     * Whether the window naming the box is on screen.
-     *
-     * It belongs to the menu: once a list is open over it, or a message has
-     * come up at the foot of the screen, it is furniture behind something
-     * nobody is looking at — and down there it is the thing a message lands on
-     * top of.
-     */
-    showBox: Boolean = true,
-    /** Whether the machine's own caption is on screen. Same as [showBox]. */
+    /** Whether the machine's own caption is on screen. */
     showCaption: Boolean = true,
     /**
      * Whether the menu itself is on screen.
@@ -206,9 +195,13 @@ fun StorageSystemScreen(
     // that order: the caption is the menu idling, so it hangs off the bottom of
     // the menu rather than sitting at the foot of the screen with the whole
     // screen between it and the thing it is about. Then whatever list is open
-    // over them, then the window naming the box in the far bottom corner, then
-    // an answer to something just done at the foot of the screen, then the
-    // small window that opens on a chosen Pokémon above everything.
+    // over them, then an answer to something just done at the foot of the
+    // screen, then the small window that opens on a chosen Pokémon above
+    // everything.
+    //
+    // The box used to name itself in the far bottom corner. There is one box
+    // and the player is standing in front of it, so the window was telling
+    // them where they already were.
     //
     // Which edge they sit against is a setting. Everything mirrors together, so
     // the menu and the list keep overlapping the same way round either way.
@@ -256,28 +249,6 @@ fun StorageSystemScreen(
         // replaces the list it was chosen from rather than sitting on top of
         // it, for the same reason the list replaces the menu.
         if (action == null) overlay?.invoke()
-
-        if (showBox) {
-            Box(
-                Modifier.fillMaxSize(),
-                // The far corner, away from the menu and whatever opens under it.
-                contentAlignment = Gen1Layout.corner(top = false, menuSide = false),
-            ) {
-                // Hold to rename it. There is one box, so there is nothing
-                // to change to and a tap has nothing to do — but a rename
-                // still belongs on the thing being renamed.
-                Gen1Frame(
-                    Modifier
-                        .wrapContentWidth()
-                        .gen1HoldRegion()
-                        .pointerInput(onRenameBox) {
-                            detectTapGestures(onLongPress = { onRenameBox() })
-                        }
-                ) {
-                    GbText(boxLabel.uppercase())
-                }
-            }
-        }
 
         if (notice != null) {
             Box(

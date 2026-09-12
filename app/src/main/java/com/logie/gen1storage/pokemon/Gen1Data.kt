@@ -79,6 +79,21 @@ data class Gen1DexEntry(
 
     /** The entry as separate lines, with the page break kept as a blank one. */
     fun lines(gameVersionId: String?): List<String> = forGame(gameVersionId).split("\n")
+
+    /**
+     * The entry as one piece of prose, to be wrapped by whatever shows it.
+     *
+     * The cartridge's breaks are where its own window ran out of room — a
+     * fourteen-character line and a page that held three of them — not where
+     * the sentence wanted one. Kept as they are on a phone they read as a
+     * poem: six short lines stacked down the middle of a window wide enough
+     * for three of them. The words are the same words; only the machine that
+     * decides where they end is different.
+     */
+    fun flowing(gameVersionId: String?): String =
+        forGame(gameVersionId).split("\n").joinToString(" ") { it.trim() }
+            .replace(Regex("\\s+"), " ")
+            .trim()
 }
 
 /**

@@ -52,6 +52,7 @@ class ItemTransferEngine(
             is CommitOutcome.Committed -> TransferResult.Success(
                 "${label(id)} x$taken went into the PC.",
                 storedUid = null,
+                after = outcome.after,
             )
             // Nothing was written, so the app's copy is the only one that
             // moved and it goes straight back.
@@ -94,7 +95,11 @@ class ItemTransferEngine(
         return when (val outcome = saves.commit(fresh, mutated.root)) {
             is CommitOutcome.Committed -> {
                 items.remove(id, moved)
-                TransferResult.Success("${label(id)} x$moved went into the save.", storedUid = null)
+                TransferResult.Success(
+                    "${label(id)} x$moved went into the save.",
+                    storedUid = null,
+                    after = outcome.after,
+                )
             }
             is CommitOutcome.Refused -> TransferResult.Refused(outcome.reason)
             is CommitOutcome.Conflict -> TransferResult.Refused(outcome.reason)

@@ -1413,15 +1413,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             }
             var done = 0
             var stopped: TransferResult? = null
+            var carrying: LoadedSave? = null
             for (uid in uids) {
-                val loaded = freshSave(key)
+                val loaded = carrying ?: freshSave(key)
                 if (loaded == null) {
                     stopped = TransferResult.Refused("THE SAVE COULD NOT BE READ")
                     break
                 }
                 val result = runTransfer { engine.withdraw(loaded, uid, target) }
-                if (result is TransferResult.Success) done++ else { stopped = result; break }
+                if (result is TransferResult.Success) {
+                    done++
+                    carrying = result.after
+                } else {
+                    stopped = result
+                    break
+                }
             }
+            keep(listOfNotNull(carrying))
             finishMany(done, stopped, mutable.value.outLabel, listOf(key))
         }
     }
@@ -1467,8 +1475,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             )
             var done = 0
             var stopped: TransferResult? = null
+            // What each cartridge looks like after the Pokémon before this
+            // one left it. See [carrying].
+            val carrying = mutableMapOf<String, LoadedSave>()
             for ((key, location) in ordered) {
-                val loaded = freshSave(key)
+                val loaded = carrying[key] ?: freshSave(key)
                 if (loaded == null) {
                     stopped = TransferResult.Refused("THE SAVE COULD NOT BE READ")
                     break
@@ -1477,11 +1488,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 if (result is TransferResult.Success) {
                     done++
                     noteEvolvable(result.storedUid)
+                    result.after?.let { carrying[key] = it }
                 } else {
                     stopped = result
                     break
                 }
             }
+            keep(carrying.values)
             finishMany(done, stopped, mutable.value.inLabel, picks.map { it.first }.toSet())
         }
     }
@@ -1522,6 +1535,27 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 e.message.orEmpty().uppercase().ifBlank { "THE TRANSFER COULD NOT START" }
             )
         }
+
+    /**
+     * Holds a cartridge at what a transfer has just made of it.
+     *
+     * A write moves the save's revision, so the copy the app was holding is
+     * dropped — and every screen that was reading it then has to wait on a
+     * fresh download of a file this device has, this second, just uploaded.
+     * The server took those exact bytes and answered with a revision, so the
+     * app keeps them and the download does not happen.
+     *
+     * Nothing here decides a transfer. What is kept is only what the app shows
+     * and what it offers the *next* transfer, and the engine re-reads and
+     * compares fingerprints before it writes anything: a copy that has gone
+     * stale in the meantime is refused there rather than acted on.
+     */
+    private fun keep(saves: Collection<LoadedSave>) {
+        if (saves.isEmpty()) return
+        mutable.update { state ->
+            state.copy(loaded = state.loaded + saves.associateBy { it.key })
+        }
+    }
 
     /** Re-reads a save from the account, so a transfer is aimed at its current revision. */
     private suspend fun freshSave(key: String): LoadedSave? {
@@ -1584,6 +1618,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * transfer would be checked against a revision the server has moved past.
      */
     private suspend fun finish(result: TransferResult, vararg touched: String) = coroutineScope {
+        // Whatever was written is held at its new revision before the account
+        // is re-read, so the listing finds it current and nothing fetches it
+        // back. See [keep].
+        (result as? TransferResult.Success)?.after?.let { keep(listOf(it)) }
         // The account is re-read while the ball is still in the air rather than
         // after it lands. It is a whole round trip and it does not depend on
         // the animation, so running the two side by side takes a second off
@@ -1615,7 +1653,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 "NOTHING WAS LOST. OPEN SAVE FILES TO FINISH IT.",
             )
         }
-        refreshTransferSources()
+        refreshTransferSources(*touched)
         Unit
     }
 

@@ -370,8 +370,8 @@ private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
     val entry = Gen1Data.dexEntry(pokemon.speciesId)
     // The entry is the body text of this page, so it is drawn in the same
     // ink and at the same size as everything else on it. The cartridge's own
-    // lines run to eighteen characters and are kept as it broke them, which
-    // fits at this size with room to spare.
+    // breaks are dropped and the words wrap to this window instead: see
+    // [Gen1DexEntry.flowing].
     val style = Gen1Text
     Column {
         if (entry == null) {
@@ -380,10 +380,7 @@ private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
             GbText("NO DATA ON THIS POKéMON.", style = style, maxLines = 1)
             return@Column
         }
-        entry.lines(gameVersionId).forEach { line ->
-            if (line.isEmpty()) Spacer(Modifier.height(gen1Dp(3)))
-            else GbText(line, style = style, maxLines = 1)
-        }
+        GbText(entry.flowing(gameVersionId), modifier = Modifier.fillMaxWidth(), style = style)
     }
 }
 

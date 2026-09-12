@@ -343,34 +343,34 @@ private fun StatusHeaderThree(pokemon: Gen1Pokemon) {
  * The Pokédex entry itself, in the words of the game it came from.
  *
  * Red and Blue share a set of entries and Yellow rewrote nearly all of them,
- * so the text here follows the save rather than the species: a Pikachu out of
- * a Yellow cartridge reads differently from one out of Red, and it should.
+ * so the text follows the save rather than the species: a Pikachu out of a
+ * Yellow cartridge reads differently from one out of Red, and it should. Which
+ * game it is goes unsaid — the card already says where the Pokémon came from,
+ * and a line of credit under every entry is the app talking about itself.
  *
  * Set as the cartridge sets it — the Pokédex's own two pages of three short
  * lines, kept as written rather than reflowed, because the line breaks are
- * part of how the entry reads.
+ * part of how the entry reads. No window of its own: the page it is on is
+ * already a window, and a box inside a box is one rule too many.
  */
 @Composable
 private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
     val entry = Gen1Data.dexEntry(pokemon.speciesId)
-    Gen1Frame(contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2))) {
+    // The entry is the body text of this page, so it is drawn in the ink
+    // everything else is drawn in. Small, because the cartridge's own lines
+    // run to eighteen characters and they are kept as it broke them.
+    val style = Gen1TextSmall.copy(color = Gen1Palette.Ink)
+    Column {
         if (entry == null) {
             // A modded species, or one the tables never had. Said plainly
             // rather than left blank, which would read as a bug.
-            GbText("NO DATA", maxLines = 1)
-            GbText("ON THIS POKéMON.", style = Gen1TextSmall, maxLines = 1)
-            return@Gen1Frame
+            GbText("NO DATA ON THIS POKéMON.", style = style, maxLines = 1)
+            return@Column
         }
         entry.lines(gameVersionId).forEach { line ->
             if (line.isEmpty()) Spacer(Modifier.height(gen1Dp(3)))
-            else GbText(line, style = Gen1TextSmall, maxLines = 1)
+            else GbText(line, style = style, maxLines = 1)
         }
-        Spacer(Modifier.height(gen1Dp(2)))
-        GbText(
-            "AS ${(GameVersion.fromId(gameVersionId)?.label ?: "RED").uppercase()} TELLS IT",
-            style = Gen1TextSmall,
-            maxLines = 1,
-        )
     }
 }
 

@@ -15,6 +15,9 @@ import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1TradeEvolution
 import com.logie.gen1storage.storage.StoredPokemon
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import com.logie.gen1storage.share.PokemonCardImage
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
@@ -116,6 +119,8 @@ sealed interface Screen {
     data object Restore : Screen
     /** The four that only evolve by being traded, and the machine to do it. */
     data object Trade : Screen
+    /** One Pokédex over every cartridge at once, and over the PC. */
+    data object Dex : Screen
     data object Credits : Screen
 }
 
@@ -253,6 +258,10 @@ data class UiState(
     /** Nothing moves, and which kinds of movement are on under that. */
     val reduceMotion: Boolean = false,
     val motionsOn: Set<String> = emptySet(),
+    /** The tick under the finger. */
+    val haptics: Boolean = true,
+    /** Whether a shared Pokémon comes out on printer paper. */
+    val printerBorder: Boolean = true,
     val loadingAll: Boolean = false,
     val spriteProgress: DownloadProgress? = null,
     val spritesInstalled: Int = 0,
@@ -368,6 +377,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
                 motionsOn = enabledMotions(),
+                haptics = settings.haptics,
+                printerBorder = settings.printerBorder,
                 textSpeed = settings.textSpeed,
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
@@ -676,6 +687,43 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setReduceMotion(on: Boolean) {
         settings.reduceMotion = on
         mutable.update { it.copy(reduceMotion = on, motionsOn = enabledMotions()) }
+    }
+
+    fun setPrinterBorder(on: Boolean) {
+        settings.printerBorder = on
+        mutable.update { it.copy(printerBorder = on) }
+    }
+
+    /**
+     * A stored Pokémon as a picture, ready to be sent somewhere.
+     *
+     * Built here rather than by grabbing the screen: a screenshot carries
+     * whatever else was on it and whatever the phone's own bars look like,
+     * and the thing worth sending is the Pokémon.
+     */
+    fun cardImage(uid: String): Bitmap? {
+        val stored = storage.get(uid) ?: return null
+        val sprite = stored.pokemon.speciesId
+            ?.let { sprites.load(it, stored.provenance.gameVersion) }
+            ?.asAndroidBitmap()
+        return runCatching {
+            PokemonCardImage.render(
+                context = getApplication(),
+                pokemon = stored.pokemon,
+                sprite = sprite,
+                provenance = stored.provenance,
+                palette = GbPalette.fromId(settings.paletteId),
+                printerBorder = settings.printerBorder,
+            )
+        }.getOrNull()
+    }
+
+    fun cardName(uid: String): String =
+        storage.get(uid)?.pokemon?.displayName ?: "pokemon"
+
+    fun setHaptics(on: Boolean) {
+        settings.haptics = on
+        mutable.update { it.copy(haptics = on) }
     }
 
     fun setMotionEnabled(motion: Motion, enabled: Boolean) {

@@ -48,9 +48,13 @@ import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.Gen1Typing
+import com.logie.gen1storage.ui.Gen1Haptics
 import com.logie.gen1storage.ui.Gen1Motion
+import com.logie.gen1storage.ui.rememberConfirmTick
+import com.logie.gen1storage.ui.rememberCursorTick
 import com.logie.gen1storage.ui.Gen1TradeScene
 import com.logie.gen1storage.ui.RestoreScreen
+import com.logie.gen1storage.ui.DexScreen
 import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
@@ -133,6 +137,7 @@ private fun StorageApp(model: StorageViewModel) {
         Gen1Palette.windowsFollowPalette = state.windowsFollowPalette
         Gen1Layout.windowsOnRight = state.windowsOnRight
         Gen1Typing.speed = state.textSpeed
+        Gen1Haptics.enabled = state.haptics
         Gen1Motion.reduced = state.reduceMotion
         Gen1Motion.allowed = state.motionsOn
     }
@@ -176,6 +181,8 @@ private fun StorageApp(model: StorageViewModel) {
     }
 
     val cursor = remember { Gen1Cursor() }
+    val cursorTick = rememberCursorTick()
+    val confirmTick = rememberConfirmTick()
     // Read by the gesture layer, which was built once and holds the cursor
     // object rather than this composition's state.
     SideEffect { cursor.locked = locked }
@@ -232,6 +239,7 @@ private fun StorageApp(model: StorageViewModel) {
                     GbButton.B -> model.back()
                     GbButton.A -> {
                         audio.play(SoundEffect.CURSOR)
+                        confirmTick()
                         cursor.confirm()
                     }
                     GbButton.START ->
@@ -239,8 +247,10 @@ private fun StorageApp(model: StorageViewModel) {
                             audio.play(SoundEffect.OPTIONS)
                             model.open(Screen.Options)
                         }
-                    GbButton.UP, GbButton.DOWN, GbButton.LEFT, GbButton.RIGHT ->
+                    GbButton.UP, GbButton.DOWN, GbButton.LEFT, GbButton.RIGHT -> {
+                        cursorTick()
                         cursor.move(button)
+                    }
                     else -> Unit
                 }
             }
@@ -339,6 +349,7 @@ private fun ScreenContent(
         Screen.Trainers -> TrainersScreen(state, model)
         Screen.Restore -> RestoreScreen(state, model)
         Screen.Trade -> TradeScreen(state, model)
+        Screen.Dex -> DexScreen(state, model)
         Screen.Credits -> CreditsScreen()
         Screen.Options -> OptionsScreen(
             state = state,

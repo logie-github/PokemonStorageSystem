@@ -162,6 +162,7 @@ fun StorageSystemScreen(
     model: StorageViewModel,
     onOptions: (() -> Unit)? = null,
 ) {
+    val shareContext = LocalContext.current
     var mode by remember { mutableStateOf(PcMode.MENU) }
     var chosen by remember(mode) { mutableStateOf<Int?>(null) }
     // Which rows of the open list a transfer will act on. Empty is the plain
@@ -387,6 +388,7 @@ fun StorageSystemScreen(
         onView = { mode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onTrade = if (state.tradeEvolution) ({ model.open(Screen.Trade) }) else null,
+        onDex = { model.open(Screen.Dex) },
         onRenameBox = { model.prompt(Prompt.RenameBox(StorageLayout.THE_BOX)) },
         onOptions = onOptions,
         caption = when {
@@ -439,9 +441,49 @@ fun StorageSystemScreen(
                             gridSlot = null
                         },
                         onCancel = {
-                            if (heldUid != null) heldUid = null else mode = PcMode.MENU
+                            when {
+                                heldUid != null -> heldUid = null
+                                marked.isNotEmpty() -> marked = emptySet()
+                                else -> mode = PcMode.MENU
+                            }
                         },
                         onHighlight = { highlighted = it },
+                        marked = marked,
+                        // Hold one to pick it up, hold another to put it down
+                        // — the same swap a drag does, for two Pokémon a long
+                        // way apart in a box a hundred rows deep.
+                        onHold = { slot ->
+                            val carrying = heldUid
+                            val here = open.slots.getOrNull(slot)
+                            when {
+                                // Putting down what is being carried, wherever
+                                // that is — an empty spot or on top of another,
+                                // which swaps them.
+                                carrying != null -> {
+                                    model.moveStoredToSlot(carrying, open.index, slot)
+                                    heldUid = null
+                                    gridSlot = null
+                                }
+                                // Once a selection is going, a hold adds to it
+                                // rather than starting a move: the gesture
+                                // follows what the screen is in the middle of.
+                                marked.isNotEmpty() -> if (here != null) toggle(slot)
+                                here != null -> {
+                                    heldUid = here.uid
+                                    gridSlot = slot
+                                    chosen = null
+                                }
+                            }
+                        },
+                        actionLabel = TRANSFER_LABEL.takeIf {
+                            marked.isNotEmpty() && state.saves.isNotEmpty()
+                        },
+                        onAction = {
+                            val uids = marked.sorted()
+                                .mapNotNull { open.slots.getOrNull(it)?.uid }
+                            marked = emptySet()
+                            startWithdraw(uids)
+                        },
                     )
                 }
             })
@@ -564,6 +606,30 @@ fun StorageSystemScreen(
                                 })
                             )
                         }.orEmpty(),
+                        // Ticks it and hands the box back. With one ticked, a
+                        // hold on any other spot ticks that one too, so several
+                        // go in one trip without a mode to switch into first.
+                        MonAction("SELECT", {
+                            chosen?.let { toggle(it) }
+                            chosen = null
+                            gridSlot = null
+                        }),
+                        // A picture of it, for somewhere that is not this app.
+                        MonAction("SHARE", {
+                            val uid = storedPick.uid
+                            val card = model.cardImage(uid)
+                            if (card == null ||
+                                !com.logie.gen1storage.share.ShareCard.share(
+                                    shareContext,
+                                    card,
+                                    model.cardName(uid),
+                                )
+                            ) {
+                                model.prompt(Prompt.Message(listOf("IT COULD NOT BE SHARED.")))
+                            }
+                            chosen = null
+                            gridSlot = null
+                        }),
                         MonAction("NICKNAME", {
                             model.prompt(Prompt.RenameMon(storedPick.uid))
                             chosen = null
@@ -1206,6 +1272,11 @@ private fun OptionsDrawerContent(
                         trailing = if (!state.windowsFollowPalette) "ON" else "OFF",
                     ) { model.setWindowsFollowPalette(!state.windowsFollowPalette) }
                 )
+                add(
+                    OptionRow("PRINTER BORDER", if (state.printerBorder) "ON" else "OFF") {
+                        model.setPrinterBorder(!state.printerBorder)
+                    }
+                )
             }
 
             OptionsDrawer.AUDIO -> {
@@ -1225,6 +1296,11 @@ private fun OptionsDrawerContent(
             }
 
             OptionsDrawer.MOTION -> {
+                add(
+                    OptionRow("VIBRATION", if (state.haptics) "ON" else "OFF") {
+                        model.setHaptics(!state.haptics)
+                    }
+                )
                 add(
                     OptionRow("REDUCE MOTION", if (state.reduceMotion) "ON" else "OFF") {
                         model.setReduceMotion(!state.reduceMotion)

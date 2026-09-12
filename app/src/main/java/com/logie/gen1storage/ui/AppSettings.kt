@@ -151,6 +151,25 @@ class AppSettings(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_REDUCE_MOTION, false)
         set(value) = prefs.edit().putBoolean(KEY_REDUCE_MOTION, value).apply()
 
+    /**
+     * The short tick under the finger when the cursor moves or a row is taken.
+     * On, because a glass screen otherwise gives back nothing at all.
+     */
+    var haptics: Boolean
+        get() = prefs.getBoolean(KEY_HAPTICS, true)
+        set(value) = prefs.edit().putBoolean(KEY_HAPTICS, value).apply()
+
+    /**
+     * Whether a shared Pokémon comes out on paper.
+     *
+     * On: the card is set on a torn sheet the way a Game Boy Printer handed
+     * one over. Off gives the print alone, which is what a player wants when
+     * it is going somewhere that will crop it anyway.
+     */
+    var printerBorder: Boolean
+        get() = prefs.getBoolean(KEY_PRINTER_BORDER, true)
+        set(value) = prefs.edit().putBoolean(KEY_PRINTER_BORDER, value).apply()
+
     fun motionEnabled(motion: Motion): Boolean =
         !reduceMotion && prefs.getBoolean(KEY_MOTION_PREFIX + motion.id, true)
 
@@ -185,6 +204,8 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_TRADE_ANIMATION = "trade-animation"
         const val KEY_REDUCE_MOTION = "reduce-motion"
         const val KEY_MOTION_PREFIX = "motion-"
+        const val KEY_HAPTICS = "haptics"
+        const val KEY_PRINTER_BORDER = "printer-border"
         const val KEY_SOUND_OFF = "sound-off"
         const val KEY_SOUND_PREFIX = "sound-"
         /** As long as a name can be and still fit a cartridge label. */

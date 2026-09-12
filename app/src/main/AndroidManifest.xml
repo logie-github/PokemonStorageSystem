@@ -34,6 +34,19 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- How a rendered Pokémon card reaches another app. Cache only, not
+             exported, and a URI is granted per share rather than a folder
+             being opened up. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.shares"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -111,9 +111,18 @@ class Gen1RecompSave(val root: LuaValue.Table) {
             return BADGE_IDS.map { inventory[it] != null }
         }
 
-    val dexOwnedCount: Int
-        get() = root["pokedex"].asTable()?.get("owned").asTable()
-            ?.entries().orEmpty().count { it.second.asBoolean() != false }
+    val dexOwnedCount: Int get() = dexOwned.size
+
+    /** Species this playthrough has caught, by their `save.lua` ids. */
+    val dexOwned: Set<String> get() = dexSet("owned")
+
+    /** Species it has at least seen, which is the wider of the two. */
+    val dexSeen: Set<String> get() = dexSet("seen")
+
+    private fun dexSet(which: String): Set<String> =
+        root["pokedex"].asTable()?.get(which).asTable()?.entries().orEmpty()
+            .filter { it.second.asBoolean() != false }
+            .mapNotNullTo(LinkedHashSet()) { (it.first as? LuaKey.Name)?.value }
 
     // ------- mods
 

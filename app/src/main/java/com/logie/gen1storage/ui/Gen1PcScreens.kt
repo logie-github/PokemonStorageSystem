@@ -55,6 +55,7 @@ fun Gen1MenuRow(
     sound: SoundEffect? = SoundEffect.CURSOR,
 ) {
     val audio = LocalGen1Audio.current
+    val tick = rememberConfirmTick()
     Row(
         modifier
             .fillMaxWidth()
@@ -63,6 +64,7 @@ fun Gen1MenuRow(
             // to the swipe controls, where there is a cursor to move first.
             .gen1Clickable(enabled) {
                 sound?.let { audio?.play(it) }
+                tick()
                 onSelect()
                 onConfirm()
             },
@@ -133,6 +135,8 @@ fun StorageSystemScreen(
      * take is a question the menu does not need to raise.
      */
     onTrade: (() -> Unit)? = null,
+    /** One Pokédex over every cartridge, which no cartridge could offer. */
+    onDex: (() -> Unit)? = null,
     onRenameBox: () -> Unit,
     onOptions: (() -> Unit)? = null,
     /** What the two directions are called, which is the player's to choose. */
@@ -189,6 +193,7 @@ fun StorageSystemScreen(
         add(Triple("VIEW BOXES", onView, SoundEffect.SELECT))
         add(Triple("TRAINER CARD", onChangeCart, SoundEffect.CURSOR))
         if (onTrade != null) add(Triple("TRADE", onTrade, SoundEffect.SELECT))
+        if (onDex != null) add(Triple("POKéDEX", onDex, SoundEffect.SELECT))
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add(Triple("OPTIONS", onOptions, SoundEffect.OPTIONS))
     }

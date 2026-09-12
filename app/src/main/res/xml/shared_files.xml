@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The one folder a shared card is written to. Nothing else in the app's
+     storage is reachable through the provider. -->
+<paths>
+    <cache-path name="shares" path="shares/" />
+</paths>

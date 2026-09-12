@@ -130,6 +130,24 @@ private fun OccupiedMark() {
 }
 
 /**
+ * The mark on a spot the player has ticked.
+ *
+ * A small filled square in the corner rather than anything drawn over the
+ * Pokémon: the sprite is how a spot is recognised, and a tick that covers it
+ * makes a ticked box unreadable.
+ */
+@Composable
+private fun TickMark() {
+    val pixel = gen1PixelPx().toFloat()
+    Box(
+        Modifier.fillMaxSize().drawBehind {
+            val side = pixel * TICK_PIXELS
+            drawRect(Gen1Palette.Ink, Offset(0f, 0f), Size(side, side))
+        }
+    )
+}
+
+/**
  * The four corner brackets that mark the spot the cursor is on.
  *
  * Brackets rather than a box: a Pokémon is drawn right out to the edge of its
@@ -177,6 +195,17 @@ fun Gen1BoxGrid(
     onTap: (Int) -> Unit,
     onMove: (from: Int, to: Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** Spots the player has ticked, for an action about to act on several. */
+    marked: Set<Int> = emptySet(),
+    /**
+     * A hold that went nowhere.
+     *
+     * Dragging swaps two spots and is the right gesture for two that are near
+     * each other. This box is a hundred rows deep, so the two are often not:
+     * holding one and then holding the other is the same swap without the
+     * finger having to travel.
+     */
+    onHold: (Int) -> Unit = {},
 ) {
     val cell = gen1Dp(CELL_PIXELS)
     val cellPx = with(LocalDensity.current) { cell.toPx() }
@@ -200,6 +229,9 @@ fun Gen1BoxGrid(
 
     var gridTop by remember { mutableFloatStateOf(0f) }
     var dragFrom by remember { mutableIntStateOf(-1) }
+    // Where the hold began, occupied or not: an empty spot cannot be dragged
+    // but can certainly be held, which is how something is put down on one.
+    var heldAt by remember { mutableIntStateOf(-1) }
     // Where the finger is, on the grid's face.
     var dragAt by remember { mutableStateOf<Offset?>(null) }
 
@@ -261,6 +293,7 @@ fun Gen1BoxGrid(
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { at ->
                                     val slot = slotAt(onGrid(at))
+                                    heldAt = slot ?: -1
                                     dragFrom =
                                         if (slot != null && box.slots.getOrNull(slot) != null) slot
                                         else -1
@@ -272,14 +305,21 @@ fun Gen1BoxGrid(
                                 },
                                 onDragEnd = {
                                     val to = dragAt?.let(::slotAt)
-                                    if (dragFrom >= 0 && to != null && to != dragFrom) {
-                                        onMove(dragFrom, to)
+                                    when {
+                                        dragFrom >= 0 && to != null && to != dragFrom ->
+                                            onMove(dragFrom, to)
+                                        // Held and let go on the same spot,
+                                        // which is a hold rather than a drag.
+                                        heldAt >= 0 && (to == null || to == heldAt) ->
+                                            onHold(heldAt)
                                     }
                                     dragFrom = -1
+                                    heldAt = -1
                                     dragAt = null
                                 },
                                 onDragCancel = {
                                     dragFrom = -1
+                                    heldAt = -1
                                     dragAt = null
                                 },
                             )
@@ -293,6 +333,7 @@ fun Gen1BoxGrid(
                         // table. Only the one under the cursor is marked.
                         Box(Modifier.size(cell), contentAlignment = Alignment.Center) {
                             if (slot == cursorSlot) CursorBrackets()
+                            if (slot in marked) TickMark()
                             // The one being carried is not drawn in its old
                             // spot: it is under the finger.
                             if (stored != null && slot != dragFrom && column < revealed) {
@@ -432,6 +473,17 @@ fun BoxGridOverlay(
      * on a screen wide enough to have one.
      */
     onHighlight: (Int) -> Unit = {},
+    /** Spots ticked for whatever [actionLabel] is about to do to them. */
+    marked: Set<Int> = emptySet(),
+    /** A hold that went nowhere: picking one up, or putting one down. */
+    onHold: (Int) -> Unit = {},
+    /**
+     * The one thing several ticked Pokémon can be sent to do, when there are
+     * any. A button under the box rather than a row inside it: it acts on the
+     * whole selection, not on the spot the cursor happens to be over.
+     */
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
 ) {
     // The grid owns the cursor while this window is open, and a tap puts the
     // cursor where the finger went so both ways of driving it agree about
@@ -483,6 +535,7 @@ fun BoxGridOverlay(
             GbText(
                 when {
                     heldName != null -> "PUT $heldName WHERE?"
+                    marked.isNotEmpty() -> "${marked.size} CHOSEN"
                     else -> "${box.contents.size}/${StorageLayout.BOX_CAPACITY}"
                 },
                 style = Gen1TextSmall,
@@ -499,6 +552,8 @@ fun BoxGridOverlay(
                     onTap(slot)
                 },
                 onMove = onMove,
+                marked = marked,
+                onHold = onHold,
                 // Given the screen, it takes whatever is left after the lines
                 // above it and CANCEL below — the box is a hundred rows deep
                 // and will fill anything it is handed. Where the window wraps
@@ -513,6 +568,14 @@ fun BoxGridOverlay(
             )
             Spacer(Modifier.height(gen1Dp(2)))
             Gen1MenuRow("CANCEL", selected = false, onSelect = {}, onConfirm = onCancel)
+        }
+        if (actionLabel != null) {
+            Box(
+                Modifier.fillMaxSize().padding(gen1Dp(4)),
+                contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
+            ) {
+                Gen1BoxButton(actionLabel, onAction)
+            }
         }
     }
 }
@@ -545,6 +608,8 @@ private const val MIN_ROWS_SHOWN = 3
 private const val COLUMN_MILLIS = 26L
 
 /** A spot's side, in game pixels: the sprite with a little air around it. */
+private const val TICK_PIXELS = 4
+
 private const val CELL_PIXELS = 24
 private const val SPRITE_PIXELS = 16
 

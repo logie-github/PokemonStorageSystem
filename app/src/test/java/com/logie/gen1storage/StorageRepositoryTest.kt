@@ -232,4 +232,85 @@ class StorageRepositoryTest {
         assertNotNull(com.logie.gen1storage.lua.LuaParser.parse(text))
         assertFalse(text.contains("function"))
     }
+
+    // ------------------------------------------------------------------
+    // Nicknaming, and the trade that evolves
+
+    @Test
+    fun `a nickname is written and cleared the way the cartridge spells it`() {
+        val repository = StorageRepository(temporaryFolder.newFolder())
+        val stored = repository.deposit(SaveFixtures.pokemon(species = "PIKACHU"), provenance())!!
+        assertNull(stored.pokemon.nickname)
+
+        assertTrue(repository.rename(stored.uid, "SPARKY"))
+        assertEquals("SPARKY", repository.get(stored.uid)!!.pokemon.nickname)
+
+        // Cleared means the field goes, which is how Generation I says "not
+        // nicknamed" — not an empty string sitting where a name was.
+        assertTrue(repository.rename(stored.uid, "  "))
+        val after = repository.get(stored.uid)!!
+        assertNull(after.pokemon.nickname)
+        assertNull(after.data[com.logie.gen1storage.lua.LuaKey.Name("nickname")])
+        assertEquals("PIKACHU", after.pokemon.displayName)
+    }
+
+    @Test
+    fun `a nickname keeps only what the cartridge can draw, and only ten of it`() {
+        val repository = StorageRepository(temporaryFolder.newFolder())
+        val stored = repository.deposit(SaveFixtures.pokemon(), provenance())!!
+
+        repository.rename(stored.uid, "ABCDEFGHIJKLMNOP")
+        assertEquals("ABCDEFGHIJ", repository.get(stored.uid)!!.pokemon.nickname)
+
+        repository.rename(stored.uid, "A\u00a5B\u2603C")
+        assertEquals("ABC", repository.get(stored.uid)!!.pokemon.nickname)
+    }
+
+    @Test
+    fun `a trade evolves it in place and leaves the rest of the box alone`() {
+        val repository = StorageRepository(temporaryFolder.newFolder())
+        val first = repository.deposit(SaveFixtures.pokemon(species = "PIKACHU"), provenance())!!
+        val machoke = repository.deposit(
+            SaveFixtures.pokemon(species = "MACHOKE", level = 40, nickname = "MUSCLES"),
+            provenance(),
+        )!!
+
+        assertEquals("MACHAMP", repository.evolveByTrade(machoke.uid))
+        val after = repository.get(machoke.uid)!!
+        assertEquals("MACHAMP", after.pokemon.speciesId)
+        assertEquals("MUSCLES", after.pokemon.nickname)
+        // Same spot, same uid, and the Pokémon beside it untouched.
+        val box = repository.state().boxes.first()
+        assertEquals(first.uid, box.slots[0]?.uid)
+        assertEquals(machoke.uid, box.slots[1]?.uid)
+        assertEquals("PIKACHU", box.slots[0]?.pokemon?.speciesId)
+    }
+
+    @Test
+    fun `a Pokemon that does not trade-evolve is left exactly as it was`() {
+        val repository = StorageRepository(temporaryFolder.newFolder())
+        val stored = repository.deposit(SaveFixtures.pokemon(species = "PIKACHU"), provenance())!!
+        val before = stored.pokemon.fingerprint
+
+        assertNull(repository.evolveByTrade(stored.uid))
+        assertEquals(before, repository.get(stored.uid)!!.pokemon.fingerprint)
+    }
+
+    @Test
+    fun `renaming and evolving survive being read back off disk`() {
+        val directory = temporaryFolder.newFolder()
+        val uid = StorageRepository(directory).let { repository ->
+            val stored = repository.deposit(
+                SaveFixtures.pokemon(species = "GRAVELER", level = 37),
+                provenance(),
+            )!!
+            repository.rename(stored.uid, "ROCKY")
+            repository.evolveByTrade(stored.uid)
+            stored.uid
+        }
+
+        val reopened = StorageRepository(directory).get(uid)!!
+        assertEquals("GOLEM", reopened.pokemon.speciesId)
+        assertEquals("ROCKY", reopened.pokemon.nickname)
+    }
 }

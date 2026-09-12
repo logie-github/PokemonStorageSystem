@@ -25,7 +25,9 @@ class GbPaletteTest {
     fun `the requested palettes are all present`() {
         val ids = GbPalette.ALL.map { it.id }.toSet()
         assertEquals(
-            setOf("original", "red", "blue", "green", "yellow", "pastel", "route"),
+            setOf(
+                "original", "red", "blue", "green", "yellow", "pastel", "route", "purple_rain",
+            ),
             ids,
         )
     }
@@ -42,6 +44,19 @@ class GbPaletteTest {
         assertEquals(Color(0xFFA5D6FF), GbPalette.ROUTE.light)
         assertEquals(Color(0xFFADE75A), GbPalette.ROUTE.dark)
         assertEquals(Color(0xFF181010), GbPalette.ROUTE.darkest)
+    }
+
+    /**
+     * Named shades rather than transcribed ones, so what is worth pinning is
+     * that they are in the order the ramp reads them: the magenta is the
+     * second-darkest of the four and belongs between the purple and the lilac.
+     */
+    @Test
+    fun `the purple rain palette is ordered darkest to lightest`() {
+        assertEquals(Color(0xFF68006A), GbPalette.PURPLE_RAIN.darkest)
+        assertEquals(Color(0xFFFF0084), GbPalette.PURPLE_RAIN.dark)
+        assertEquals(Color(0xFF8570B2), GbPalette.PURPLE_RAIN.light)
+        assertEquals(Color(0xFFADFFFC), GbPalette.PURPLE_RAIN.lightest)
     }
 
     @Test

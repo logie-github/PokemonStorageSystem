@@ -36,14 +36,26 @@ import kotlin.math.sin
  * taken in [STEPS] fixed positions rather than continuously, which is both what
  * keeps the edges on the grid and what makes it read as animation cels instead
  * of a tweened object.
+ *
+ * One seam, because a Poké Ball has one. What the corner shows is the rim, the
+ * button, and the single line between them, and the sweep runs from the bottom
+ * edge round to the right one — the whole of the quarter that is on screen, so
+ * the seam is always somewhere in it.
  */
 object Gen1Pokeball {
 
-    /** How many distinct positions one turn is taken in. */
-    const val STEPS = 120
+    /** How many distinct positions one sweep is taken in. */
+    const val STEPS = 30
 
-    /** How long one full turn takes. Slow: it is scenery, not an event. */
-    const val PERIOD_MS = 12_000L
+    /**
+     * How long the seam takes to cross the corner, bottom edge to right edge.
+     *
+     * A quarter of the ball is on screen, so a quarter turn is the whole of
+     * what there is to watch: three degrees a step, ten steps a second, the
+     * same rate the seam has always moved at. Slow: it is scenery, not an
+     * event.
+     */
+    const val PERIOD_MS = 3_000L
 
     /** Milliseconds each position holds for. */
     const val STEP_MS = PERIOD_MS / STEPS
@@ -137,7 +149,12 @@ object Gen1Pokeball {
         val pixels = IntArray(side * side)
         val weight = (radius * 2f * LINE).coerceAtLeast(2f)
         val button = radius * BUTTON
-        val angle = step.toFloat() / STEPS * 2f * PI.toFloat()
+        // From pointing along the bottom edge round to pointing along the
+        // right one, which is the quarter of the ball the corner shows. Taken
+        // as a ray rather than a line through the centre: a line puts a second
+        // stroke in the corner whenever both of its halves are in view, and a
+        // ball has one seam.
+        val angle = PI.toFloat() + step.toFloat() / STEPS * (PI.toFloat() / 2f)
         val alongX = cos(angle)
         val alongY = sin(angle)
 
@@ -155,21 +172,11 @@ object Gen1Pokeball {
                     abs(distance - button) <= weight / 2f -> true
                     // The seam, from the button out to the rim. Turned by the
                     // step; the rings are not, having nothing to turn.
-                    //
-                    // Two of them, at right angles. A line through the centre
-                    // crosses the quarter of the ball that is on screen for
-                    // only half of every turn: with one seam the corner showed
-                    // it sweep to the edge, vanish for three seconds, then
-                    // appear at the other edge — a blink rather than a
-                    // rotation. The second seam reaches the corner exactly as
-                    // the first one leaves it, so at any moment one of the two
-                    // is crossing what is on screen and the sweep is unbroken.
                     else -> distance <= radius - weight &&
                         distance >= button + weight / 2f &&
-                        (
-                            abs(y * alongX - x * alongY) <= weight / 2f ||
-                                abs(y * alongY + x * alongX) <= weight / 2f
-                            )
+                        // On the ray rather than on the line it lies along.
+                        x * alongX + y * alongY > 0f &&
+                        abs(y * alongX - x * alongY) <= weight / 2f
                 }
                 pixels[row + cellX] = if (on) colour else 0
             }

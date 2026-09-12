@@ -249,10 +249,12 @@ fun StorageSystemScreen(
             }
         }
 
-        // Only the innermost thing that is open. A window on a chosen Pokémon
-        // replaces the list it was chosen from rather than sitting on top of
-        // it, for the same reason the list replaces the menu.
-        if (action == null) overlay?.invoke()
+        // The list stays while a window on one of its Pokémon is open. It
+        // used to be replaced by it, and choosing one in the box then took the
+        // box off the screen and left a five-row menu in the corner with
+        // nothing to say what it was about. The cartridge does the same thing
+        // this does now: the submenu opens under the list it was opened from.
+        overlay?.invoke()
 
         if (notice != null) {
             Box(
@@ -403,14 +405,13 @@ fun MonActionOverlay(
         val action = actions.getOrNull(index)
         if (action == null) onCancel() else if (action.enabled) action.onAction()
     }
-    // In the corner the list it replaced was using. It used to sit against the
-    // far edge and part way down, so it would overlap that list's lower corner
-    // the way the cartridge's submenus do — but the list is no longer behind
-    // it to overlap, and a window floating a third of the way down an empty
-    // screen reads as a mistake rather than as depth.
+    // Under the list it was opened from, against the same edge: the list is
+    // still there — it is what this window is about — and the far corner of
+    // that edge is where a window that answers something belongs. In the top
+    // corner it simply covered the list it came from.
     Box(
         Modifier.fillMaxSize().padding(gen1Dp(2)),
-        contentAlignment = Gen1Layout.corner(top = true, menuSide = true),
+        contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
     ) {
         Gen1Frame(Modifier.wrapContentWidth(), opening = true) {
             actions.forEachIndexed { index, entry ->

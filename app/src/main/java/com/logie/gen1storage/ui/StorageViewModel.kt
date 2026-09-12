@@ -4,6 +4,9 @@ import android.app.Application
 import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import com.logie.gen1storage.sound.CryStore
 import com.logie.gen1storage.sound.SoundEffect
@@ -402,7 +405,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     // ------- navigation
 
-    fun open(screen: Screen) = mutable.update { it.copy(stack = it.stack + screen) }
+    /**
+     * Where the PC screen was standing: its menu, a list, or the box.
+     *
+     * Held here rather than inside the screen because that screen is built
+     * twice. Opening a Pokémon's stats on a wide display draws the screen it
+     * was opened from beside them, and that is a second, fresh copy of the PC
+     * — which came up on its own menu, so pressing STATS in the box appeared
+     * to throw the box away and go back to the front of the machine.
+     */
+    var pcMode by mutableStateOf(PcMode.MENU)
+
+    fun open(screen: Screen) {
+        // Entering the PC from somewhere else starts at its menu; opening
+        // something over it — stats, a cartridge list — leaves it where it is.
+        if (screen == Screen.Storage) pcMode = PcMode.MENU
+        mutable.update { it.copy(stack = it.stack + screen) }
+    }
 
     fun replace(screen: Screen) =
         mutable.update { it.copy(stack = it.stack.dropLast(1) + screen) }
@@ -665,6 +684,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * than asking again.
      */
     fun chooseCart(key: String, thenOpenStorage: Boolean = false) = selectSave(key) {
+        // Arriving at the PC with a card just inserted starts at its menu, the
+        // same as walking up to it does. See [pcMode].
+        if (thenOpenStorage) pcMode = PcMode.MENU
         mutable.update { state ->
             val stack = state.stack.dropLastWhile { it is Screen.ChooseCart }
             val next = if (thenOpenStorage) stack + Screen.Storage else stack

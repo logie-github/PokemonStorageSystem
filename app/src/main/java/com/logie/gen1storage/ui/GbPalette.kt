@@ -118,7 +118,30 @@ data class GbPalette(
             tintsSprites = true,
         )
 
-        val ALL = listOf(ORIGINAL, RED, BLUE, GREEN, YELLOW, GBC_PASTEL, ROUTE)
+        /**
+         * Four shades given by name rather than read off a cartridge, ordered
+         * the way every palette here is: darkest at the foot of the screen,
+         * lightest at the top.
+         *
+         * The magenta is the second-darkest of the four by brightness — 91
+         * against the deep purple's 43 and the lilac's 126 — so it sits where
+         * a Game Boy's second shade sits, carrying the dither between the
+         * purple below it and the lilac above.
+         */
+        val PURPLE_RAIN = GbPalette(
+            id = "purple_rain", label = "PURPLE RAIN",
+            lightest = Color(0xFFADFFFC),
+            light = Color(0xFF8570B2),
+            dark = Color(0xFFFF0084),
+            darkest = Color(0xFF68006A),
+            // Between the two darkest, as the others have it: the ground the
+            // windows sit on is darker than any of them and not black.
+            surround = Color(0xFF8E0070),
+            tintsSprites = true,
+        )
+
+        val ALL =
+            listOf(ORIGINAL, RED, BLUE, GREEN, YELLOW, GBC_PASTEL, ROUTE, PURPLE_RAIN)
 
         fun fromId(id: String?): GbPalette = ALL.firstOrNull { it.id == id } ?: ORIGINAL
     }

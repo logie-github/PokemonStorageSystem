@@ -162,7 +162,10 @@ fun StorageSystemScreen(
     model: StorageViewModel,
     onOptions: (() -> Unit)? = null,
 ) {
-    var mode by remember { mutableStateOf(PcMode.MENU) }
+    // Held by the view model so a second copy of this screen — the one
+    // drawn beside a Pokémon's stats on a wide display — opens on the same
+    // face of the PC rather than back at its menu.
+    val mode = model.pcMode
     var chosen by remember(mode) { mutableStateOf<Int?>(null) }
     // Which rows of the open list a transfer will act on. Empty is the plain
     // one-at-a-time PC: a tap opens the window on that Pokémon, and SELECT in
@@ -189,7 +192,7 @@ fun StorageSystemScreen(
         marked = emptySet()
         chosen = null
         gridSlot = null
-        mode = PcMode.MENU
+        model.pcMode = PcMode.MENU
     }
     fun toggle(index: Int) {
         marked = if (index in marked) marked - index else marked + index
@@ -360,10 +363,10 @@ fun StorageSystemScreen(
             when {
                 needsCart -> model.open(Screen.ChooseCart(null))
                 (box?.freeSlots ?: 0) <= 0 -> refusal = "Oops! This Box is full of POKéMON."
-                else -> mode = PcMode.DEPOSIT
+                else -> model.pcMode = PcMode.DEPOSIT
             }
         },
-        onView = { mode = PcMode.VIEW },
+        onView = { model.pcMode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onTrade = if (state.tradeEvolution) ({ model.open(Screen.Trade) }) else null,
         onDex = { model.open(Screen.Dex) },
@@ -422,7 +425,7 @@ fun StorageSystemScreen(
                             when {
                                 heldUid != null -> heldUid = null
                                 marked.isNotEmpty() -> marked = emptySet()
-                                else -> mode = PcMode.MENU
+                                else -> model.pcMode = PcMode.MENU
                             }
                         },
                         onHighlight = { highlighted = it },
@@ -472,7 +475,7 @@ fun StorageSystemScreen(
                         MonRow(pokemonRowLabel(it.pokemon), pokemonRowLevel(it.pokemon))
                     },
                     onConfirm = { chosen = it },
-                    onCancel = { mode = PcMode.MENU },
+                    onCancel = { model.pcMode = PcMode.MENU },
                     emptyMessage = "What? There are no POKéMON here!",
                     marked = marked,
                     onToggle = ::toggle,
@@ -494,7 +497,7 @@ fun StorageSystemScreen(
                         )
                     },
                     onConfirm = { chosen = it },
-                    onCancel = { mode = PcMode.MENU },
+                    onCancel = { model.pcMode = PcMode.MENU },
                     emptyMessage = "There are no POKéMON here.",
                     marked = marked,
                     onToggle = ::toggle,
@@ -721,7 +724,8 @@ private fun previewOf(
  */
 private const val TRANSFER_LABEL = "TRANSFER"
 
-private enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW }
+/** Which of the PC's faces is showing. Held by the view model: see [StorageViewModel.pcMode]. */
+enum class PcMode { MENU, WITHDRAW, DEPOSIT, VIEW }
 
 /** The full status screen for one Pokémon, wherever it lives. */
 @Composable

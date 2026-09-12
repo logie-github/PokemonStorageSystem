@@ -335,9 +335,17 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     private val downloads = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** The last figure the notification was told, so it is not told it again. */
+    private var shownPercent = -1
+
     /** Tells the service what to say, or takes it down when nothing is left. */
     private fun showDownload(label: String, progress: DownloadProgress?) {
         val app = getApplication<Application>()
+        // Three hundred files report three hundred times and the bar has a
+        // hundred positions. Rewriting the notification for every file is work
+        // nobody can see.
+        if (progress != null && !progress.finished && progress.percent == shownPercent) return
+        shownPercent = progress?.percent?.takeIf { !progress.finished } ?: -1
         if (progress == null || progress.finished) {
             val stillGoing = mutable.value.let {
                 listOfNotNull(it.spriteProgress, it.cryProgress, it.followerProgress, it.trainerProgress)
@@ -417,9 +425,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
 
-    fun home() = mutable.update { it.copy(stack = listOf(Screen.Home), prompt = null) }
+    fun home() {
+        wantsEvolving = emptyList()
+        mutable.update { it.copy(stack = listOf(Screen.Home), prompt = null) }
+    }
 
-    fun dismissPrompt() = mutable.update { it.copy(prompt = null) }
+    /**
+     * Answers whatever is on screen, then asks the next thing waiting.
+     *
+     * There is one prompt slot and a transfer can leave questions behind it:
+     * four Pokémon brought in, two of which a trade would change. Each is
+     * asked as the one before it is answered, so they arrive in the order
+     * they came in rather than all at once or not at all.
+     */
+    fun dismissPrompt() {
+        mutable.update { it.copy(prompt = null) }
+        askNextEvolution()
+    }
 
     fun prompt(prompt: Prompt) = mutable.update { it.copy(prompt = prompt) }
 
@@ -797,6 +819,54 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             message("NOTHING HAPPENED.")
         } else {
             message("$name evolved into ${Gen1Data.speciesName(became).uppercase()}!")
+        }
+    }
+
+    /**
+     * Pokémon just brought in that a trade would change, waiting to be asked
+     * about. Held here rather than shown straight away: the transfer's own
+     * result is on screen when they arrive, and a question that replaced it
+     * would take away the only word the player gets that the transfer worked.
+     */
+    private var wantsEvolving = listOf<String>()
+
+    /** Remembers one that has just landed in the PC, if a trade would change it. */
+    private fun noteEvolvable(uid: String?) {
+        if (uid == null || !mutable.value.tradeEvolution) return
+        val stored = storage.get(uid) ?: return
+        if (Gen1TradeEvolution.evolves(stored.pokemon.speciesId)) wantsEvolving = wantsEvolving + uid
+    }
+
+    /**
+     * Asks about the next one, the way the cartridge asks after a trade.
+     *
+     * Skips any that are no longer in the PC or no longer evolve — they may
+     * have been released or already put through the machine between the
+     * transfer and the answer — so a stale entry costs a question rather than
+     * an error.
+     */
+    private fun askNextEvolution() {
+        if (!mutable.value.tradeEvolution) {
+            wantsEvolving = emptyList()
+            return
+        }
+        while (wantsEvolving.isNotEmpty()) {
+            val uid = wantsEvolving.first()
+            wantsEvolving = wantsEvolving.drop(1)
+            val stored = storage.get(uid) ?: continue
+            if (!Gen1TradeEvolution.evolves(stored.pokemon.speciesId)) continue
+            val name = stored.pokemon.displayName.uppercase()
+            mutable.update {
+                it.copy(
+                    prompt = Prompt.Confirm(
+                        lines = listOf("Oh? $name wants to evolve!", "Evolve $name?"),
+                        confirmLabel = "YES",
+                        cancelLabel = "NO",
+                        onConfirm = { tradeEvolve(uid) },
+                    )
+                )
+            }
+            return
         }
     }
 
@@ -1296,6 +1366,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 mutable.update { it.copy(busy = false, transferScene = null) }
                 return@launch message("THE TRANSFER COULD NOT START.", e.message.orEmpty().uppercase())
             }
+            if (result is TransferResult.Success) noteEvolvable(result.storedUid)
             finish(result, key)
         }
     }
@@ -1403,7 +1474,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     break
                 }
                 val result = runTransfer { engine.deposit(loaded, location, targetBox) }
-                if (result is TransferResult.Success) done++ else { stopped = result; break }
+                if (result is TransferResult.Success) {
+                    done++
+                    noteEvolvable(result.storedUid)
+                } else {
+                    stopped = result
+                    break
+                }
             }
             finishMany(done, stopped, mutable.value.inLabel, picks.map { it.first }.toSet())
         }

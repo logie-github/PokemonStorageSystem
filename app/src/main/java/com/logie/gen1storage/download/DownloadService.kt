@@ -30,6 +30,11 @@ class DownloadService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onDestroy() {
+        running = false
+        super.onDestroy()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val percent = intent?.getIntExtra(EXTRA_PERCENT, 0) ?: 0
         val label = intent?.getStringExtra(EXTRA_LABEL) ?: "DOWNLOADING"
@@ -41,6 +46,7 @@ class DownloadService : Service() {
         // download itself carries on in its own scope for as long as the
         // process lives. Throwing here would take the whole app with it,
         // which is what was happening partway through DOWNLOAD ALL.
+        running = true
         val started = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -53,6 +59,7 @@ class DownloadService : Service() {
             }
         }.isSuccess
         if (!started) {
+            running = false
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -61,27 +68,8 @@ class DownloadService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun notification(label: String, percent: Int): Notification {
-        val manager = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "Downloads",
-                    // Low: it is a progress bar, not news.
-                    NotificationManager.IMPORTANCE_LOW,
-                )
-            )
-        }
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(label)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setProgress(100, percent, false)
-            .setOngoing(true)
-            .setSilent(true)
-            .build()
-    }
+    private fun notification(label: String, percent: Int): Notification =
+        build(this, label, percent)
 
     companion object {
         private const val CHANNEL_ID = "downloads"
@@ -95,6 +83,23 @@ class DownloadService : Service() {
          * anyway, for as long as it is allowed to.
          */
         fun show(context: Context, label: String, percent: Int) {
+            // Already up: the bar moves by rewriting the notification, not by
+            // starting the service again.
+            //
+            // A download is hundreds of files and every one of them reports.
+            // Each report used to be another `startForegroundService`, so a
+            // run posted several hundred start intents in a burst — and a
+            // start intent the service does not answer with `startForeground`
+            // in time is a crash the system raises against the app, which is
+            // what was taking it down whenever a download actually had
+            // something to fetch.
+            if (running) {
+                runCatching {
+                    context.getSystemService(NotificationManager::class.java)
+                        ?.notify(NOTIFICATION_ID, build(context, label, percent))
+                }
+                return
+            }
             val intent = Intent(context, DownloadService::class.java)
                 .putExtra(EXTRA_LABEL, label)
                 .putExtra(EXTRA_PERCENT, percent)
@@ -108,7 +113,35 @@ class DownloadService : Service() {
         }
 
         fun hide(context: Context) {
+            running = false
             runCatching { context.stopService(Intent(context, DownloadService::class.java)) }
+        }
+
+        /** Whether the service is up, so an update is an update rather than a start. */
+        @Volatile
+        private var running = false
+
+        /** The notification itself, buildable without a service instance. */
+        fun build(context: Context, label: String, percent: Int): Notification {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager?.createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_ID,
+                        "Downloads",
+                        // Low: it is a progress bar, not news.
+                        NotificationManager.IMPORTANCE_LOW,
+                    )
+                )
+            }
+            return NotificationCompat.Builder(context, CHANNEL_ID)
+                .setContentTitle(context.getString(R.string.app_name))
+                .setContentText(label)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setProgress(100, percent, false)
+                .setOngoing(true)
+                .setSilent(true)
+                .build()
         }
     }
 }

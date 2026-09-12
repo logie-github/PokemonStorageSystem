@@ -1205,11 +1205,7 @@ private fun OptionsDrawerContent(
                         ) {
                             model.prompt(
                                 Prompt.Confirm(
-                                    lines = listOf(
-                                        "Download the sprites, cries,",
-                                        "followers and trainers?",
-                                        "About 28 MB.",
-                                    ),
+                                    lines = listOf("Download all assets?"),
                                     confirmLabel = "YES",
                                     cancelLabel = "NO",
                                     onConfirm = model::downloadEverything,

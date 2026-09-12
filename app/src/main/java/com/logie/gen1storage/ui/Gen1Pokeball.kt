@@ -1,6 +1,7 @@
 package com.logie.gen1storage.ui
 
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -63,37 +64,64 @@ object Gen1Pokeball {
     var current by mutableStateOf<Frame?>(null)
         private set
 
-    /** Who is already turning it, so several grounds do not each do the work. */
-    private var driving: String? = null
+    /** Whether somebody is already turning it. */
+    private var busy = false
+
+    /** What [current] was built from, so a handover does not rebuild it. */
+    private var builtFrom: String? = null
+
+    /**
+     * Which of the [STEPS] positions the ball is at, read off the clock.
+     *
+     * Taken from elapsed time rather than counted up by whoever happens to be
+     * driving. Every screen carries its own piece of ground, several are in
+     * composition at once while one is replacing another, and each of them
+     * asks for the ball: with a counter, a driver leaving and another taking
+     * over restarted the turn from zero, so the seam jumped back to the bottom
+     * edge every time a screen changed. Off the clock, whoever is driving
+     * computes the same position, and a handover cannot be seen at all.
+     */
+    private fun phase(): Int =
+        ((SystemClock.elapsedRealtime() / STEP_MS) % STEPS).toInt()
 
     /**
      * Turns the ball for as long as the caller is on screen.
      *
-     * The first ground to ask for a given shape drives it and the rest are
-     * handed the same [current]; they are all the same window's ball, drawn in
-     * the same place, so a second coroutine rasterising it in parallel would
-     * be the same picture computed twice.
+     * One driver at a time; the rest wait a step and try again rather than
+     * giving up, because the one that claimed it is usually the screen being
+     * navigated away from. Giving up left nothing turning the ball once that
+     * screen went — the corner simply froze on whatever position it had
+     * reached — and clearing the claim on the way out let two coroutines
+     * write positions over each other, which is a seam flickering between two
+     * angles ten times a second.
      */
     suspend fun drive(widthPx: Int, heightPx: Int, unit: Int, colour: Int, turning: Boolean) {
-        val key = "$widthPx/$heightPx/$unit/$colour/$turning"
-        synchronized(this) {
-            if (driving != null && driving != key) return
-            driving = key
-        }
-        try {
-            var step = 0
-            while (true) {
-                val frame = withContext(Dispatchers.Default) {
-                    build(widthPx / unit, heightPx / unit, colour, step)
-                }
-                if (frame != null) current = frame
-                // Held still: one position, drawn, and nothing further to do.
-                if (!turning) return
+        while (true) {
+            val claimed = synchronized(this) { if (busy) false else { busy = true; true } }
+            if (!claimed) {
                 delay(STEP_MS)
-                step = (step + 1) % STEPS
+                continue
             }
-        } finally {
-            synchronized(this) { if (driving == key) driving = null }
+            try {
+                while (true) {
+                    val step = if (turning) phase() else 0
+                    val from = "$widthPx/$heightPx/$unit/$colour/$step"
+                    if (from != builtFrom) {
+                        val frame = withContext(Dispatchers.Default) {
+                            build(widthPx / unit, heightPx / unit, colour, step)
+                        }
+                        if (frame != null) {
+                            current = frame
+                            builtFrom = from
+                        }
+                    }
+                    // Held still: one position, drawn, and nothing further to do.
+                    if (!turning) return
+                    delay(STEP_MS)
+                }
+            } finally {
+                synchronized(this) { busy = false }
+            }
         }
     }
 
@@ -127,9 +155,21 @@ object Gen1Pokeball {
                     abs(distance - button) <= weight / 2f -> true
                     // The seam, from the button out to the rim. Turned by the
                     // step; the rings are not, having nothing to turn.
-                    else -> abs(y * alongX - x * alongY) <= weight / 2f &&
-                        distance <= radius - weight &&
-                        distance >= button + weight / 2f
+                    //
+                    // Two of them, at right angles. A line through the centre
+                    // crosses the quarter of the ball that is on screen for
+                    // only half of every turn: with one seam the corner showed
+                    // it sweep to the edge, vanish for three seconds, then
+                    // appear at the other edge — a blink rather than a
+                    // rotation. The second seam reaches the corner exactly as
+                    // the first one leaves it, so at any moment one of the two
+                    // is crossing what is on screen and the sweep is unbroken.
+                    else -> distance <= radius - weight &&
+                        distance >= button + weight / 2f &&
+                        (
+                            abs(y * alongX - x * alongY) <= weight / 2f ||
+                                abs(y * alongY + x * alongX) <= weight / 2f
+                            )
                 }
                 pixels[row + cellX] = if (on) colour else 0
             }

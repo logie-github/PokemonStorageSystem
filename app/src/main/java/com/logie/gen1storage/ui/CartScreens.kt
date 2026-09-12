@@ -23,6 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
@@ -192,12 +194,26 @@ private fun TitleCard(
             .gen1WindowBounds()
             .background(palette.lightest)
             .gen1Clickable(onClick = onClick)
-            // The picture runs to the edges and the frame is drawn over it.
-            // A window insets its contents past the border, which is right for
-            // text and wrong for a picture: it left a band of empty panel
-            // between the art and the frame on every side.
+            // The picture runs to the edges of the card and the frame is a
+            // frame: the tile it occupies is painted out first, so nothing of
+            // the picture survives under it. Drawing the border straight over
+            // the art does not do that — its tiles are mostly holes, and the
+            // art showed through every one of them.
             .drawWithContent {
                 drawContent()
+                val tile = pixel * GEN1_TILE
+                drawRect(palette.lightest, Offset.Zero, Size(size.width, tile))
+                drawRect(
+                    palette.lightest,
+                    Offset(0f, size.height - tile),
+                    Size(size.width, tile),
+                )
+                drawRect(palette.lightest, Offset.Zero, Size(tile, size.height))
+                drawRect(
+                    palette.lightest,
+                    Offset(size.width - tile, 0f),
+                    Size(tile, size.height),
+                )
                 drawGen1Border(ink, pixel)
             },
         contentAlignment = Alignment.Center,

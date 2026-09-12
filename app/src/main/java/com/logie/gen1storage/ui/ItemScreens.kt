@@ -88,7 +88,7 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
     if (!state.showAllItems && (save == null || key == null)) {
         ScreenColumn {
             item { Gen1Frame(Modifier.wrapContentWidth()) { GbText("NO CART IN THE MACHINE.") } }
-            item { Gen1BoxButton("CHANGE CART", { model.open(Screen.ChooseCart(null)) }) }
+            item { Gen1BoxButton("TRAINER CARD", { model.open(Screen.ChooseCart(null)) }) }
         }
         return
     }

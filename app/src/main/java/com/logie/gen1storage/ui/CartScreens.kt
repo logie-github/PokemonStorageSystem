@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -124,17 +125,17 @@ fun ChooseCartScreen(
         Spacer(Modifier.height(gen1Dp(5)))
 
         if (game == null) {
-            Notice(if (sending) "Send where?" else "WHICH GAME?")
+            Notice(if (sending) "Send to whose card?" else "INSERT YOUR TRAINER CARD")
             return@Column
         }
 
         if (saves.isEmpty()) {
-            Notice("NO SAVES FOUND.")
+            Notice("NO TRAINER CARDS FOUND.")
             return@Column
         }
 
         if (sending) {
-            Notice("Send where?")
+            Notice("Send to whose card?")
             Spacer(Modifier.height(gen1Dp(4)))
         }
 
@@ -151,7 +152,7 @@ fun ChooseCartScreen(
                 ) {
                     row.forEach { remote ->
                         val index = saves.indexOf(remote)
-                        SaveRow(
+                        TrainerCardRow(
                             remote = remote,
                             slot = index + 1,
                             state = state,
@@ -170,7 +171,7 @@ fun ChooseCartScreen(
 }
 
 /** Each game shown in its own colours, whatever the app's palette is set to. */
-private fun paletteFor(gameId: String?): GbPalette = when (gameId) {
+internal fun paletteFor(gameId: String?): GbPalette = when (gameId) {
     GameVersion.RED.id -> GbPalette.RED
     GameVersion.BLUE.id -> GbPalette.BLUE
     GameVersion.YELLOW.id -> GbPalette.YELLOW
@@ -207,92 +208,86 @@ private fun CardCursor(on: Boolean) {
 }
 
 /**
- * One save, as an ordinary window.
+ * One playthrough on the shelf, as its trainer card.
  *
- * It used to be drawn on a picture of a cartridge, which meant a layout that
- * fought every other window in the app and type small enough to be a smudge on
- * a folded phone. It is a window like the rest now: four lines and the party's
- * lead on the right. A hold renames it.
+ * It used to be a window of facts about a save file. A trainer card is the
+ * same facts as the thing the player actually remembers having — a name, some
+ * money, a time and a row of badges — so it is what the shelf holds now. A
+ * hold opens the card at full size, where it can also be renamed.
  */
 @Composable
-private fun SaveRow(
+private fun TrainerCardRow(
     remote: RemoteSave,
     slot: Int,
     state: UiState,
     model: StorageViewModel,
     /** Where the cursor is. */
     cursor: Boolean,
-    /** Whether this is the cartridge already in the machine. */
+    /** Whether this is the card already in the machine. */
     loaded: Boolean,
     onChoose: () -> Unit,
     modifier: Modifier,
 ) {
-    // The same ink as everything else in a window. The small size is what
-    // separates these lines from the save's name; the grey on top of it only
-    // made them harder to read.
-    val small = Gen1TextSmall.copy(color = Gen1Palette.Ink)
-    val save = state.save(remote.key)?.save
-    // Nothing has been read yet, so nothing is known about the party. Saying
-    // "NO POKéMON" here would be a claim rather than a reading.
-    val read = save != null
-    val fallback = "SAVE $slot"
     val title = remember(remote.key, state.cartRevision) { model.cartName(remote.key) }
-        ?.uppercase() ?: fallback
-    val trainer = (save?.trainerName ?: remote.summary.trainerName ?: "?").uppercase()
-    val lead = save?.party?.firstOrNull()
-    val badges = save?.badgeCount ?: remote.summary.badges ?: 0
-    val caught = save?.let { it.partyCount + it.storedCount } ?: remote.summary.dexCount ?: 0
-    val time = save?.playTimeLongText
-
-    Gen1Frame(
-        modifier
+        ?.uppercase() ?: "CARD $slot"
+    Gen1TrainerCard(
+        remote = remote,
+        save = state.save(remote.key)?.save,
+        title = title,
+        sprites = model.sprites,
+        spriteRevision = state.spriteRevision,
+        modifier = modifier
             .gen1HoldRegion()
             .pointerInput(remote.key) {
                 detectTapGestures(
                     onTap = { onChoose() },
-                    onLongPress = { model.prompt(Prompt.RenameCart(remote.key, fallback)) },
+                    onLongPress = { model.open(Screen.TrainerCard(remote.key)) },
                 )
-            }
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                // The arrow is the cursor and nothing else. Which cart is
-                // in the machine is a different fact, and it was confusing to
-                // say both with one mark.
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    GbText(
-                        if (cursor) "▶$title" else title,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                    )
-                    if (loaded) GbText("LOADED", style = small, maxLines = 1)
-                }
-                GbText(trainer, style = small, maxLines = 1)
-                GbText(
-                    when {
-                        lead != null -> "${lead.displayName.uppercase()}, L${lead.level}"
-                        read -> "NO POKéMON"
-                        else -> " "
-                    },
-                    style = small,
-                    maxLines = 1,
-                )
-                time?.let { GbText("PLAY TIME: $it", style = small, maxLines = 1) }
-                GbText("$badges BADGES - $caught CAUGHT", style = small, maxLines = 1)
-            }
-            // The bracketed mark means "there is no art for this one", which
-            // is only worth saying once the save has actually been read.
-            if (read) {
-                Gen1Sprite(
-                    speciesId = lead?.speciesId,
-                    gameVersionId = remote.version.id,
-                    store = model.sprites,
-                    revision = state.spriteRevision,
-                    sizeInPixels = 32,
-                )
-            } else {
-                Spacer(Modifier.size(gen1Dp(32)))
-            }
+            },
+        cursor = cursor,
+        inserted = loaded,
+    )
+}
+
+/**
+ * One trainer card, read at full size.
+ *
+ * Everything the shelf shows and the rest of what the card knows underneath:
+ * the game, what the playthrough is carrying and storing, how far its Pokédex
+ * has got, and how many boxes its PC has — which is not always twelve.
+ */
+@Composable
+fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
+    val remote = state.remote(key)
+    if (remote == null) {
+        ScreenColumn { item { Gen1Frame { GbText("THAT CARD IS GONE.") } } }
+        return
+    }
+    val slot = state.saves.indexOfFirst { it.key == key } + 1
+    val fallback = "CARD $slot"
+    val title = remember(key, state.cartRevision) { model.cartName(key) }?.uppercase() ?: fallback
+    val actions = listOf<Pair<String, () -> Unit>>(
+        "INSERT" to { model.chooseCart(key, thenOpenStorage = true) },
+        "RENAME" to { model.prompt(Prompt.RenameCart(key, fallback)) },
+        "BACK" to { model.back() },
+    )
+    val at = rememberCursorLayer(actions.size) { actions[it].second() }
+
+    ScreenColumn {
+        item {
+            Gen1TrainerCard(
+                remote = remote,
+                save = state.save(key)?.save,
+                title = title,
+                sprites = model.sprites,
+                spriteRevision = state.spriteRevision,
+                modifier = Modifier.fillMaxWidth(),
+                inserted = state.activeSaveKey == key,
+                full = true,
+            )
+        }
+        itemsIndexed(actions) { index, (label, action) ->
+            Gen1BoxButton(label, action, selected = at == index)
         }
     }
 }

@@ -67,6 +67,17 @@ class Gen1RecompSave(val root: LuaValue.Table) {
     val rivalName: String? get() = player?.get("rival").asString()?.let(LuaText::displayText)
     val currentMap: String? get() = player?.get("map").asString()
 
+    /**
+     * What the player is carrying, for the trainer card's MONEY line.
+     *
+     * At the root of the save upstream, but looked for on the player too:
+     * both are reasonable places for it to have ended up and neither costs
+     * anything to check. Null rather than zero when it is in neither, because
+     * "nothing recorded" and "broke" are different things and the card should
+     * only claim the one it knows.
+     */
+    val money: Int? get() = root["money"].asInt() ?: player?.get("money").asInt()
+
     /** `save.playTime` is a plain seconds accumulator in a Generation I save. */
     val playTimeSeconds: Double get() = root["playTime"].asDouble() ?: 0.0
 
@@ -84,10 +95,20 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         }
 
     /** `Badges.count`: a truthy `save.inventory[<badge id>]` entry per gym. */
-    val badgeCount: Int
+    val badgeCount: Int get() = badges.count { it }
+
+    /**
+     * The eight gyms in order, each true where the badge is in the inventory.
+     *
+     * In order rather than counted, because the trainer card draws eight slots
+     * and which ones are filled is the whole of what it says: a player who has
+     * skipped one and come back later has a different card from one who has
+     * gone straight through, and a count cannot tell them apart.
+     */
+    val badges: List<Boolean>
         get() {
-            val inventory = root["inventory"].asTable() ?: return 0
-            return BADGE_IDS.count { inventory[it] != null }
+            val inventory = root["inventory"].asTable() ?: return List(BADGE_IDS.size) { false }
+            return BADGE_IDS.map { inventory[it] != null }
         }
 
     val dexOwnedCount: Int

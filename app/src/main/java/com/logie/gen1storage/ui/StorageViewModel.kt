@@ -97,6 +97,8 @@ sealed interface Screen {
          */
         val transfer: StatusTransfer? = null,
     ) : Screen
+    /** One playthrough's trainer card, read at full size. */
+    data class TrainerCard(val key: String) : Screen
     data object Sprites : Screen
     data object Cries : Screen
     data object Followers : Screen

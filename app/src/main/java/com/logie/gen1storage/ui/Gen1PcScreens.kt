@@ -180,7 +180,7 @@ fun StorageSystemScreen(
         add(Triple("$outLabel PKMN", onWithdraw, SoundEffect.SELECT))
         add(Triple("$inLabel PKMN", onDeposit, SoundEffect.SELECT))
         add(Triple("VIEW BOXES", onView, SoundEffect.SELECT))
-        add(Triple("CHANGE CART", onChangeCart, SoundEffect.CURSOR))
+        add(Triple("TRAINER CARD", onChangeCart, SoundEffect.CURSOR))
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add(Triple("OPTIONS", onOptions, SoundEffect.OPTIONS))
     }

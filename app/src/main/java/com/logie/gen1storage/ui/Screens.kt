@@ -390,7 +390,7 @@ fun StorageSystemScreen(
         onOptions = onOptions,
         caption = when {
             !state.linked -> "Link this device in OPTIONS."
-            needsCart -> "No cart in the machine."
+            needsCart -> "No trainer card inserted."
             else -> "What?"
         },
         overlay = if (emptiness != null) null else when (mode) {

@@ -10,6 +10,7 @@ import com.logie.gen1storage.sync.SaveBackups
 import com.logie.gen1storage.sync.SaveRepository
 import com.logie.gen1storage.sync.SyncApi
 import com.logie.gen1storage.sync.getOrNull
+import com.logie.gen1storage.transfer.PlacementLedger
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.TransferEngine
 import com.logie.gen1storage.transfer.TransferJournal
@@ -85,6 +86,7 @@ class ModdedBoxesTest {
             ),
             storage,
             TransferJournal(directory),
+            PlacementLedger(directory),
         ) { 1_700_000_000_000 }
     }
 

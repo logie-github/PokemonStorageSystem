@@ -33,6 +33,7 @@ import com.logie.gen1storage.transfer.RecoveryReport
 import com.logie.gen1storage.update.UpdateChecker
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.ItemTransferEngine
+import com.logie.gen1storage.transfer.PlacementLedger
 import com.logie.gen1storage.transfer.TransferEngine
 import com.logie.gen1storage.transfer.TransferJournal
 import com.logie.gen1storage.transfer.TransferResult
@@ -197,6 +198,8 @@ data class UiState(
     val windowsFollowPalette: Boolean = false,
     val windowsOnRight: Boolean = true,
     val classicTransferLabels: Boolean = false,
+    /** Whether this app's storage is called BILL'S PC instead of LOGIE'S PC. */
+    val billsPc: Boolean = false,
     /** How fast the text prints, as the games' OPTIONS screen puts it. */
     val textSpeed: TextSpeed = TextSpeed.DEFAULT,
     /** Shown while a transfer is in flight, and cleared by its result. */
@@ -229,6 +232,9 @@ data class UiState(
 ) {
     val screen: Screen get() = stack.last()
 
+    /** What this app's own storage is called on the screen that offers it. */
+    val pokemonPcLabel: String get() = if (billsPc) "BILL'S PC" else "LOGIE'S PC"
+
     /** Out of this PC, and into it, as the player has asked them to be named. */
     val outLabel: String get() = if (classicTransferLabels) "WITHDRAW" else "TRANSFER OUT"
     val inLabel: String get() = if (classicTransferLabels) "DEPOSIT" else "TRANSFER IN"
@@ -258,7 +264,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val credentials = SyncAccount(application)
     private val api = SyncApi(credentials = credentials::credentials)
     private val saves = SaveRepository(api, backups)
-    private val engine = TransferEngine(saves, storage, journal)
+    private val ledger = PlacementLedger(storageDir)
+    private val engine = TransferEngine(saves, storage, journal, ledger)
     private val itemStorage = ItemRepository(storageDir)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
 
@@ -316,6 +323,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
                 classicTransferLabels = settings.classicTransferLabels,
+                billsPc = settings.billsPc,
                 textSpeed = settings.textSpeed,
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
@@ -619,6 +627,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setClassicTransferLabels(on: Boolean) {
         settings.classicTransferLabels = on
         mutable.update { it.copy(classicTransferLabels = on) }
+    }
+
+    fun setBillsPc(on: Boolean) {
+        settings.billsPc = on
+        mutable.update { it.copy(billsPc = on) }
     }
 
     /** Takes the next speed round, which is how the games' own row works. */

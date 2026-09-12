@@ -1234,6 +1234,11 @@ private fun OptionsDrawerContent(
                         if (state.classicTransferLabels) "ON" else "OFF",
                     ) { model.setClassicTransferLabels(!state.classicTransferLabels) }
                 )
+                add(
+                    OptionRow("BILL'S PC", if (state.billsPc) "ON" else "OFF") {
+                        model.setBillsPc(!state.billsPc)
+                    }
+                )
             }
 
             OptionsDrawer.DOWNLOADS -> {

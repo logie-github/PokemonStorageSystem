@@ -12,6 +12,8 @@ import com.logie.gen1storage.sync.SaveBackups
 import com.logie.gen1storage.sync.SaveRepository
 import com.logie.gen1storage.sync.SyncApi
 import com.logie.gen1storage.sync.getOrNull
+import com.logie.gen1storage.transfer.Placement
+import com.logie.gen1storage.transfer.PlacementLedger
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.TransferEngine
 import com.logie.gen1storage.transfer.TransferJournal
@@ -41,6 +43,7 @@ class TransferEngineTest {
     private lateinit var storage: StorageRepository
     private lateinit var journal: TransferJournal
     private lateinit var backups: SaveBackups
+    private lateinit var ledger: PlacementLedger
     private lateinit var saves: SaveRepository
     private lateinit var engine: TransferEngine
 
@@ -84,7 +87,8 @@ class TransferEngineTest {
             SyncApi(transport = server, credentials = { "acct-1" to "tok-1" }),
             backups,
         )
-        engine = TransferEngine(saves, storage, journal) { 1_700_000_000_000 }
+        ledger = PlacementLedger(directory)
+        engine = TransferEngine(saves, storage, journal, ledger) { 1_700_000_000_000 }
     }
 
     private suspend fun load(playthroughId: String): LoadedSave {
@@ -375,7 +379,12 @@ class TransferEngineTest {
         setUp()
         val loaded = load(redId)
         // A second app instance writes between this app's re-read and its PUT.
-        val racer = TransferEngine(saves, StorageRepository(temporaryFolder.newFolder()), TransferJournal(temporaryFolder.newFolder()))
+        val racer = TransferEngine(
+            saves,
+            StorageRepository(temporaryFolder.newFolder()),
+            TransferJournal(temporaryFolder.newFolder()),
+            PlacementLedger(temporaryFolder.newFolder()),
+        )
         racer.deposit(load(redId), SaveLocation.Party(1))
 
         val result = engine.deposit(loaded, SaveLocation.Party(1))
@@ -448,6 +457,90 @@ class TransferEngineTest {
         }
         assertEquals(0, storage.state().total)
         assertEquals(originals, saveOn("red", redId).boxes[0].map { it.fingerprint })
+    }
+
+    // ------------------------------------------------------------------
+    // The placement ledger: never the same Pokémon in two cartridges
+    // ------------------------------------------------------------------
+
+    /** Two Pokémon a cartridge cannot tell apart, and neither can this. */
+    private fun twins() = listOf(
+        SaveFixtures.pokemon(species = "PIKACHU", nickname = "SPARKY"),
+        SaveFixtures.pokemon(species = "PIKACHU", nickname = "SPARKY"),
+        SaveFixtures.pokemon(species = "BULBASAUR", level = 12, otId = 777),
+    )
+
+    @Test
+    fun `withdrawing into a save that already holds the same Pokemon is refused`() = runTest {
+        setUp(redParty = twins())
+        val uid = (engine.deposit(load(redId), SaveLocation.Party(1)) as TransferResult.Success).storedUid!!
+
+        val result = engine.withdraw(load(redId), uid, WithdrawTarget.Party)
+        assertTrue(result.toString(), result is TransferResult.Refused)
+        assertTrue(
+            (result as TransferResult.Refused).reason,
+            result.reason.contains("ALREADY IN THAT SAVE"),
+        )
+        // Refused before anything was written: the PC still has it and the
+        // save is untouched.
+        assertEquals(1, storage.state().total)
+        assertEquals(2, saveOn("red", redId).party.size)
+    }
+
+    @Test
+    fun `a Pokemon this app put in one cartridge cannot be written into another`() = runTest {
+        setUp(redParty = twins())
+
+        val first = (engine.deposit(load(redId), SaveLocation.Party(1)) as TransferResult.Success).storedUid!!
+        assertTrue(engine.withdraw(load(blueId), first, WithdrawTarget.Party) is TransferResult.Success)
+        assertEquals(1, engine.placements().size)
+
+        // The twin is a different Pokémon the app cannot tell apart, which is
+        // exactly the case the record is for: as far as any evidence goes, it
+        // is the one already sitting in blue.
+        val second = (engine.deposit(load(redId), SaveLocation.Party(1)) as TransferResult.Success).storedUid!!
+        assertEquals(1, engine.placements().size)
+
+        val result = engine.withdraw(load(redId), second, WithdrawTarget.Party)
+        assertTrue(result.toString(), result is TransferResult.Refused)
+        assertTrue(
+            (result as TransferResult.Refused).reason,
+            result.reason.contains("THE PC PUT"),
+        )
+        assertEquals(1, storage.state().total)
+    }
+
+    @Test
+    fun `depositing it back out of that cartridge clears the record`() = runTest {
+        setUp(redParty = twins())
+
+        val uid = (engine.deposit(load(redId), SaveLocation.Party(1)) as TransferResult.Success).storedUid!!
+        engine.withdraw(load(blueId), uid, WithdrawTarget.Party)
+        assertEquals(1, engine.placements().size)
+
+        // Out of blue, which is where the record says it is.
+        val back = (engine.deposit(load(blueId), SaveLocation.Party(2)) as TransferResult.Success).storedUid!!
+        assertEquals(emptyList<Placement>(), engine.placements())
+
+        // And so it may go somewhere else again. Red still holds the twin, so
+        // it goes to a box rather than back to the party it came from.
+        val result = engine.withdraw(load(blueId), back, WithdrawTarget.Box(1))
+        assertTrue(result.toString(), result is TransferResult.Success)
+    }
+
+    @Test
+    fun `a record the player knows is wrong can be dropped`() = runTest {
+        setUp(redParty = twins())
+
+        val uid = (engine.deposit(load(redId), SaveLocation.Party(1)) as TransferResult.Success).storedUid!!
+        engine.withdraw(load(blueId), uid, WithdrawTarget.Party)
+        val placed = engine.placements().single()
+
+        engine.forgetPlacement(placed.fingerprint)
+        assertEquals(emptyList<Placement>(), engine.placements())
+
+        val second = (engine.deposit(load(redId), SaveLocation.Party(1)) as TransferResult.Success).storedUid!!
+        assertTrue(engine.withdraw(load(redId), second, WithdrawTarget.Party) is TransferResult.Success)
     }
 
     @Test

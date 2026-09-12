@@ -48,7 +48,7 @@ fun MainMenuScreen(state: UiState, model: StorageViewModel) {
         // The cartridge is chosen on the way in rather than being asked for
         // in the middle of a transfer. Skipped when the account has no saves
         // at all, so an empty account is not locked out of its own PC.
-        add("LOGIE'S PC" to {
+        add(state.pokemonPcLabel to {
             if (save != null || state.saves.isEmpty()) model.open(Screen.Storage)
             else model.open(Screen.ChooseCart(null, thenOpenStorage = true))
         })

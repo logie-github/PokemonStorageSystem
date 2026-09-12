@@ -110,6 +110,17 @@ class AppSettings(private val prefs: SharedPreferences) {
         }.apply()
     }
 
+    /**
+     * Call this app's storage BILL'S PC rather than naming its author.
+     *
+     * Off, because the machine is this app and it says so. On, it takes the
+     * name the cartridge's own storage system carries, for a player who would
+     * rather the whole thing read as the game it sits beside.
+     */
+    var billsPc: Boolean
+        get() = prefs.getBoolean(KEY_BILLS_PC, false)
+        set(value) = prefs.edit().putBoolean(KEY_BILLS_PC, value).apply()
+
     /** One switch over the lot, for when none of it is wanted. */
     var soundOff: Boolean
         get() = prefs.getBoolean(KEY_SOUND_OFF, false)
@@ -132,6 +143,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_CART_PREFIX = "cart-name-"
         const val KEY_TRAINER_PREFIX = "trainer-sprite-"
         const val KEY_CLASSIC_LABELS = "classic-transfer-labels"
+        const val KEY_BILLS_PC = "bills-pc"
         const val KEY_SOUND_OFF = "sound-off"
         const val KEY_SOUND_PREFIX = "sound-"
         /** As long as a name can be and still fit a cartridge label. */

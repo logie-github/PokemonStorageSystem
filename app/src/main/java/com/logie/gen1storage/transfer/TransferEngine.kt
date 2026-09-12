@@ -60,6 +60,11 @@ class TransferEngine(
     private val saves: SaveRepository,
     private val storage: StorageRepository,
     private val journal: TransferJournal,
+    /**
+     * What the app believes it has already handed out. Consulted before a
+     * withdrawal so the same Pokémon cannot be written into a second cartridge.
+     */
+    private val ledger: PlacementLedger,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -131,6 +136,10 @@ class TransferEngine(
         return when (val outcome = saves.commit(fresh, mutated.root)) {
             is CommitOutcome.Committed -> {
                 journal.clear()
+                // It has left that cartridge, so the app is no longer holding
+                // it there and a later withdrawal has nothing to refuse. Only
+                // that cartridge's record goes: see [PlacementLedger.forgetFrom].
+                ledger.forgetFrom(removedFingerprint, fresh.key)
                 if (!holdsExactlyOne(uid)) {
                     TransferResult.NeedsRecovery("THE PC DID NOT END UP WITH EXACTLY ONE COPY. CHECK STORAGE BOXES.")
                 } else {
@@ -176,6 +185,26 @@ class TransferEngine(
 
         constraintForWithdraw(save, target)?.let { return TransferResult.Refused(it) }
 
+        // The one write that can put a Pokémon in two places at once, so it is
+        // the one that checks. Both halves matter: a save restored from a
+        // backup can already hold it, and a cartridge this app wrote it to
+        // earlier can still be holding it even while nothing is loaded from
+        // that cartridge now.
+        val fingerprint = stored.pokemon.fingerprint
+        if (alreadyHolds(save, fingerprint)) {
+            return TransferResult.Refused(
+                "${stored.pokemon.displayName.uppercase()} IS ALREADY IN THAT SAVE."
+            )
+        }
+        ledger.placement(fingerprint)?.let { held ->
+            if (held.saveKey != fresh.key) {
+                return TransferResult.Refused(
+                    "THE PC PUT ${stored.pokemon.displayName.uppercase()} IN ${held.savePath.uppercase()}. " +
+                        "TAKE IT OUT OF THERE FIRST, OR CLEAR THE RECORD IN SAVE FILES."
+                )
+            }
+        }
+
         val mutated = Gen1RecompSave(save.root.deepCopy())
         val data = stored.detachedData()
         val placed = when (target) {
@@ -209,6 +238,15 @@ class TransferEngine(
                 journal.write(entry.copy(stage = TransferStage.SAVED))
                 storage.withdraw(uid)
                 journal.clear()
+                ledger.record(
+                    Placement(
+                        fingerprint = fingerprint,
+                        saveKey = fresh.key,
+                        savePath = entry.savePath,
+                        monName = stored.pokemon.displayName,
+                        atMillis = now(),
+                    )
+                )
                 TransferResult.Success(
                     "${stored.pokemon.displayName.uppercase()} is taken out.",
                     null,
@@ -342,6 +380,25 @@ class TransferEngine(
             sourceIndex = entry.sourceIndex,
             depositedAtEpochMillis = now(),
         )
+
+    /**
+     * Whether [save] already holds a Pokémon identical to this one.
+     *
+     * Content, not identity: two Pokémon that fingerprint the same are the same
+     * Pokémon as far as anything can tell, including the cartridge. A genuine
+     * coincidence — two untouched Pokémon of the same species, level, DVs,
+     * moves, PP and OT — would be refused as well, which costs a player one
+     * deposit of an interchangeable Pokémon and is the safe side to err on.
+     */
+    private fun alreadyHolds(save: Gen1RecompSave, fingerprint: String): Boolean =
+        save.party.any { it.fingerprint == fingerprint } ||
+            save.boxes.any { box -> box.any { it.fingerprint == fingerprint } }
+
+    /** What the app believes it has put where, for the save files screen. */
+    fun placements(): List<Placement> = ledger.all()
+
+    /** Drops one record, for a player who knows the cartridge no longer holds it. */
+    fun forgetPlacement(fingerprint: String) = ledger.forget(fingerprint)
 
     /** The no-duplication invariant, checked rather than assumed. */
     private fun holdsExactlyOne(uid: String): Boolean =

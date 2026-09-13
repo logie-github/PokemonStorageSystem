@@ -40,8 +40,8 @@ android {
         targetSdk = 35
         // Every release must raise versionCode or Android refuses to
         // install it over the last one; versionName is what people read.
-        versionCode = 5
-        versionName = "0.5"
+        versionCode = 6
+        versionName = "0.6"
     }
 
     signingConfigs {

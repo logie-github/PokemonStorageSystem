@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.TrainerStore
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Data
@@ -465,6 +466,11 @@ fun StorageSystemScreen(
                             marked = emptySet()
                             startWithdraw(uids)
                         },
+                        // A tap on the box's name names it. It is the one
+                        // thing on the screen that is about the box itself,
+                        // and naming boxes had no way in at all since the
+                        // window that used to carry it came off the menu.
+                        onRename = { model.prompt(Prompt.RenameBox(open.index)) },
                     )
                 }
             })
@@ -770,14 +776,30 @@ fun StatusScreen(
     // the cursor should not have to step over a word that does nothing. The
     // buttons then look their position up rather than counting for themselves,
     // so the arrow is always on the one a tap would take.
+    val transferPair = transferAction(state, model, key, area, slot, transfer, pokemon)
+    // Only for one this app is holding. A Pokémon still in a save is the
+    // cartridge's to name, and the card is about where a Pokémon came from,
+    // which a Pokémon that has not left anywhere cannot say.
+    val storedUid = if (key == null) {
+        state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.uid
+    } else null
+    // The two things the PC can do to a Pokémon that are not about moving it.
+    // Both used to be written and reachable from nowhere.
+    val cardActions = buildList<Pair<String, () -> Unit>> {
+        if (storedUid != null) {
+            add(NICKNAME_LABEL to { model.prompt(Prompt.RenameMon(storedUid)) })
+            add(SHARE_LABEL to { model.shareCard(storedUid) })
+        }
+    }
     val actions = buildList<Pair<String, () -> Unit>> {
         if (slot > 0) {
             add(PREV_LABEL to { model.replace(Screen.Status(key, area, slot - 1, transfer)) })
         }
-        transferAction(state, model, key, area, slot, transfer, pokemon)?.let(::add)
+        transferPair?.let(::add)
         if (slot < siblings - 1) {
             add(NEXT_LABEL to { model.replace(Screen.Status(key, area, slot + 1, transfer)) })
         }
+        addAll(cardActions)
         add(BACK_LABEL to { model.back() })
     }
     val at = rememberCursorLayer(actions.size) { index ->
@@ -797,7 +819,16 @@ fun StatusScreen(
         } else null,
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
         footer = {
-            Gen1BoxButton(BACK_LABEL, { model.back() }, selected = isOn(BACK_LABEL))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                cardActions.forEach { (label, act) ->
+                    Gen1BoxButton(label, act, selected = isOn(label))
+                }
+                Gen1BoxButton(BACK_LABEL, { model.back() }, selected = isOn(BACK_LABEL))
+            }
         },
         underBox = {
             Row(
@@ -814,7 +845,7 @@ fun StatusScreen(
                 // Only the transfer this screen was opened from. Looking a
                 // Pokémon over is most of why a transfer stalls here, so the
                 // way on is under it rather than back through the list.
-                actions.firstOrNull { it.first !in WALKING_LABELS }?.let { (label, act) ->
+                transferPair?.let { (label, act) ->
                     Gen1Button(
                         label,
                         act,
@@ -836,9 +867,8 @@ fun StatusScreen(
 private const val PREV_LABEL = "PREV"
 private const val NEXT_LABEL = "NEXT"
 private const val BACK_LABEL = "BACK"
-
-/** The three that are always the same, so the transfer is whatever is left. */
-private val WALKING_LABELS = setOf(PREV_LABEL, NEXT_LABEL, BACK_LABEL)
+private const val NICKNAME_LABEL = "NAME"
+private const val SHARE_LABEL = "SHARE"
 
 /**
  * The transfer this status screen was opened from, if it was opened from one,
@@ -1585,8 +1615,36 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
     ) {
         when (prompt) {
             is Prompt.Message -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
+                val context = LocalContext.current
+                // A landed transfer is on the server; the cartridge gets it
+                // the next time the game syncs, and the game syncs on the way
+                // into a save. So the window that says the transfer happened
+                // is where the trip to the game belongs — one tap instead of
+                // leaving, finding the icon, and waiting on a timer.
+                //
+                // Offered only when the game is actually installed: a row that
+                // answers "that app is not here" is a row that never did
+                // anything.
+                val game = prompt.openGame?.takeIf { TheGame.isInstalled(context) }
                 Spacer(Modifier.height(gen1Dp(2)))
-                Gen1ChoiceRows(listOf("OK" to model::dismissPrompt))
+                Gen1ChoiceRows(
+                    buildList {
+                        if (game != null) {
+                            val label = GameVersion.fromId(game)?.label ?: "THE GAME"
+                            add(
+                                "OPEN $label" to {
+                                    model.dismissPrompt()
+                                    if (!TheGame.open(context, game)) {
+                                        model.prompt(
+                                            Prompt.Message(listOf("THE GAME WOULD NOT OPEN."))
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                        add("OK" to model::dismissPrompt)
+                    }
+                )
             }
 
             is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {

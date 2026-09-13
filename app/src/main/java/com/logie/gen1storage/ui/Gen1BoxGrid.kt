@@ -484,6 +484,16 @@ fun BoxGridOverlay(
      */
     actionLabel: String? = null,
     onAction: () -> Unit = {},
+    /**
+     * Naming the box, from the line that says which box it is.
+     *
+     * The name is the only thing on this screen that is about the box rather
+     * than about what is in it, so it is what a tap on it should change. The
+     * naming window used to hang off the PC menu, where it sat between the
+     * player and the two rows they came for; here it is out of the way and
+     * exactly where the thing it renames is written.
+     */
+    onRename: (() -> Unit)? = null,
 ) {
     // The grid owns the cursor while this window is open, and a tap puts the
     // cursor where the finger went so both ways of driving it agree about
@@ -531,7 +541,12 @@ fun BoxGridOverlay(
                 )
                 Spacer(Modifier.height(gen1Dp(3)))
             }
-            GbText(box.label, maxLines = 1)
+            GbText(
+                box.label,
+                modifier = if (onRename == null) Modifier
+                else Modifier.gen1Clickable { onRename() },
+                maxLines = 1,
+            )
             GbText(
                 when {
                     heldName != null -> "PUT $heldName WHERE?"

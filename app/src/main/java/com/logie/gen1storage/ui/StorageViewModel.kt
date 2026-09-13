@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.toArgb
 import com.logie.gen1storage.sound.CryStore
 import com.logie.gen1storage.sound.SoundEffect
 import androidx.lifecycle.viewModelScope
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
 import com.logie.gen1storage.storage.ItemRepository
@@ -21,6 +22,7 @@ import com.logie.gen1storage.storage.StoredPokemon
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import com.logie.gen1storage.share.PokemonCardImage
+import com.logie.gen1storage.share.ShareCard
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StorageState
@@ -182,7 +184,17 @@ enum class StatusTransfer { WITHDRAW, DEPOSIT }
 
 /** A modal the Generation I menus would draw as a window over everything. */
 sealed interface Prompt {
-    data class Message(val lines: List<String>) : Prompt
+    /**
+     * Something said and then dismissed.
+     *
+     * [openGame] is set where what was said is a transfer that landed: the
+     * cartridge has the Pokémon on the server, and the save on the phone
+     * running the game catches up the next time the game syncs, which it does
+     * on the way into a save. So the window offers to start it — the id is
+     * the game version to open, and the row appears only if the game is
+     * installed.
+     */
+    data class Message(val lines: List<String>, val openGame: String? = null) : Prompt
     data class Confirm(
         val lines: List<String>,
         val confirmLabel: String,
@@ -466,6 +478,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     private fun message(vararg lines: String) =
         mutable.update { it.copy(prompt = Prompt.Message(lines.toList()), busy = false) }
+
+    /**
+     * What a landed transfer says, with the offer to go and see it.
+     *
+     * The save is only changed on the server until the game next syncs, and
+     * the game syncs on the way into a save, so the shortest path from here
+     * to a Pokémon actually being in the cartridge is starting the game.
+     */
+    private fun transferMessage(lines: List<String>, touched: Array<out String>) =
+        mutable.update {
+            it.copy(
+                prompt = Prompt.Message(lines, openGame = touched.firstNotNullOfOrNull { key ->
+                    key.substringBefore('/').takeIf { id -> GameVersion.fromId(id) != null }
+                }),
+                busy = false,
+            )
+        }
 
     // ------- linking
 
@@ -784,6 +813,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun cardName(uid: String): String =
         storage.get(uid)?.pokemon?.displayName ?: "pokemon"
+
+    /**
+     * Draws a stored Pokémon's card and hands it to whatever the phone shares
+     * with.
+     *
+     * Off the main thread: a card is a bitmap the size of a Game Boy screen
+     * six times over, drawn a rectangle at a time, and that is long enough to
+     * show on a scrolling list. The chooser is opened from the application
+     * context with NEW_TASK, so this does not need the activity.
+     */
+    fun shareCard(uid: String) = viewModelScope.launch {
+        val name = cardName(uid)
+        val card = withContext(Dispatchers.Default) { cardImage(uid) }
+        val sent = card != null &&
+            ShareCard.share(getApplication(), card, name)
+        if (!sent) message("THAT CARD COULD NOT BE SENT.")
+    }
 
     fun setHaptics(on: Boolean) {
         settings.haptics = on
@@ -1658,7 +1704,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        if (lines.isNotEmpty()) message(*lines.toTypedArray())
+        if (lines.isNotEmpty()) {
+            if (done > 0) transferMessage(lines, touched.toTypedArray())
+            else message(*lines.toTypedArray())
+        }
         refreshTransferSources(*touched.toTypedArray())
         Unit
     }
@@ -1696,7 +1745,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         when (result) {
             is TransferResult.Success -> {
                 mutable.update { it.copy(transfers = it.transfers + 1) }
-                message(result.message)
+                transferMessage(listOf(result.message), touched)
             }
             is TransferResult.Refused -> message(result.reason)
             is TransferResult.NeedsRecovery -> message(

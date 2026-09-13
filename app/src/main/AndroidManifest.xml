@@ -14,6 +14,20 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Android 11 hides every other app from this one unless the manifest
+         names it. These are the two package ids Gen1Recomp ships under, and
+         its launch scheme, so the app can tell whether the game is installed
+         and open it — which is what makes a transfer reach a cartridge at
+         once, since the game syncs on the way into a save. -->
+    <queries>
+        <package android:name="com.theboisclub.pokemonred" />
+        <package android:name="com.theboisclub.pokemonred.androidfixes" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="gen1recomp++" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

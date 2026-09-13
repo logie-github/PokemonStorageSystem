@@ -151,6 +151,9 @@ data class GbPalette(
          * one's ground is its darkest shade carried a quarter of the way
          * towards the next, so the screen behind the windows belongs to the
          * palette rather than being black.
+         *
+         * Listed as the games are — Gold, Silver, Crystal — and then the three
+         * the art is of.
          */
         val GOLD = GbPalette(
             id = "gold", label = "GOLD",
@@ -159,26 +162,6 @@ data class GbPalette(
             light = Color(0xFF85A2A8),
             lightest = Color(0xFFD8CFA9),
             surround = Color(0xFFBE605C),
-            tintsSprites = true,
-        )
-
-        val HO_OH = GbPalette(
-            id = "ho_oh", label = "HO-OH",
-            darkest = Color(0xFFED8047),
-            dark = Color(0xFFB0C52C),
-            light = Color(0xFFFFF220),
-            lightest = Color(0xFFFCFFE0),
-            surround = Color(0xFFDE9140),
-            tintsSprites = true,
-        )
-
-        val LUGIA = GbPalette(
-            id = "lugia", label = "LUGIA",
-            darkest = Color(0xFF31408E),
-            dark = Color(0xFFB1DCFE),
-            light = Color(0xFF6ACCF8),
-            lightest = Color(0xFFFEFEFE),
-            surround = Color(0xFF5167AA),
             tintsSprites = true,
         )
 
@@ -202,6 +185,26 @@ data class GbPalette(
             tintsSprites = true,
         )
 
+        val HO_OH = GbPalette(
+            id = "ho_oh", label = "HO-OH",
+            darkest = Color(0xFFED8047),
+            dark = Color(0xFFB0C52C),
+            light = Color(0xFFFFF220),
+            lightest = Color(0xFFFCFFE0),
+            surround = Color(0xFFDE9140),
+            tintsSprites = true,
+        )
+
+        val LUGIA = GbPalette(
+            id = "lugia", label = "LUGIA",
+            darkest = Color(0xFF31408E),
+            dark = Color(0xFFB1DCFE),
+            light = Color(0xFF6ACCF8),
+            lightest = Color(0xFFFEFEFE),
+            surround = Color(0xFF5167AA),
+            tintsSprites = true,
+        )
+
         val SUICUNE = GbPalette(
             id = "suicune", label = "SUICUNE",
             darkest = Color(0xFF72B3E2),
@@ -214,7 +217,8 @@ data class GbPalette(
 
         val ALL = listOf(
             ORIGINAL, RED, BLUE, GREEN, YELLOW, GBC_PASTEL, ROUTE, PURPLE_RAIN,
-            GOLD, HO_OH, LUGIA, SILVER, CRYSTAL, SUICUNE,
+            // The games first, then the three the art is of.
+            GOLD, SILVER, CRYSTAL, HO_OH, LUGIA, SUICUNE,
         )
 
         fun fromId(id: String?): GbPalette = ALL.firstOrNull { it.id == id } ?: ORIGINAL

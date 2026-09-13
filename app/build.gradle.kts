@@ -60,6 +60,29 @@ android {
             isMinifyEnabled = false
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
+        /**
+         * A build to keep beside the released one rather than over it.
+         *
+         * Its own application id, so Android treats it as a different app and
+         * installing it leaves the release copy and everything in that copy's
+         * PC exactly where they are. Signed with the release key all the same,
+         * so one dev build updates the last one cleanly instead of asking to
+         * be uninstalled every time.
+         *
+         * Everything else is the release build: the same code, the same lack
+         * of a debugger attached, the same speed. `src/dev/res` renames it on
+         * the home screen so the two are tellable apart.
+         */
+        create("dev") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            isMinifyEnabled = false
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+            // For any dependency that ships release/debug variants and has
+            // never heard of this one.
+            matchingFallbacks += listOf("release")
+        }
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"

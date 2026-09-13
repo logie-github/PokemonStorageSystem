@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The dev build's name on the home screen. It sits beside the released copy
+    under its own application id, so the one thing that has to differ is what
+    it is called when both are installed.
+-->
+<resources>
+    <string name="app_name">PC (DEV)</string>
+</resources>

@@ -49,14 +49,23 @@ object TheGame {
     fun isInstalled(context: Context): Boolean = installedPackage(context) != null
 
     /**
-     * Starts the game, at [gameVersionId] where one is known.
+     * Starts the game, at [gameVersionId] and [slot] where they are known.
+     *
+     * [slot] is the save itself rather than the game: an account can hold
+     * several playthroughs of one version, and the one worth opening is the
+     * one that was just written to. Upstream's `LaunchOptions.selectSlot`
+     * takes either a slot id or an index and makes it active before the game
+     * boots, and the id the server lists is the id that device uploaded it
+     * under. A save first made on another phone has no matching slot here, in
+     * which case the game boots whichever save is already active — the sync
+     * still happens, which is the part that matters.
      *
      * Returns false if nothing could be started, so a caller can say so rather
      * than look like it did something.
      */
-    fun open(context: Context, gameVersionId: String? = null): Boolean {
+    fun open(context: Context, gameVersionId: String? = null, slot: String? = null): Boolean {
         val name = installedPackage(context) ?: return false
-        val deepLink = Intent(Intent.ACTION_VIEW, launchUri(gameVersionId)).apply {
+        val deepLink = Intent(Intent.ACTION_VIEW, launchUri(gameVersionId, slot)).apply {
             setPackage(name)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
@@ -66,12 +75,21 @@ object TheGame {
         return start(context, launcher)
     }
 
-    private fun launchUri(gameVersionId: String?): Uri {
-        val game = gameVersionId?.lowercase()?.takeIf { it.isNotBlank() }
-        return Uri.parse(
-            if (game == null) "$SCHEME://launch" else "$SCHEME://launch?game=$game"
-        )
-    }
+    private fun launchUri(gameVersionId: String?, slot: String?): Uri =
+        Uri.Builder()
+            .scheme(SCHEME)
+            .authority("launch")
+            .apply {
+                gameVersionId?.lowercase()?.takeIf { it.isNotBlank() }
+                    ?.let { appendQueryParameter("game", it) }
+                // Only alongside a game: a slot id means nothing without the
+                // version it belongs to, and upstream reads the two together.
+                if (gameVersionId != null) {
+                    slot?.takeIf { it.isNotBlank() }
+                        ?.let { appendQueryParameter("slot", it) }
+                }
+            }
+            .build()
 
     private fun start(context: Context, intent: Intent): Boolean =
         runCatching { context.startActivity(intent) }.isSuccess

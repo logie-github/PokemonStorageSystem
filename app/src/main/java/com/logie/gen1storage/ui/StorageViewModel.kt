@@ -190,11 +190,19 @@ sealed interface Prompt {
      * [openGame] is set where what was said is a transfer that landed: the
      * cartridge has the Pokémon on the server, and the save on the phone
      * running the game catches up the next time the game syncs, which it does
-     * on the way into a save. So the window offers to start it — the id is
-     * the game version to open, and the row appears only if the game is
-     * installed.
+     * on the way into a save. So the window offers to start it, and the row
+     * appears only if the game is installed.
      */
-    data class Message(val lines: List<String>, val openGame: String? = null) : Prompt
+    data class Message(val lines: List<String>, val openGame: Cartridge? = null) : Prompt
+
+    /**
+     * A save to open the game at: which game, and which of that game's saves.
+     *
+     * The slot is the point of it. An account can hold several playthroughs
+     * of one version, and opening the game at the wrong one would sync the
+     * right save and then show the player a different game.
+     */
+    data class Cartridge(val versionId: String, val slot: String?, val label: String)
     data class Confirm(
         val lines: List<String>,
         val confirmLabel: String,
@@ -458,6 +466,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun home() {
         wantsEvolving = emptyList()
+        afterEvolutions = null
         mutable.update { it.copy(stack = listOf(Screen.Home), prompt = null) }
     }
 
@@ -486,15 +495,28 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * the game syncs on the way into a save, so the shortest path from here
      * to a Pokémon actually being in the cartridge is starting the game.
      */
-    private fun transferMessage(lines: List<String>, touched: Array<out String>) =
-        mutable.update {
-            it.copy(
-                prompt = Prompt.Message(lines, openGame = touched.firstNotNullOfOrNull { key ->
-                    key.substringBefore('/').takeIf { id -> GameVersion.fromId(id) != null }
-                }),
-                busy = false,
-            )
+    private fun transferMessage(lines: List<String>, touched: Array<out String>) {
+        val state = mutable.value
+        // The save that was actually written, not just its version: that is
+        // the one the player is about to want to be looking at.
+        val cartridge = touched.firstNotNullOfOrNull { key -> state.remote(key) }
+            ?.let { Prompt.Cartridge(it.version.id, it.slot, it.version.label) }
+            ?: touched.firstNotNullOfOrNull { key ->
+                GameVersion.fromId(key.substringBefore('/'))
+            }?.let { Prompt.Cartridge(it.id, null, it.label) }
+        val said = Prompt.Message(lines, openGame = cartridge)
+        // Anything that wants to evolve is asked about first. A transfer's own
+        // result carries the way into the game, and that is the last thing to
+        // offer — putting it first sends the player off before the machine has
+        // finished with what they just brought in.
+        if (wantsEvolving.isNotEmpty() && state.tradeEvolution) {
+            afterEvolutions = said
+            mutable.update { it.copy(busy = false) }
+            askNextEvolution()
+        } else {
+            mutable.update { it.copy(prompt = said, busy = false) }
         }
+    }
 
     // ------- linking
 
@@ -917,6 +939,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     private var wantsEvolving = listOf<String>()
 
+    /**
+     * The transfer's own result, held back until every evolution has been
+     * asked about and answered. See [transferMessage].
+     */
+    private var afterEvolutions: Prompt.Message? = null
+
     /** Remembers one that has just landed in the PC, if a trade would change it. */
     private fun noteEvolvable(uid: String?) {
         if (uid == null || !mutable.value.tradeEvolution) return
@@ -935,6 +963,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private fun askNextEvolution() {
         if (!mutable.value.tradeEvolution) {
             wantsEvolving = emptyList()
+            sayWhatWasHeldBack()
             return
         }
         while (wantsEvolving.isNotEmpty()) {
@@ -955,6 +984,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             }
             return
         }
+        sayWhatWasHeldBack()
+    }
+
+    /** The transfer's result, once the evolutions are out of the way. */
+    private fun sayWhatWasHeldBack() {
+        val said = afterEvolutions ?: return
+        afterEvolutions = null
+        mutable.update { it.copy(prompt = said) }
     }
 
     fun setBillsPc(on: Boolean) {

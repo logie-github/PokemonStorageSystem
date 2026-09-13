@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.TrainerStore
-import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Data
@@ -1628,13 +1627,12 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 val game = prompt.openGame?.takeIf { TheGame.isInstalled(context) }
                 Spacer(Modifier.height(gen1Dp(2)))
                 Gen1ChoiceRows(
-                    buildList {
+                    buildList<Pair<String, () -> Unit>> {
                         if (game != null) {
-                            val label = GameVersion.fromId(game)?.label ?: "THE GAME"
                             add(
-                                "OPEN $label" to {
+                                "OPEN ${game.label}" to {
                                     model.dismissPrompt()
-                                    if (!TheGame.open(context, game)) {
+                                    if (!TheGame.open(context, game.versionId, game.slot)) {
                                         model.prompt(
                                             Prompt.Message(listOf("THE GAME WOULD NOT OPEN."))
                                         )

@@ -863,15 +863,6 @@ fun StatusScreen(
     )
 }
 
-/**
- * How many saves the window offers to choose from.
- *
- * The game does not cap its slots, but a list long enough to scroll is a list
- * nobody reads. Four is past what anyone keeps of one version, and the row on
- * the trainer card changes it afterwards either way.
- */
-private const val GAME_SLOTS_OFFERED = 4
-
 /** Opens the game at a save, or says it could not. */
 private fun openTheGame(
     context: android.content.Context,
@@ -1660,16 +1651,8 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     if (game == null) listOf("OK" to model::dismissPrompt)
                     else listOf(
                         "YES" to {
-                            // With nothing naming the save, the game would
-                            // open whichever one it had last — which is the
-                            // wrong card as often as the right one. So it is
-                            // asked, once, and never again for this card.
-                            if (game.slot == null && game.key.isNotEmpty()) {
-                                model.prompt(Prompt.ChooseGameSlot(game))
-                            } else {
-                                model.dismissPrompt()
-                                openTheGame(context, model, game, game.slot)
-                            }
+                            model.dismissPrompt()
+                            openTheGame(context, model, game, game.slot)
                         },
                         "NO" to model::dismissPrompt,
                     )
@@ -1685,41 +1668,6 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                         prompt.cancelLabel to model::dismissPrompt,
                     )
                 )
-            }
-
-            is Prompt.ChooseGameSlot -> {
-                val context = LocalContext.current
-                val cartridge = prompt.cartridge
-                val whose = cartridge.trainerName?.let { "$it'S SAVE" } ?: "THIS SAVE"
-                Gen1DialogueBox(
-                    listOf(
-                        "WHICH ONE IS $whose",
-                        "ON ${cartridge.label}'S SAVE SCREEN?",
-                    )
-                ) {
-                    Spacer(Modifier.height(gen1Dp(2)))
-                    Gen1ChoiceRows(
-                        buildList<Pair<String, () -> Unit>> {
-                            for (number in 1..GAME_SLOTS_OFFERED) {
-                                add(
-                                    "$number" to {
-                                        // Remembered before the game opens,
-                                        // so the next transfer to this card
-                                        // goes straight there.
-                                        model.setGameSlot(cartridge.key, number)
-                                        openTheGame(context, model, cartridge, "$number")
-                                    }
-                                )
-                            }
-                            add(
-                                "NOT SURE" to {
-                                    model.dismissPrompt()
-                                    openTheGame(context, model, cartridge, null)
-                                }
-                            )
-                        }
-                    )
-                }
             }
 
             is Prompt.RenameBox -> NamePrompt(

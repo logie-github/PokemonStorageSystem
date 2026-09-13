@@ -234,16 +234,6 @@ sealed interface Prompt {
     data class ChooseSpriteSet(val speciesId: String) : Prompt
     /** Which trainer a playthrough's card wears. */
     data class ChooseTrainerSprite(val key: String) : Prompt
-    /**
-     * Which of the game's saves a card is, asked once and remembered.
-     *
-     * Only ever seen when the app has no other way to know: the server's save
-     * listing does not carry a slot, and a slot id is the game device's own
-     * numbering. What a player can always answer is where the save sits on
-     * the game's save screen, and one tap settles it for good.
-     */
-    data class ChooseGameSlot(val cartridge: Cartridge) : Prompt
-
     /** How many of a stack to move. */
     data class ChooseQuantity(
         val title: String,
@@ -1356,14 +1346,29 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * What to open the game at for a save, best first.
      *
      * The slot id the server gave, then one learnt from a save's own fetch,
-     * then the position a player counted off the game's save screen. All
-     * three mean the same thing to `LaunchOptions.selectSlot`; only the last
-     * one has to be asked for.
+     * then a position a player set by hand, and failing all three the
+     * position this app shows the card at. `LaunchOptions.selectSlot` takes
+     * an id or a position and they mean the same thing to it.
+     *
+     * The last one is not a guess. Both lists are the account's saves for one
+     * game in the order the account lists them, so the card shelf here and
+     * the game's save screen run in the same order — the third card along is
+     * the third save along. A player who finds otherwise sets the number on
+     * the card itself, which is the line above this one.
      */
     fun openAt(key: String): String? =
         mutable.value.remote(key)?.slot
             ?: settings.gameSlotId(key)
             ?: settings.gameSlot(key)?.toString()
+            ?: cardPosition(key)?.toString()
+
+    /** Where this card sits among that game's cards, counting from one. */
+    private fun cardPosition(key: String): Int? {
+        val state = mutable.value
+        val row = state.remote(key) ?: return null
+        val among = state.saves.filter { it.version == row.version }
+        return among.indexOfFirst { it.key == key }.takeIf { it >= 0 }?.plus(1)
+    }
 
     /**
      * Takes the next one round, which is the only way to set it.

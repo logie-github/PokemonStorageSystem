@@ -28,10 +28,10 @@ val LocalGen1Swipe = staticCompositionLocalOf { false }
 /**
  * How the app is driven, alongside tapping.
  *
- * Off by default, and off it does one thing: a hold anywhere is B. Everything
- * else is the app tapped and scrolled — a tap takes what is under it, a list
- * is dragged the way any list is dragged, and nothing reads a gesture in the
- * space beside a window.
+ * Off by default, and off it is not there at all: the whole layer is left out
+ * of the modifier chain, so the app is tapped and scrolled and nothing reads
+ * a gesture over it. The hold is part of this and goes with it — back is the
+ * BACK row and the phone's own back gesture, as it is in any app.
  *
  * On, the vocabulary is the TM35 Metronome mod's, and its thresholds, so
  * muscle memory carries over from the game:
@@ -48,8 +48,8 @@ val LocalGen1Swipe = staticCompositionLocalOf { false }
  * while this is on ([LocalGen1Swipe]), because a list that both steps and
  * slides does neither predictably.
  *
- * A tap still belongs to whatever it lands on either way. It is only in the
- * empty space beside the windows that a tap is A and two taps are START.
+ * A tap still belongs to whatever it lands on. It is only in the empty space
+ * beside the windows that a tap is A and two taps are START.
  *
  * Thresholds scale with the short side of the screen exactly as the mod's do,
  * so the feel is the same on a small phone and on an unfolded one.
@@ -60,8 +60,8 @@ fun Modifier.gen1Gestures(
     isFreeSpace: (Offset) -> Boolean,
     isHoldClaimed: (Offset) -> Boolean,
     onButton: (GbButton) -> Unit,
-): Modifier = this.then(
-    Modifier.pointerInput(swipes) {
+): Modifier = if (!swipes) this else this.then(
+    Modifier.pointerInput(Unit) {
         val shortSide = minOf(size.width, size.height).toFloat()
         val swipeThreshold = maxOf(MIN_SWIPE_PX, shortSide * SWIPE_RATIO)
         val tapSlop = maxOf(MIN_TAP_SLOP_PX, shortSide * TAP_SLOP_RATIO)
@@ -132,11 +132,6 @@ fun Modifier.gen1Gestures(
             }
 
             if (outcome == GestureOutcome.CANCELLED) return@awaitEachGesture
-
-            // With swipes off, nothing here reads anything but the hold: the
-            // app is tapped and scrolled, and a drag belongs to whatever is
-            // under it.
-            if (!swipes) return@awaitEachGesture
 
             // A swipe is the D-pad wherever it starts, and it is consumed so
             // the list under it does not also move. A tap still belongs to

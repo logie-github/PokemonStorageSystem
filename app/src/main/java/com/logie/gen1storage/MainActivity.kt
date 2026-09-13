@@ -394,7 +394,7 @@ private fun TopBar() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GbText(
-            "POKéMON STORAGE SYSTEM - DEMO",
+            "POKéMON STORAGE SYSTEM",
             style = Gen1Text.copy(color = Gen1Palette.Lightest),
             maxLines = 1,
         )

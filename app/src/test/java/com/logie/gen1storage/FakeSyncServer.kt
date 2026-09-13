@@ -47,6 +47,10 @@ class FakeSyncServer(
     }
 
     fun blobOf(version: String, playthroughId: String): String? = rows["$version/$playthroughId"]?.blob
+
+    /** The index the server holds beside the bytes, as the game's sync reads it. */
+    fun metaOf(version: String, playthroughId: String): JSONObject? =
+        rows["$version/$playthroughId"]?.meta
     fun revOf(version: String, playthroughId: String): Long? = rows["$version/$playthroughId"]?.rev
 
     /** Simulates the game saving over a playthrough while the app holds a read. */

@@ -116,7 +116,9 @@ class SaveRepository(
             slot = loaded.remote.slot,
             blob = encoded,
             baseRev = loaded.rev,
-            summary = summary,
+            // A minute ahead of the truth, and only in the index. See
+            // [aMinuteAhead].
+            summary = summary.aMinuteAhead(),
         )
         return when (result) {
             is SyncResult.Ok -> CommitOutcome.Committed(
@@ -158,6 +160,46 @@ class SaveRepository(
      * and claiming a save time it did not produce would corrupt the game's own
      * change detection.
      */
+    /**
+     * The same summary, reporting one more minute of play than the save holds.
+     *
+     * A deliberate misstatement, in the index the server keeps and nowhere
+     * else: the save itself goes up untouched, and the summary this app holds
+     * for its own screens is the true one. What reads the index is the game's
+     * sync, and this is the field it decides by.
+     *
+     * Gen1Recomp settles a save that changed in two places at once by asking
+     * whether both sides are at the same point in the playthrough, and the
+     * first thing it compares is the play time in whole minutes
+     * (`SyncEngine.samePlaytime`): *"Same minute of playtime means the same
+     * point in the playthrough, so there is no fork."* True of one device
+     * saving twice. Not true of this app, which changes what is in a save
+     * without moving its clock — so every transfer looked to the game like
+     * the same point in the playthrough, and it kept the copy on the phone
+     * running the game and discarded ours, without asking. A Pokémon moved
+     * into a cartridge that way is in neither place afterwards.
+     *
+     * One minute is enough to make that test fail, which sends the game to
+     * the question it should have asked: this copy or that one. It does not
+     * decide the answer, and it cannot: nothing over there compares play
+     * times for which is later, only for whether they are equal.
+     *
+     * What it does not close is the case where the player goes on to save at
+     * exactly the minute claimed here — then the two match again and the
+     * write is dropped silently as before. That hole shuts when Gen1Recomp
+     * checks which device wrote the copy on the server instead, at which
+     * point this belongs in a delete rather than a comment.
+     */
+    private fun SaveSummary.aMinuteAhead(): SaveSummary {
+        val seconds = playTimeSeconds ?: return this
+        val ahead = seconds + 60.0
+        val total = ahead.toLong()
+        return copy(
+            playTimeSeconds = ahead,
+            timeText = "%d:%02d".format(total / 3600, (total / 60) % 60),
+        )
+    }
+
     private fun summaryOf(save: Gen1RecompSave, previous: SaveSummary?): SaveSummary = SaveSummary(
         trainerName = save.trainerName,
         badges = save.badgeCount,

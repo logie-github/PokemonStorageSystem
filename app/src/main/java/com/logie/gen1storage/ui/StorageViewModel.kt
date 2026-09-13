@@ -522,7 +522,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val state = mutable.value
         // The save that was actually written, not just its version: that is
         // the one the player is about to want to be looking at.
-        val written = touched.firstNotNullOfOrNull { key -> state.remote(key) }
+        // The card in the machine, and only failing that the save that was
+        // written. A player who has Gino's card inserted means Gino when they
+        // say open the game, whichever cartridge the Pokémon was sent to —
+        // and the sync on the way in covers every save on the account, so the
+        // one that was written is up to date either way.
+        val written = state.remote(state.activeSaveKey)
+            ?: touched.firstNotNullOfOrNull { key -> state.remote(key) }
         val cartridge = when {
             written != null -> Prompt.Cartridge(
                 key = written.key,

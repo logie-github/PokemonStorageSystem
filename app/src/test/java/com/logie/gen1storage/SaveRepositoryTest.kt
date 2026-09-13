@@ -17,10 +17,10 @@ import java.io.File
 /**
  * What this app tells the server about a save it has written.
  *
- * The bytes are the save's own. The index beside them is not quite: it claims
- * a minute of play the save has not had, which is the one thing that makes
- * Gen1Recomp ask which copy to keep rather than quietly keeping its own. See
- * [SaveRepository.commit].
+ * The bytes are the save's own and so is everything said about them. Pinned
+ * because it was briefly otherwise: the index claimed a minute more play than
+ * the save held, to force a question out of Gen1Recomp's sync, and a pending
+ * question there stops that game syncing at all.
  */
 class SaveRepositoryTest {
 
@@ -38,7 +38,7 @@ class SaveRepositoryTest {
     }
 
     @Test
-    fun `the play time that goes up is a minute past the save's own`() = runTest {
+    fun `the play time that goes up is the save's own`() = runTest {
         // 7265.5 seconds is two hours, one minute and five seconds: "2:01".
         val blob = SaveFixtures.encode(SaveFixtures.save())
         server.put("red", "quiet-forest-dawn", blob)
@@ -51,8 +51,8 @@ class SaveRepositoryTest {
 
         val meta = server.metaOf("red", "quiet-forest-dawn")
         assertNotNull(meta)
-        assertEquals("2:02", meta!!.getJSONObject("summary").getString("timeText"))
-        assertEquals(7325.5, meta.getDouble("playTime"), 0.001)
+        assertEquals("2:01", meta!!.getJSONObject("summary").getString("timeText"))
+        assertEquals(7265.5, meta.getDouble("playTime"), 0.001)
     }
 
     @Test

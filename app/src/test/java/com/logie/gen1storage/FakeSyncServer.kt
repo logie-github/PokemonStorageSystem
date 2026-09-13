@@ -4,6 +4,7 @@ import com.logie.gen1storage.sync.HttpRequest
 import com.logie.gen1storage.sync.HttpResponse
 import com.logie.gen1storage.sync.SyncNetworkException
 import com.logie.gen1storage.sync.SyncTransport
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -86,6 +87,15 @@ class FakeSyncServer(
             "GET /sync/save" -> handleGet(path)
             "PUT /sync/save" -> handlePut(request)
             "POST /sync/unlink", "POST /sync/codes" -> HttpResponse(200, "{}")
+            "POST /sync/notes" -> handlePostNote(request)
+            "GET /sync/notes" -> HttpResponse(
+                200,
+                JSONObject().put("notes", JSONArray(notes.values.toList())).toString(),
+            )
+            "POST /sync/notes/clear" -> {
+                notes.remove(JSONObject(request.body.orEmpty()).optString("id"))
+                HttpResponse(200, "{}")
+            }
             else -> HttpResponse(404, """{"error":"no such endpoint"}""")
         }
 
@@ -96,6 +106,28 @@ class FakeSyncServer(
             }
         }
         return response
+    }
+
+    // ------- notes: what the app asks a cartridge to do to its own save
+
+    /** Every note the account has outstanding, by id, as the server holds them. */
+    val notes = linkedMapOf<String, JSONObject>()
+
+    private fun handlePostNote(request: HttpRequest): HttpResponse {
+        val note = JSONObject(request.body.orEmpty())
+        if (!note.has("status")) note.put("status", "pending")
+        notes[note.optString("id")] = note
+        return HttpResponse(200, JSONObject().put("note", note).toString())
+    }
+
+    /** The game picks a note up, does it, and says so. */
+    fun gameApplies(id: String) {
+        notes[id]?.put("status", "applied")
+    }
+
+    /** The game picks a note up and will not do it. */
+    fun gameRefuses(id: String, reason: String) {
+        notes[id]?.put("status", "refused")?.put("reason", reason)
     }
 
     private fun handleLink(request: HttpRequest): HttpResponse {

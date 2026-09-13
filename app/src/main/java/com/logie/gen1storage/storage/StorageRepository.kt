@@ -86,6 +86,34 @@ class StorageRepository(private val directory: File) {
         boxes.any { box -> box.any { it?.uid == uid } }
     }
 
+    /** Every Pokémon in the PC, in box order. */
+    fun all(): List<StoredPokemon> = synchronized(lock) {
+        ensureLoaded()
+        boxes.flatMap { box -> box.filterNotNull() }
+    }
+
+    /**
+     * Marks a Pokémon as waiting on a note, or clears the mark.
+     *
+     * The mark is what says a Pokémon is in the middle of a move, so it is
+     * written to disk with everything else: an app that is killed between
+     * leaving a note and hearing about it must come back knowing which of its
+     * Pokémon are not free to act on. See [Mailbox].
+     */
+    fun mark(uid: String, noteId: String?): StoredPokemon? = synchronized(lock) {
+        ensureLoaded()
+        for (box in boxes) {
+            val position = box.indexOfFirst { it?.uid == uid }
+            if (position >= 0) {
+                val marked = box[position]!!.copy(noteId = noteId)
+                box[position] = marked
+                persist()
+                return marked
+            }
+        }
+        null
+    }
+
     fun get(uid: String): StoredPokemon? = synchronized(lock) {
         ensureLoaded()
         boxes.firstNotNullOfOrNull { box -> box.firstOrNull { it?.uid == uid } }

@@ -1,6 +1,7 @@
 package com.logie.gen1storage.sync
 
 import com.logie.gen1storage.gen1recomp.GameVersion
+import com.logie.gen1storage.transfer.TransferNote
 import org.json.JSONException
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -135,6 +136,42 @@ class SyncApi(
         body.put("meta", metaJson(playthroughId, summary))
         return request("PUT", "/sync/save", body) { json -> json.optLong("rev", 0L) }
     }
+
+    // ------------------------------------------------------------------
+    // Notes: what this app asks a cartridge to do to its own save.
+    //
+    // The save endpoints above are how this app used to change a cartridge —
+    // read the whole file, edit it, write the whole file back — and two
+    // programs doing that to one file is what forks a save. These three are
+    // the other way round: this app leaves a note, the game applies it to its
+    // own save on its own next sync, and answers. See [TransferNote].
+    // ------------------------------------------------------------------
+
+    /** Leaves a note for a cartridge. The server answers with it as stored. */
+    suspend fun postNote(note: TransferNote): SyncResult<TransferNote> =
+        request("POST", "/sync/notes", note.toJson()) { json ->
+            json.optJSONObject("note")?.let(TransferNote::fromJson)
+                ?: throw JSONException("the server did not echo the note back")
+        }
+
+    /**
+     * Every note this account has outstanding, whatever state it is in.
+     *
+     * Read rather than remembered: what happened to a note is the game's to
+     * say, and this app can be closed, reinstalled or replaced between
+     * leaving one and hearing about it.
+     */
+    suspend fun notes(): SyncResult<List<TransferNote>> =
+        request("GET", "/sync/notes", null) { json ->
+            val rows = json.optJSONArray("notes") ?: return@request emptyList()
+            (0 until rows.length()).mapNotNull { index ->
+                rows.optJSONObject(index)?.let(TransferNote::fromJson)
+            }
+        }
+
+    /** Clears a note this app has finished acting on. */
+    suspend fun deleteNote(id: String): SyncResult<Unit> =
+        request("POST", "/sync/notes/clear", JSONObject().put("id", id)) { }
 
     suspend fun reissueCodes(): SyncResult<Unit> =
         request("POST", "/sync/codes", JSONObject()) { }

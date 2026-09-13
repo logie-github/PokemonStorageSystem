@@ -68,8 +68,22 @@ data class StoredPokemon(
     val uid: String,
     val data: LuaValue.Table,
     val provenance: Provenance,
+    /**
+     * The note this one is waiting on, where it is in the middle of a move.
+     *
+     * A transfer asks the game to change its own save and then waits to hear
+     * that it did. For as long as that is outstanding this Pokémon is either
+     * on its way out — still this app's, but promised to a cartridge — or on
+     * its way in, shown in the box it will land in but still the cartridge's
+     * until the cartridge says otherwise. Either way it is not a Pokémon the
+     * player can act on, and [Mailbox] is what clears it.
+     */
+    val noteId: String? = null,
 ) {
     val pokemon: Gen1Pokemon get() = Gen1Pokemon(data)
+
+    /** Whether this one is mid-move and cannot be sent anywhere else. */
+    val inFlight: Boolean get() = noteId != null
 
     /** The Generation I data alone, ready to be inserted into a save. */
     fun detachedData(): LuaValue.Table = data.deepCopy()
@@ -78,6 +92,7 @@ data class StoredPokemon(
         this["uid"] = luaStr(uid)
         this["mon"] = data
         this["provenance"] = provenance.toLua()
+        noteId?.let { this["note"] = luaStr(it) }
     }
 
     companion object {
@@ -86,7 +101,7 @@ data class StoredPokemon(
             val mon = table["mon"] as? LuaValue.Table ?: return null
             val provenance = (table["provenance"] as? LuaValue.Table)?.let(Provenance::fromLua)
                 ?: return null
-            return StoredPokemon(uid, mon, provenance)
+            return StoredPokemon(uid, mon, provenance, table["note"].asString())
         }
     }
 }

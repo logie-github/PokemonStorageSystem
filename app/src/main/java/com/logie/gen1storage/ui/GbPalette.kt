@@ -179,8 +179,14 @@ data class GbPalette(
             id = "crystal", label = "CRYSTAL",
             darkest = Color(0xFF4277A3),
             dark = Color(0xFF55BFA4),
-            light = Color(0xFFEDF2F6),
-            lightest = Color(0xFFCC91C2),
+            // The purple and the near-white, the other way round from the
+            // order they were given. A sprite's body is its third shade, and
+            // with the near-white there a trainer came out white on a white
+            // window: outlines, a few purple highlights, and no one inside
+            // them. The purple carries the body and the near-white goes to
+            // the top, where a highlight belongs.
+            light = Color(0xFFCC91C2),
+            lightest = Color(0xFFEDF2F6),
             surround = Color(0xFF4789A3),
             tintsSprites = true,
         )

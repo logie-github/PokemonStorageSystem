@@ -207,6 +207,8 @@ sealed interface Prompt {
      * arrive.
      */
     data class Cartridge(
+        /** The save on the account, which is what a remembered slot is kept against. */
+        val key: String,
         val versionId: String,
         val slot: String?,
         /** What every device on the account calls this save. */
@@ -232,6 +234,16 @@ sealed interface Prompt {
     data class ChooseSpriteSet(val speciesId: String) : Prompt
     /** Which trainer a playthrough's card wears. */
     data class ChooseTrainerSprite(val key: String) : Prompt
+    /**
+     * Which of the game's saves a card is, asked once and remembered.
+     *
+     * Only ever seen when the app has no other way to know: the server's save
+     * listing does not carry a slot, and a slot id is the game device's own
+     * numbering. What a player can always answer is where the save sits on
+     * the game's save screen, and one tap settles it for good.
+     */
+    data class ChooseGameSlot(val cartridge: Cartridge) : Prompt
+
     /** How many of a stack to move. */
     data class ChooseQuantity(
         val title: String,
@@ -346,7 +358,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private var trainerJob: Job? = null
     private val credentials = SyncAccount(application)
     private val api = SyncApi(credentials = credentials::credentials)
-    private val saves = SaveRepository(api, backups)
+    private val saves = SaveRepository(api, backups) { key, slot ->
+        settings.setGameSlotId(key, slot)
+    }
     private val ledger = PlacementLedger(storageDir)
     private val engine = TransferEngine(saves, storage, journal, ledger)
     private val itemStorage = ItemRepository(storageDir)
@@ -511,12 +525,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val written = touched.firstNotNullOfOrNull { key -> state.remote(key) }
         val cartridge = when {
             written != null -> Prompt.Cartridge(
+                key = written.key,
                 versionId = written.version.id,
                 // What the server lists, and failing that what the player has
                 // told this card it is. Neither is guesswork: the first is
                 // the id the game uploaded, the second is a position counted
                 // off the game's own save screen.
-                slot = written.slot ?: settings.gameSlot(written.key)?.toString(),
+                slot = openAt(written.key),
                 playthroughId = written.playthroughId,
                 label = written.version.label,
                 trainerName = written.summary.trainerName?.uppercase(),
@@ -524,7 +539,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             else -> touched.firstNotNullOfOrNull { key ->
                 GameVersion.fromId(key.substringBefore('/'))
             }?.let {
-                Prompt.Cartridge(it.id, null, null, it.label, null)
+                Prompt.Cartridge("", it.id, null, null, it.label, null)
             }
         }
         val said = Prompt.Message(lines, openGame = cartridge)
@@ -1324,6 +1339,25 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * screen counts them. Null until a player says.
      */
     fun gameSlot(key: String): Int? = settings.gameSlot(key)
+
+    /** Says which, from the window that asks. */
+    fun setGameSlot(key: String, slot: Int?) {
+        settings.setGameSlot(key, slot)
+        mutable.update { it.copy(cartRevision = it.cartRevision + 1, prompt = null) }
+    }
+
+    /**
+     * What to open the game at for a save, best first.
+     *
+     * The slot id the server gave, then one learnt from a save's own fetch,
+     * then the position a player counted off the game's save screen. All
+     * three mean the same thing to `LaunchOptions.selectSlot`; only the last
+     * one has to be asked for.
+     */
+    fun openAt(key: String): String? =
+        mutable.value.remote(key)?.slot
+            ?: settings.gameSlotId(key)
+            ?: settings.gameSlot(key)?.toString()
 
     /**
      * Takes the next one round, which is the only way to set it.

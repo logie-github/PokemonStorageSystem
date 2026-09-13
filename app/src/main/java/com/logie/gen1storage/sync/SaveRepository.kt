@@ -65,6 +65,15 @@ sealed interface CommitOutcome {
 class SaveRepository(
     private val api: SyncApi,
     private val backups: SaveBackups,
+    /**
+     * Told whenever a save turns out to name its slot on the game's device.
+     *
+     * The account listing does not carry the slot and a single save's fetch
+     * sometimes does, so it is worth catching where it appears: it is what
+     * lets the app open the game at this save rather than at whichever one
+     * the game had last.
+     */
+    private val learnSlot: (key: String, slot: String) -> Unit = { _, _ -> },
 ) {
 
     suspend fun listSaves(): SyncResult<AccountState> = api.state()
@@ -74,9 +83,14 @@ class SaveRepository(
         when (val result = api.getSave(remote.version, remote.playthroughId)) {
             is SyncResult.Ok -> {
                 val blob = result.value.blob
+                val slot = remote.slot ?: result.value.slot
+                if (slot != null && remote.slot == null) learnSlot(remote.key, slot)
                 SyncResult.Ok(
                     LoadedSave(
-                        remote = remote.copy(rev = result.value.rev.takeIf { it > 0 } ?: remote.rev),
+                        remote = remote.copy(
+                            rev = result.value.rev.takeIf { it > 0 } ?: remote.rev,
+                            slot = slot,
+                        ),
                         blob = blob,
                         rev = result.value.rev.takeIf { it > 0 } ?: remote.rev,
                         classification = SaveClassifier.classify(blob),

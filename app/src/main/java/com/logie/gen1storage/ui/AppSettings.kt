@@ -111,6 +111,20 @@ class AppSettings(private val prefs: SharedPreferences) {
     fun gameSlot(key: String): Int? =
         prefs.getInt(KEY_GAME_SLOT_PREFIX + key, 0).takeIf { it > 0 }
 
+    /**
+     * A slot id the server told the app about, kept because the account
+     * listing will not say it twice. Learnt rather than asked for.
+     */
+    fun gameSlotId(key: String): String? =
+        prefs.getString(KEY_GAME_SLOT_ID_PREFIX + key, null)?.takeIf { it.isNotBlank() }
+
+    fun setGameSlotId(key: String, slot: String?) {
+        prefs.edit().apply {
+            if (slot.isNullOrBlank()) remove(KEY_GAME_SLOT_ID_PREFIX + key)
+            else putString(KEY_GAME_SLOT_ID_PREFIX + key, slot)
+        }.apply()
+    }
+
     fun setGameSlot(key: String, slot: Int?) {
         prefs.edit().apply {
             if (slot == null || slot <= 0) remove(KEY_GAME_SLOT_PREFIX + key)
@@ -214,6 +228,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_CART_PREFIX = "cart-name-"
         const val KEY_TRAINER_PREFIX = "trainer-sprite-"
         const val KEY_GAME_SLOT_PREFIX = "game-slot-"
+        const val KEY_GAME_SLOT_ID_PREFIX = "game-slot-id-"
         const val KEY_BILLS_PC = "bills-pc"
         const val KEY_TRADE_EVOLUTION = "trade-evolution"
         const val KEY_TRADE_ANIMATION = "trade-animation"

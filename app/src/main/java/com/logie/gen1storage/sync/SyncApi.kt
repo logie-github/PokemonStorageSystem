@@ -48,8 +48,20 @@ data class RemoteSave(
     val label: String get() = summary.trainerName ?: playthroughId
 }
 
-/** A save's actual bytes, with the revision they were read at. */
-data class SaveBlob(val blob: String, val rev: Long, val summary: SaveSummary?)
+/**
+ * A save's actual bytes, with the revision they were read at.
+ *
+ * [slot] is whatever the server happens to say about which of the game's save
+ * slots this playthrough sits in. The account listing does not carry it, so
+ * this is the other place worth looking: it costs nothing to read, and where
+ * it is there the app can open the game straight at this save.
+ */
+data class SaveBlob(
+    val blob: String,
+    val rev: Long,
+    val summary: SaveSummary?,
+    val slot: String? = null,
+)
 
 data class LinkedDevice(val id: String, val label: String, val isThisDevice: Boolean)
 
@@ -107,7 +119,12 @@ class SyncApi(
         return request("GET", path, null) { json ->
             val blob = json.optString("blob")
             if (blob.isEmpty()) throw JSONException("the server sent no save data")
-            SaveBlob(blob, json.optLong("rev", 0L), json.optJSONObject("meta")?.let(::parseSummary))
+            SaveBlob(
+                blob = blob,
+                rev = json.optLong("rev", 0L),
+                summary = json.optJSONObject("meta")?.let(::parseSummary),
+                slot = slotOf(json),
+            )
         }
     }
 

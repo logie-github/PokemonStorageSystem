@@ -63,9 +63,17 @@ object TheGame {
      * Returns false if nothing could be started, so a caller can say so rather
      * than look like it did something.
      */
-    fun open(context: Context, gameVersionId: String? = null, slot: String? = null): Boolean {
+    fun open(
+        context: Context,
+        gameVersionId: String? = null,
+        slot: String? = null,
+        chooseSave: Boolean = false,
+    ): Boolean {
         val name = installedPackage(context) ?: return false
-        val deepLink = Intent(Intent.ACTION_VIEW, launchUri(gameVersionId, slot)).apply {
+        val deepLink = Intent(
+            Intent.ACTION_VIEW,
+            launchUri(gameVersionId, slot, chooseSave),
+        ).apply {
             setPackage(name)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
@@ -75,7 +83,7 @@ object TheGame {
         return start(context, launcher)
     }
 
-    private fun launchUri(gameVersionId: String?, slot: String?): Uri =
+    private fun launchUri(gameVersionId: String?, slot: String?, chooseSave: Boolean): Uri =
         Uri.Builder()
             .scheme(SCHEME)
             .authority("launch")
@@ -84,10 +92,14 @@ object TheGame {
                     ?.let { appendQueryParameter("game", it) }
                 // Only alongside a game: a slot id means nothing without the
                 // version it belongs to, and upstream reads the two together.
-                if (gameVersionId != null) {
-                    slot?.takeIf { it.isNotBlank() }
-                        ?.let { appendQueryParameter("slot", it) }
-                }
+                val named = gameVersionId != null && !slot.isNullOrBlank()
+                if (named) appendQueryParameter("slot", slot)
+                // Nothing to name, and more than one save it could be: land on
+                // the game's save list rather than on whichever save happens to
+                // be open. The launcher syncs as it opens — `RomImporter`'s
+                // first `_pumpSync` calls `syncNow` — so the Pokémon is there
+                // by the time the player picks the card it went to.
+                if (!named && chooseSave) appendQueryParameter("launcher", "1")
             }
             .build()
 

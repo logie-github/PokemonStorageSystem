@@ -863,6 +863,22 @@ fun StatusScreen(
     )
 }
 
+/**
+ * The question under a transfer's result: which cartridge to go and sync.
+ *
+ * Named by the trainer rather than by the game, because the game is not what
+ * a player is picking between — an account can hold three playthroughs of RED
+ * and the one they mean is the one whose card is in the machine.
+ */
+private fun syncLines(cartridge: Prompt.Cartridge?): List<String> = when {
+    cartridge == null -> emptyList()
+    cartridge.trainerName.isNullOrBlank() -> listOf("SYNC ${cartridge.label}?")
+    else -> listOf(
+        "SYNC ${cartridge.label} WITH",
+        "${cartridge.trainerName}'S TRAINER CARD?",
+    )
+}
+
 private const val PREV_LABEL = "PREV"
 private const val NEXT_LABEL = "NEXT"
 private const val BACK_LABEL = "BACK"
@@ -1161,7 +1177,7 @@ private fun OptionsDrawerContent(
                 )
                 if (state.tradeEvolution) {
                     add(
-                        OptionRow("SHOW THE TRADE", if (state.tradeAnimation) "ON" else "OFF") {
+                        OptionRow("SHOW EVOLUTIONS", if (state.tradeAnimation) "ON" else "OFF") {
                             model.setTradeAnimation(!state.tradeAnimation)
                         }
                     )
@@ -1613,7 +1629,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
         contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
     ) {
         when (prompt) {
-            is Prompt.Message -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
+            is Prompt.Message -> {
                 val context = LocalContext.current
                 // A landed transfer is on the server; the cartridge gets it
                 // the next time the game syncs, and the game syncs on the way
@@ -1625,24 +1641,27 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 // answers "that app is not here" is a row that never did
                 // anything.
                 val game = prompt.openGame?.takeIf { TheGame.isInstalled(context) }
+                Gen1DialogueBox(prompt.lines.map { it.uppercase() } + syncLines(game)) {
                 Spacer(Modifier.height(gen1Dp(2)))
                 Gen1ChoiceRows(
-                    buildList<Pair<String, () -> Unit>> {
-                        if (game != null) {
-                            add(
-                                "OPEN ${game.label}" to {
-                                    model.dismissPrompt()
-                                    if (!TheGame.open(context, game.versionId, game.slot)) {
-                                        model.prompt(
-                                            Prompt.Message(listOf("THE GAME WOULD NOT OPEN."))
-                                        )
-                                    }
-                                }
+                    if (game == null) listOf("OK" to model::dismissPrompt)
+                    else listOf(
+                        "YES" to {
+                            model.dismissPrompt()
+                            val opened = TheGame.open(
+                                context,
+                                game.versionId,
+                                game.slot,
+                                game.chooseSave,
                             )
-                        }
-                        add("OK" to model::dismissPrompt)
-                    }
+                            if (!opened) {
+                                model.prompt(Prompt.Message(listOf("THE GAME WOULD NOT OPEN.")))
+                            }
+                        },
+                        "NO" to model::dismissPrompt,
+                    )
                 )
+                }
             }
 
             is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {

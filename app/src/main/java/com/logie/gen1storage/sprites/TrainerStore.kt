@@ -270,7 +270,7 @@ class TrainerStore(private val directory: File) {
         /** The Game Boy the trade animation draws, already a whole picture. */
         const val TRADE_GAME_BOY = "trade-game-boy"
 
-        /** The cable's tiles, assembled by the tilemap in [Gen1TradeScene]. */
+        /** The cable's tiles, as the trade tilemap arranges them. */
         const val TRADE_CABLE = "trade-cable"
 
         /** The ball that travels down the cable, as four flips of one tile. */

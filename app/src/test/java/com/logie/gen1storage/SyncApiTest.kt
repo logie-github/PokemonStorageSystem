@@ -1,8 +1,11 @@
 package com.logie.gen1storage
 
 import com.logie.gen1storage.gen1recomp.GameVersion
+import com.logie.gen1storage.sync.HttpRequest
+import com.logie.gen1storage.sync.HttpResponse
 import com.logie.gen1storage.sync.SyncApi
 import com.logie.gen1storage.sync.SyncResult
+import com.logie.gen1storage.sync.SyncTransport
 import com.logie.gen1storage.sync.getOrNull
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -20,6 +23,40 @@ class SyncApiTest {
     private val server = FakeSyncServer()
     private var credentials: Pair<String, String>? = "acct-1" to "tok-1"
     private val api = SyncApi(transport = server, credentials = { credentials })
+
+    /**
+     * The slot is the one field that says *which* save, and the app hands it
+     * to the game's launch link so opening the game lands on the playthrough
+     * that was just written rather than on whichever one was last open. It is
+     * sent beside the blob and comes back wherever the server puts it, so all
+     * three shapes upstream uses for the rest of a row are read.
+     */
+    @Test
+    fun `a slot is found whether it is beside the row or inside its meta`() = runTest {
+        val nested = object : SyncTransport {
+            override suspend fun send(request: HttpRequest) = HttpResponse(
+                200,
+                """
+                {"saves": {
+                  "red/one": {"rev": 3, "slot": "slot2",
+                              "meta": {"summary": {"name": "GINO"}}},
+                  "red/two": {"rev": 4,
+                              "meta": {"slot": "slot5", "summary": {"name": "BECKY"}}},
+                  "red/three": {"rev": 5, "meta": {"summary": {"name": "NOBODY"}}}
+                }}
+                """.trimIndent(),
+            )
+        }
+        val saves = (SyncApi(transport = nested, credentials = { "a" to "b" }).state()
+            as SyncResult.Ok).value.saves.associateBy { it.playthroughId }
+
+        assertEquals("slot2", saves["one"]?.slot)
+        assertEquals("slot5", saves["two"]?.slot)
+        // Absent is absent: the app opens the game's save list rather than
+        // guessing a slot when there is more than one it could mean.
+        assertNull(saves["three"]?.slot)
+        assertEquals("BECKY", saves["two"]?.summary?.trainerName)
+    }
 
     @Test
     fun `codes are eight digits, punctuation ignored`() {

@@ -169,7 +169,7 @@ data class TransferScene(
  * The app is both ends of the cable, so there is one Pokémon rather than two —
  * it goes out one side and its evolved form comes back the other.
  */
-data class TradeScene(
+data class EvolutionScene(
     val fromSpeciesId: String?,
     val toSpeciesId: String?,
     /** What it is called, which does not change by evolving. */
@@ -201,8 +201,21 @@ sealed interface Prompt {
      * The slot is the point of it. An account can hold several playthroughs
      * of one version, and opening the game at the wrong one would sync the
      * right save and then show the player a different game.
+     *
+     * [chooseSave] is what to do when the slot is not known — the server does
+     * not always carry one, and a slot another device wrote has no match on
+     * this one. Then the game is opened at its save list for that version
+     * instead of at a save: the launcher syncs as it opens, so the Pokémon is
+     * there either way, and the player picks the card rather than this app
+     * guessing and landing them in somebody else's game.
      */
-    data class Cartridge(val versionId: String, val slot: String?, val label: String)
+    data class Cartridge(
+        val versionId: String,
+        val slot: String?,
+        val label: String,
+        val trainerName: String?,
+        val chooseSave: Boolean,
+    )
     data class Confirm(
         val lines: List<String>,
         val confirmLabel: String,
@@ -262,7 +275,7 @@ data class UiState(
     /** Shown while a transfer is in flight, and cleared by its result. */
     val transferScene: TransferScene? = null,
     /** Shown while a trade is running, when the player has asked to see it. */
-    val tradeScene: TradeScene? = null,
+    val evolutionScene: EvolutionScene? = null,
     /** Whether the PC will trade with itself at all. */
     val tradeEvolution: Boolean = false,
     /** Whether a trade is drawn on its way through. */
@@ -499,11 +512,26 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val state = mutable.value
         // The save that was actually written, not just its version: that is
         // the one the player is about to want to be looking at.
-        val cartridge = touched.firstNotNullOfOrNull { key -> state.remote(key) }
-            ?.let { Prompt.Cartridge(it.version.id, it.slot, it.version.label) }
-            ?: touched.firstNotNullOfOrNull { key ->
+        val written = touched.firstNotNullOfOrNull { key -> state.remote(key) }
+        val cartridge = when {
+            written != null -> Prompt.Cartridge(
+                versionId = written.version.id,
+                slot = written.slot,
+                label = written.version.label,
+                trainerName = written.summary.trainerName?.uppercase(),
+                // With one playthrough of that game there is nothing to pick
+                // between: whatever save the game has open is that one. With
+                // several and no slot to name, the list is the only honest
+                // place to land.
+                chooseSave = written.slot == null &&
+                    state.saves.count { it.version == written.version } > 1,
+            )
+            else -> touched.firstNotNullOfOrNull { key ->
                 GameVersion.fromId(key.substringBefore('/'))
-            }?.let { Prompt.Cartridge(it.id, null, it.label) }
+            }?.let {
+                Prompt.Cartridge(it.id, null, it.label, null, chooseSave = false)
+            }
+        }
         val said = Prompt.Message(lines, openGame = cartridge)
         // Anything that wants to evolve is asked about first. A transfer's own
         // result carries the way into the game, and that is the last thing to
@@ -906,7 +934,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 it.copy(
                     busy = true,
                     prompt = null,
-                    tradeScene = TradeScene(
+                    evolutionScene = EvolutionScene(
                         fromSpeciesId = from,
                         toSpeciesId = to,
                         name = name,
@@ -915,14 +943,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     ),
                 )
             }
-            delay(TRADE_SCENE_MILLIS)
+            delay(EVOLUTION_SCENE_MILLIS)
         } else {
             mutable.update { it.copy(busy = true, prompt = null) }
         }
 
         val became = storage.evolveByTrade(uid)
         mutable.update {
-            it.copy(busy = false, tradeScene = null, storage = storage.state())
+            it.copy(busy = false, evolutionScene = null, storage = storage.state())
         }
         if (became == null) {
             message("NOTHING HAPPENED.")

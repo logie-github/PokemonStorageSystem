@@ -222,7 +222,7 @@ class SyncApi(
                     version = version,
                     playthroughId = playthroughId,
                     rev = row.optLong("rev", 0L),
-                    slot = row.optString("slot").takeIf { it.isNotEmpty() },
+                    slot = slotOf(row),
                     summary = parseSummary(row),
                 )
             }
@@ -246,6 +246,23 @@ class SyncApi(
             deleted,
             unsupported,
         )
+    }
+
+    /**
+     * Which of that device's save slots this playthrough sits in.
+     *
+     * Upstream sends it beside the blob on `PUT /sync/save`, and it comes back
+     * wherever the server chose to put it, so all three places are looked at
+     * rather than only the top level. It is worth the trouble because it is
+     * the one thing that says *which* save: the app hands it to the game's
+     * launch link so opening the game lands on the playthrough that was just
+     * written instead of on whichever one was last open.
+     */
+    private fun slotOf(row: JSONObject): String? {
+        val places = listOf(row, row.optJSONObject("meta"), row.optJSONObject("remoteMeta"))
+        return places.firstNotNullOfOrNull { where ->
+            where?.optString("slot")?.takeIf { it.isNotEmpty() }
+        }
     }
 
     /** Upstream `SyncEngine.metaOf`: inline, under `meta`, or under `remoteMeta`. */

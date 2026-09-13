@@ -54,7 +54,7 @@ import com.logie.gen1storage.ui.Gen1Motion
 import com.logie.gen1storage.ui.Gen1NoOverscroll
 import com.logie.gen1storage.ui.rememberConfirmTick
 import com.logie.gen1storage.ui.rememberCursorTick
-import com.logie.gen1storage.ui.Gen1TradeScene
+import com.logie.gen1storage.ui.Gen1EvolutionScene
 import com.logie.gen1storage.ui.RestoreScreen
 import com.logie.gen1storage.ui.DexEntryScreen
 import com.logie.gen1storage.ui.DexStatsScreen
@@ -320,10 +320,10 @@ private fun StorageApp(model: StorageViewModel) {
                 onCancel = model::cancelSend,
             )
         }
-        // A trade is the app talking to itself, so it owns the screen while
-        // it runs, over everything and under the message it ends with.
-        state.tradeScene?.let { scene ->
-            Gen1TradeScene(scene, model.sprites, model.trainers, state.spriteRevision)
+        // An evolution owns the screen while it runs, over everything and
+        // under the message it ends with.
+        state.evolutionScene?.let { scene ->
+            Gen1EvolutionScene(scene, model.sprites, state.spriteRevision)
         }
         if (state.prompt != null) PromptWindow(state, model)
     }

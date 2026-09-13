@@ -144,10 +144,16 @@ private fun StorageApp(model: StorageViewModel) {
 
     // The game can save at any moment, and every revision this app is holding
     // is stale the instant it does. So the account is re-read as soon as the
-    // app is on screen and every thirty seconds it stays there — silently,
+    // app is on screen and every few seconds it stays there — silently,
     // because a poll that opens a window over what someone is doing is worse
     // than one that quietly gets on with it. It stops with the lifecycle, so
     // nothing is fetched while the app is in the background.
+    //
+    // Every few seconds rather than every thirty: the two programs are on one
+    // phone and a player moves between them in the middle of doing something,
+    // so a Pokémon caught a moment ago should be here when they look. The
+    // account listing is a few hundred bytes and this only runs while the app
+    // is actually on screen, which is minutes at a time.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -389,7 +395,7 @@ private fun TopBar() {
 }
 
 /** How often the account is re-read while the app is on screen. */
-private const val SYNC_INTERVAL_MILLIS = 30_000L
+private const val SYNC_INTERVAL_MILLIS = 4_000L
 
 private fun shareReport(context: android.content.Context, report: String) {
     val title = URLEncoder.encode("Gen1 Storage debug report", "UTF-8")

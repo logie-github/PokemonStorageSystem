@@ -540,10 +540,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun runSync(silent: Boolean) {
+        val before = mutable.value
         when (val result = withContext(Dispatchers.IO) { saves.listSaves() }) {
             is SyncResult.Ok -> {
                 val account = result.value
                 val notes = withContext(Dispatchers.IO) { engine.recover(account.saves) }
+                // Which cartridges the game has written since the last look.
+                // Only meaningful against an account this app has already
+                // seen: on the first sync of a session everything is new.
+                val moved = if (before.account == null) emptyList() else {
+                    account.saves.filter { row ->
+                        before.remote(row.key)?.rev?.let { it != row.rev } == true
+                    }.map { it.key }
+                }
                 mutable.update {
                     it.copy(
                         account = account,
@@ -557,6 +566,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 reportRecovery(notes)
+                // A cartridge the game has just saved is read again straight
+                // away, so what is on screen is what is in the save rather
+                // than an empty list waiting for somebody to open something.
+                // Only the ones this app was already holding, or the one in
+                // the machine: a revision moving on a cartridge nobody is
+                // looking at is not a reason to fetch it.
+                val worthReading = moved.filter {
+                    it in before.loaded || it == before.activeSaveKey
+                }
+                if (worthReading.isNotEmpty()) refreshTransferSources(*worthReading.toTypedArray())
                 // Reloading every save on the account is a fetch per save, so
                 // the automatic pass only does it when a blob is actually
                 // missing — which is exactly when a revision moved.

@@ -95,23 +95,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         prefs.getString(KEY_TRAINER_PREFIX + key, null)?.takeIf { it.isNotBlank() }
 
     /**
-     * Which of the game's save slots this playthrough sits in, 1-based, or
-     * null if nobody has said.
-     *
-     * The server's save listing does not carry the slot, and the slot is the
-     * only thing the game's launch link understands as "this save and not
-     * that one" — `LaunchOptions.selectSlot` takes an id or a position in the
-     * game's own list. An id is a device's private business, so what is kept
-     * here is the position, which is what a player can read off the game's
-     * save screen and count.
-     *
-     * Unset means the link names the game and not the save, and the game
-     * opens whichever save it had open last.
-     */
-    fun gameSlot(key: String): Int? =
-        prefs.getInt(KEY_GAME_SLOT_PREFIX + key, 0).takeIf { it > 0 }
-
-    /**
      * A slot id the server told the app about, kept because the account
      * listing will not say it twice. Learnt rather than asked for.
      */
@@ -122,13 +105,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         prefs.edit().apply {
             if (slot.isNullOrBlank()) remove(KEY_GAME_SLOT_ID_PREFIX + key)
             else putString(KEY_GAME_SLOT_ID_PREFIX + key, slot)
-        }.apply()
-    }
-
-    fun setGameSlot(key: String, slot: Int?) {
-        prefs.edit().apply {
-            if (slot == null || slot <= 0) remove(KEY_GAME_SLOT_PREFIX + key)
-            else putInt(KEY_GAME_SLOT_PREFIX + key, slot)
         }.apply()
     }
 
@@ -242,7 +218,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_WINDOWS_RIGHT = "windows-on-right"
         const val KEY_CART_PREFIX = "cart-name-"
         const val KEY_TRAINER_PREFIX = "trainer-sprite-"
-        const val KEY_GAME_SLOT_PREFIX = "game-slot-"
         const val KEY_GAME_SLOT_ID_PREFIX = "game-slot-id-"
         const val KEY_BILLS_PC = "bills-pc"
         const val KEY_TRADE_EVOLUTION = "trade-evolution"

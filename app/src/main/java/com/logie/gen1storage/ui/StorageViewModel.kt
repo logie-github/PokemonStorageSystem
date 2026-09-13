@@ -1339,35 +1339,21 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Which of the game's saves this card is, counted as the game's own save
-     * screen counts them. Null until a player says.
-     */
-    fun gameSlot(key: String): Int? = settings.gameSlot(key)
-
-    /** Says which, from the window that asks. */
-    fun setGameSlot(key: String, slot: Int?) {
-        settings.setGameSlot(key, slot)
-        mutable.update { it.copy(cartRevision = it.cartRevision + 1, prompt = null) }
-    }
-
-    /**
      * What to open the game at for a save, best first.
      *
      * The slot id the server gave, then one learnt from a save's own fetch,
-     * then a position a player set by hand, and failing all three the
-     * position this app shows the card at. `LaunchOptions.selectSlot` takes
-     * an id or a position and they mean the same thing to it.
+     * and failing both the position this app shows the card at.
+     * `LaunchOptions.selectSlot` takes an id or a position and they mean the
+     * same thing to it.
      *
      * The last one is not a guess. Both lists are the account's saves for one
      * game in the order the account lists them, so the card shelf here and
      * the game's save screen run in the same order — the third card along is
-     * the third save along. A player who finds otherwise sets the number on
-     * the card itself, which is the line above this one.
+     * the third save along.
      */
     fun openAt(key: String): String? =
         mutable.value.remote(key)?.slot
             ?: settings.gameSlotId(key)
-            ?: settings.gameSlot(key)?.toString()
             ?: cardPosition(key)?.toString()
 
     /** Where this card sits among that game's cards, counting from one. */
@@ -1376,26 +1362,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val row = state.remote(key) ?: return null
         val among = state.saves.filter { it.version == row.version }
         return among.indexOfFirst { it.key == key }.takeIf { it >= 0 }?.plus(1)
-    }
-
-    /**
-     * Takes the next one round, which is the only way to set it.
-     *
-     * A number rather than a name because that is all the game's launch link
-     * understands, and a number the player reads off their own save screen
-     * rather than one this app works out: the server's listing does not say
-     * which slot a playthrough is in, and a slot id belongs to the device
-     * that made it. Round again past the last comes back to nothing set,
-     * which is the app naming the game and letting it open what it likes.
-     */
-    fun cycleGameSlot(key: String) {
-        val next = when (val now = settings.gameSlot(key)) {
-            null -> 1
-            in 1 until MAX_GAME_SLOTS -> now + 1
-            else -> null
-        }
-        settings.setGameSlot(key, next)
-        mutable.update { it.copy(cartRevision = it.cartRevision + 1) }
     }
 
     /**
@@ -2169,13 +2135,3 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 private val DOWNLOAD_TOTAL: Int =
     SpriteSet.downloadable.size * 151 + 151 + 251 +
         (TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size)
-
-/**
- * How many save slots a card can be told it sits in.
- *
- * The game does not cap them — `SaveData` allocates one past the highest it
- * has — but a row that has to be tapped a hundred times to come back round
- * is not a row. Six is past what anyone keeps of one version and short enough
- * to walk.
- */
-private const val MAX_GAME_SLOTS = 6

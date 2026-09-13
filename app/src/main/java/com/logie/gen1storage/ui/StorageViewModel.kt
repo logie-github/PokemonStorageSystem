@@ -1916,11 +1916,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun localBackups(): List<SaveBackups.Entry> = backups.all()
 
-    // ------- restoring a save from the copy kept before a write
+    // ------- the copies kept before each write
 
-    /** One kept copy, as the restore screen reads it. */
+    /** One kept copy, as SAVE FILES reads it. */
     data class BackupRow(
-        val entry: SaveBackups.Entry,
         /** The cartridge it belongs to, named the way the carts are. */
         val cart: String,
         val takenAt: String,
@@ -1932,9 +1931,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     /**
      * Every copy the app has kept, newest first.
      *
-     * Each is read and classified so the list can say what is in it rather
-     * than only when it was taken — two copies an hour apart are otherwise
-     * indistinguishable, and picking the wrong one is the whole risk here.
+     * Read and classified so the list can say what is in each rather than
+     * only when it was taken. Evidence, and nothing more: this app cannot put
+     * one back over a cartridge. The game is what owns a save, and an app that
+     * can overwrite one wholesale is an app that can undo an evening of
+     * playing because a transfer looked wrong.
      */
     fun backupRows(): List<BackupRow> {
         val current = mutable.value
@@ -1945,7 +1946,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             } ?: entry.key
             val save = backups.read(entry)?.let { SaveClassifier.classify(it).save }
             BackupRow(
-                entry = entry,
                 cart = cart.uppercase(),
                 takenAt = Instant.ofEpochMilli(entry.savedAtMillis).toString().take(19).replace('T', ' '),
                 summary = save?.let {
@@ -1953,59 +1953,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 } ?: "UNREADABLE",
                 readable = save != null,
             )
-        }
-    }
-
-    /**
-     * Puts a save back to a copy taken before one of this app's writes.
-     *
-     * The copy goes through the same door every other write does: it is
-     * classified before it leaves the device, committed against the revision
-     * the save is at right now, and the bytes it replaces are themselves kept
-     * — so a restore is as undoable as the write that prompted it.
-     *
-     * What it cannot undo is the other half of a transfer. A Pokémon deposited
-     * since the copy was taken is in the PC, and putting the save back gives
-     * the cartridge its copy as well. The player is told exactly that before
-     * anything happens, because it is the one way this screen can end with two
-     * of something.
-     */
-    fun restoreBackup(entry: SaveBackups.Entry) {
-        if (engine.pendingTransfer() != null) {
-            message("A PREVIOUS TRANSFER IS UNRESOLVED. FINISH IT FIRST.")
-            return
-        }
-        val remote = mutable.value.remote(entry.key)
-        if (remote == null) {
-            message("THAT CARTRIDGE IS NOT ON THE ACCOUNT RIGHT NOW.")
-            return
-        }
-        val blob = backups.read(entry)
-        val root = blob?.let { SaveClassifier.classify(it).save?.root }
-        if (root == null) {
-            message("THAT COPY CANNOT BE READ.")
-            return
-        }
-
-        viewModelScope.launch {
-            mutable.update { it.copy(busy = true, prompt = null) }
-            val loaded = (saves.load(remote) as? SyncResult.Ok)?.value
-            if (loaded == null) {
-                mutable.update { it.copy(busy = false) }
-                message("THE SAVE COULD NOT BE READ.")
-                return@launch
-            }
-            val outcome = saves.commit(loaded, root)
-            mutable.update { it.copy(busy = false) }
-            when (outcome) {
-                is CommitOutcome.Committed -> {
-                    sync()
-                    message("${remote.version.label.uppercase()} WAS PUT BACK.")
-                }
-                is CommitOutcome.Refused -> message(outcome.reason)
-                is CommitOutcome.Conflict -> message(outcome.reason)
-                is CommitOutcome.Unknown -> message(outcome.reason)
-            }
         }
     }
 

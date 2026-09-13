@@ -13,11 +13,17 @@ import androidx.compose.ui.unit.dp
  * SAVE FILES: every copy this app kept, and everything it has handed out.
  *
  * Two lists that answer the two questions a player has when something has gone
- * wrong. *What did this app do to my cartridge, and can I put it back* — every
- * write is preceded by a copy of the bytes it replaced, ten deep per save, and
- * this is where those copies can be read and chosen. And *why won't it let me
- * take this out* — the records of what the app believes it has already written
- * into which cartridge, each droppable by a player who knows better.
+ * wrong. *What did this app do to my cartridge* — every write is preceded by a
+ * copy of the bytes it replaced, ten deep per save, and this is where those
+ * copies are listed. And *why won't it let me take this out* — the records of
+ * what the app believes it has already written into which cartridge, each
+ * droppable by a player who knows better.
+ *
+ * The copies are read here and nowhere else. This app cannot put one back:
+ * a save belongs to the game, and an app that can overwrite one wholesale is
+ * an app that can undo an evening of playing because a transfer looked
+ * wrong. They are kept as evidence of what was replaced, and they are on the
+ * device for anyone who wants them.
  *
  * Deliberately plain and deliberately behind OPTIONS. Nothing here is part of
  * moving a Pokémon; it is the machine's own paperwork, and it should be found
@@ -34,26 +40,6 @@ fun RestoreScreen(state: UiState, model: StorageViewModel) {
     }
     val placements = remember(state.transfers) { model.placements() }
 
-    fun restore(row: StorageViewModel.BackupRow) {
-        if (!row.readable) {
-            model.prompt(Prompt.Message(listOf("THAT COPY CANNOT BE READ.")))
-            return
-        }
-        model.prompt(
-            Prompt.Confirm(
-                lines = listOf(
-                    "PUT ${row.cart} BACK TO",
-                    "${row.takenAt}?",
-                    "ANY POKéMON MOVED SINCE",
-                    "WILL THEN BE IN BOTH PLACES.",
-                ),
-                confirmLabel = "YES",
-                cancelLabel = "NO",
-                onConfirm = { model.restoreBackup(row.entry) },
-            )
-        )
-    }
-
     fun drop(placement: com.logie.gen1storage.transfer.Placement) {
         model.prompt(
             Prompt.Confirm(
@@ -69,14 +55,11 @@ fun RestoreScreen(state: UiState, model: StorageViewModel) {
         )
     }
 
-    // One cursor over both lists and the way out, in the order they are drawn.
-    val count = copies.size + placements.size + 1
+    // The cursor covers what can be done, which is dropping a record and
+    // leaving. The copies are a list to read.
+    val count = placements.size + 1
     val cursor = rememberCursorLayer(count) { index ->
-        when {
-            index < copies.size -> restore(copies[index])
-            index < copies.size + placements.size -> drop(placements[index - copies.size])
-            else -> model.back()
-        }
+        if (index < placements.size) drop(placements[index]) else model.back()
     }
 
     ScreenColumn {
@@ -97,16 +80,9 @@ fun RestoreScreen(state: UiState, model: StorageViewModel) {
             }
         }
         items(copies) { row ->
-            val index = copies.indexOf(row)
             Gen1Frame {
                 Column {
-                    Gen1MenuRow(
-                        row.cart,
-                        selected = cursor == index,
-                        onSelect = {},
-                        onConfirm = { restore(row) },
-                        trailing = if (row.readable) null else "BAD",
-                    )
+                    Gen1Field(row.cart, if (row.readable) "" else "BAD")
                     GbText(row.takenAt, style = Gen1TextSmall, maxLines = 1)
                     GbText(row.summary, style = Gen1TextSmall, maxLines = 1)
                 }
@@ -121,7 +97,7 @@ fun RestoreScreen(state: UiState, model: StorageViewModel) {
             }
         }
         items(placements) { placement ->
-            val index = copies.size + placements.indexOf(placement)
+            val index = placements.indexOf(placement)
             Gen1Frame {
                 Column {
                     Gen1MenuRow(

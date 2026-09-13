@@ -266,7 +266,7 @@ fun Gen1BoxGrid(
             .width(cell * columns)
             .onGloballyPositioned { gridTop = it.positionInRoot().y }
     ) {
-        LazyColumn(state = scroll) {
+        LazyColumn(state = scroll, userScrollEnabled = !LocalGen1Swipe.current) {
             items(rows, key = { it }) { row ->
                 var rowTop by remember { mutableFloatStateOf(0f) }
 

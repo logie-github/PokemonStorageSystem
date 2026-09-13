@@ -347,7 +347,11 @@ fun MonListOverlay(
                 if (entries.isEmpty()) {
                     GbText(emptyMessage)
                 }
-                LazyColumn(Modifier.heightIn(max = 320.dp), state = scroll) {
+                LazyColumn(
+                    Modifier.heightIn(max = 320.dp),
+                    state = scroll,
+                    userScrollEnabled = !LocalGen1Swipe.current,
+                ) {
                     itemsIndexed(entries) { index, row ->
                         if (row.header != null) {
                             if (index > 0) Spacer(Modifier.height(gen1Dp(3)))

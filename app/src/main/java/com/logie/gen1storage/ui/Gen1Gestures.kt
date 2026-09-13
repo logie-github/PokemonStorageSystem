@@ -2,6 +2,7 @@ package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -15,38 +16,52 @@ import kotlin.math.abs
 enum class GbButton { UP, DOWN, LEFT, RIGHT, A, B, START, SELECT }
 
 /**
+ * Whether swipes are driving the app.
+ *
+ * Read by every list in it: with swipes on, a list does not scroll under a
+ * finger, because the same drag cannot be both a scroll and a step. The lists
+ * still follow the cursor, so nothing goes out of reach — see
+ * [LazyListState.scrollToRow].
+ */
+val LocalGen1Swipe = staticCompositionLocalOf { false }
+
+/**
  * How the app is driven, alongside tapping.
  *
- * Not a setting. There is nothing to turn off, because none of it competes
- * with tapping: everything but the hold is read only in empty space, so a tap
- * on a menu row is always that row's. A toggle would only ever have been a
- * toggle for "does empty space do anything", which is not a question worth
- * putting to anyone.
+ * Off by default, and off it does one thing: a hold anywhere is B. Everything
+ * else is the app tapped and scrolled — a tap takes what is under it, a list
+ * is dragged the way any list is dragged, and nothing reads a gesture in the
+ * space beside a window.
  *
- * The vocabulary is the TM35 Metronome mod's, and its thresholds, so muscle
- * memory carries over from the game:
+ * On, the vocabulary is the TM35 Metronome mod's, and its thresholds, so
+ * muscle memory carries over from the game:
  *
  *  - swipe up / down / left / right  -> the D-pad, moving the cursor
  *  - tap                             -> A, taking whatever the cursor is on
  *  - tap and hold                    -> B, going back
  *  - double tap                      -> START, opening OPTIONS
  *
- * Everything but the hold is read **only in empty space** — off the windows,
- * on the screen itself. That is what lets both ways of driving the app exist at
- * once: a tap on a menu row is that row's, a tap on the screen beside it is the
- * cursor's, and neither has to guess. The hold is the exception and works
- * anywhere, because going back should not depend on where a finger happens to
- * be; it consumes the gesture so the row underneath does not also fire.
+ * And a swipe is read **wherever it lands**: over a window, over a box, over
+ * a list. That is the point of the setting — a player who cannot reach the
+ * far corner of a screen should not have to. The swipe is consumed, so the
+ * list under it does not scroll as well; scrolling by finger is off entirely
+ * while this is on ([LocalGen1Swipe]), because a list that both steps and
+ * slides does neither predictably.
+ *
+ * A tap still belongs to whatever it lands on either way. It is only in the
+ * empty space beside the windows that a tap is A and two taps are START.
  *
  * Thresholds scale with the short side of the screen exactly as the mod's do,
  * so the feel is the same on a small phone and on an unfolded one.
  */
 fun Modifier.gen1Gestures(
+    /** Whether the swipe vocabulary is on at all. */
+    swipes: Boolean,
     isFreeSpace: (Offset) -> Boolean,
     isHoldClaimed: (Offset) -> Boolean,
     onButton: (GbButton) -> Unit,
 ): Modifier = this.then(
-    Modifier.pointerInput(Unit) {
+    Modifier.pointerInput(swipes) {
         val shortSide = minOf(size.width, size.height).toFloat()
         val swipeThreshold = maxOf(MIN_SWIPE_PX, shortSide * SWIPE_RATIO)
         val tapSlop = maxOf(MIN_TAP_SLOP_PX, shortSide * TAP_SLOP_RATIO)
@@ -118,10 +133,18 @@ fun Modifier.gen1Gestures(
 
             if (outcome == GestureOutcome.CANCELLED) return@awaitEachGesture
 
-            // Everything else belongs to whatever was touched unless the touch
-            // began on the screen itself.
+            // With swipes off, nothing here reads anything but the hold: the
+            // app is tapped and scrolled, and a drag belongs to whatever is
+            // under it.
+            if (!swipes) return@awaitEachGesture
+
+            // A swipe is the D-pad wherever it starts, and it is consumed so
+            // the list under it does not also move. A tap still belongs to
+            // whatever it landed on unless that was the screen itself.
             if (!free) {
-                if (outcome != GestureOutcome.RELEASED) drain(travelled, consume = false)
+                if (outcome == GestureOutcome.RELEASED) return@awaitEachGesture
+                val swiped = drain(travelled, consume = true)
+                direction(swiped, swipeThreshold)?.let(onButton)
                 return@awaitEachGesture
             }
 
@@ -135,12 +158,9 @@ fun Modifier.gen1Gestures(
 
             val horizontal = abs(furthest.x)
             val vertical = abs(furthest.y)
+            val step = direction(furthest, swipeThreshold)
             when {
-                horizontal >= swipeThreshold && horizontal >= vertical ->
-                    onButton(if (furthest.x > 0) GbButton.RIGHT else GbButton.LEFT)
-
-                vertical >= swipeThreshold ->
-                    onButton(if (furthest.y > 0) GbButton.DOWN else GbButton.UP)
+                step != null -> onButton(step)
 
                 horizontal <= tapSlop && vertical <= tapSlop -> {
                     val now = System.currentTimeMillis()
@@ -158,6 +178,19 @@ fun Modifier.gen1Gestures(
         }
     }
 )
+
+/** Which way a drag went, or null if it never went far enough to be one. */
+private fun direction(travelled: Offset, threshold: Float): GbButton? {
+    val horizontal = abs(travelled.x)
+    val vertical = abs(travelled.y)
+    return when {
+        horizontal >= threshold && horizontal >= vertical ->
+            if (travelled.x > 0) GbButton.RIGHT else GbButton.LEFT
+
+        vertical >= threshold -> if (travelled.y > 0) GbButton.DOWN else GbButton.UP
+        else -> null
+    }
+}
 
 private enum class GestureOutcome { SWIPED, RELEASED, CANCELLED }
 

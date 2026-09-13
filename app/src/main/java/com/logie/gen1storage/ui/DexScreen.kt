@@ -123,7 +123,11 @@ fun DexScreen(state: UiState, model: StorageViewModel) {
         )
 
         Spacer(Modifier.height(gen1Dp(2)))
-        LazyColumn(Modifier.weight(1f), state = scroll) {
+        LazyColumn(
+            Modifier.weight(1f),
+            state = scroll,
+            userScrollEnabled = !LocalGen1Swipe.current,
+        ) {
             itemsIndexed(rows, key = { _, species -> species.id }) { index, species ->
                 DexRow(
                     species = species,
@@ -270,7 +274,7 @@ fun DexStatsScreen(state: UiState, model: StorageViewModel) {
         GbText("POKéDEX STATS")
         Spacer(Modifier.height(gen1Dp(2)))
 
-        LazyColumn(Modifier.weight(1f)) {
+        LazyColumn(Modifier.weight(1f), userScrollEnabled = !LocalGen1Swipe.current) {
             item {
                 Column {
                     GbText("IN THE PC", maxLines = 1)

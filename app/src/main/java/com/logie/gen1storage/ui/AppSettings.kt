@@ -173,6 +173,21 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_TRADE_ANIMATION, value).apply()
 
     /**
+     * Drive the app by swiping rather than by reaching for what you want.
+     *
+     * Off, and the app is tapped and scrolled: a tap takes what is under it
+     * and a list is dragged the way any list is. On, a swipe anywhere is the
+     * D-pad, wherever the finger lands — and lists stop scrolling under the
+     * finger, because a gesture cannot be both a scroll and a step.
+     *
+     * Off by default. Someone who wants this knows they want it, and someone
+     * who does not should never meet a list that will not scroll.
+     */
+    var swipeControls: Boolean
+        get() = prefs.getBoolean(KEY_SWIPE_CONTROLS, false)
+        set(value) = prefs.edit().putBoolean(KEY_SWIPE_CONTROLS, value).apply()
+
+    /**
      * Stop the interface moving. Off by default; on, nothing animates and
      * everything still draws.
      */
@@ -233,6 +248,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_TRADE_EVOLUTION = "trade-evolution"
         const val KEY_TRADE_ANIMATION = "trade-animation"
         const val KEY_REDUCE_MOTION = "reduce-motion"
+        const val KEY_SWIPE_CONTROLS = "swipe-controls"
         const val KEY_MOTION_PREFIX = "motion-"
         const val KEY_HAPTICS = "haptics"
         const val KEY_PRINTER_BORDER = "printer-border"

@@ -82,6 +82,7 @@ import com.logie.gen1storage.ui.MainMenuScreen
 import com.logie.gen1storage.ui.StorageHomeScreen
 import com.logie.gen1storage.ui.StatusScreen
 import com.logie.gen1storage.ui.TrainerCardScreen
+import com.logie.gen1storage.ui.LocalGen1Swipe
 import com.logie.gen1storage.ui.gen1Gestures
 import com.logie.gen1storage.ui.gen1Ground
 import com.logie.gen1storage.ui.Screen
@@ -222,6 +223,9 @@ private fun StorageApp(model: StorageViewModel) {
         LocalGen1Cursor provides cursor,
         LocalGen1WindowBounds provides windows,
         LocalGen1Audio provides audio,
+        // Every list reads this: with swipes driving the cursor, none of them
+        // scroll under a finger. They still follow the cursor.
+        LocalGen1Swipe provides state.swipeControls,
     ) {
     Gen1NoOverscroll {
     Box(
@@ -231,9 +235,14 @@ private fun StorageApp(model: StorageViewModel) {
             // The system bars are hidden, so only the camera cutout is still
             // something the interface has to stay out of.
             .displayCutoutPadding()
-            // Always on. Everything but the hold is read only in empty space,
-            // so this never takes a gesture a window wanted.
-            .gen1Gestures(windows::isFreeSpace, windows::isHoldClaimed) { button ->
+            // The hold is always read; the rest is the SWIPE CONTROLS setting,
+            // off unless someone asked for it. On, a swipe anywhere is the
+            // D-pad and the lists stop scrolling under a finger.
+            .gen1Gestures(
+                state.swipeControls,
+                windows::isFreeSpace,
+                windows::isHoldClaimed,
+            ) { button ->
                 // The cursor turns its own moves and confirms away, but B and
                 // START are the gesture layer's alone — a hold or a double tap
                 // mid-transfer would otherwise still navigate.

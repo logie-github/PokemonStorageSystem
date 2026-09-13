@@ -148,6 +148,7 @@ fun ChooseCartScreen(
         LazyColumn(
             state = scroll,
             verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+            userScrollEnabled = !LocalGen1Swipe.current,
         ) {
             items(saves.chunked(columns)) { row ->
                 Row(

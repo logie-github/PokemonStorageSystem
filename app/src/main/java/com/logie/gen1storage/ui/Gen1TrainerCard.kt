@@ -411,7 +411,11 @@ fun TrainerSpritePicker(
         // What the card is wearing, said out loud. A tick against a row forty
         // rows down a list is not an answer to "which one is on it".
         GbText("TRAINER/" + (rows.firstOrNull { it.id == chosen }?.label ?: "PLAYER"))
-        LazyColumn(Modifier.heightIn(max = 360.dp), state = scroll) {
+        LazyColumn(
+            Modifier.heightIn(max = 360.dp),
+            state = scroll,
+            userScrollEnabled = !LocalGen1Swipe.current,
+        ) {
             item {
                 // The card's own default, shown as itself. It read as "NONE"
                 // with nothing beside it, which named the one row that is not

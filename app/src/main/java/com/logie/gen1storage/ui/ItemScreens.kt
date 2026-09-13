@@ -201,7 +201,10 @@ private fun ItemListOverlay(
             GbText(title)
             Spacer(Modifier.height(gen1Dp(2)))
             if (items.isEmpty()) GbText("NOTHING HERE.", style = Gen1TextSmall)
-            LazyColumn(Modifier.heightIn(max = 320.dp)) {
+            LazyColumn(
+                Modifier.heightIn(max = 320.dp),
+                userScrollEnabled = !LocalGen1Swipe.current,
+            ) {
                 itemsIndexed(items) { index, stack ->
                     val header = headers.getOrNull(index)
                     if (header != null && header != headers.getOrNull(index - 1)) {

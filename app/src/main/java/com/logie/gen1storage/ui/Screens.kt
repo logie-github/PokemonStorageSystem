@@ -1133,6 +1133,13 @@ private fun OptionsDrawerContent(
             }
 
             OptionsDrawer.MOTION -> {
+                // First, because it changes how the rest of the app is
+                // touched rather than how it looks or sounds.
+                add(
+                    OptionRow("SWIPE CONTROLS", if (state.swipeControls) "ON" else "OFF") {
+                        model.setSwipeControls(!state.swipeControls)
+                    }
+                )
                 add(
                     OptionRow("VIBRATION", if (state.haptics) "ON" else "OFF") {
                         model.setHaptics(!state.haptics)
@@ -1390,7 +1397,10 @@ fun CreditsScreen() {
             .padding(gen1Dp(4)),
     ) {
         Gen1Frame(Modifier.fillMaxSize()) {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(gen1Dp(4))) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+                userScrollEnabled = !LocalGen1Swipe.current,
+            ) {
                 item { GbText("CREDITS", style = Gen1TextLarge) }
                 item {
                     Credit(
@@ -1618,6 +1628,7 @@ fun ScreenColumn(content: LazyListScope.() -> Unit) {
         // The same edge the menus use, so a screen of windows and the PC read
         // as the same machine rather than as two.
         horizontalAlignment = Gen1Layout.menuSide,
+        userScrollEnabled = !LocalGen1Swipe.current,
         content = content,
     )
 }

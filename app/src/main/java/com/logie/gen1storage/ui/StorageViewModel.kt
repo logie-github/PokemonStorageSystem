@@ -293,6 +293,8 @@ data class UiState(
     val soundsOn: Set<String> = emptySet(),
     /** Nothing moves, and which kinds of movement are on under that. */
     val reduceMotion: Boolean = false,
+    /** Swipes drive the cursor, and lists do not scroll under a finger. */
+    val swipeControls: Boolean = false,
     val motionsOn: Set<String> = emptySet(),
     /** The tick under the finger. */
     val haptics: Boolean = true,
@@ -421,6 +423,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
+                swipeControls = settings.swipeControls,
                 motionsOn = enabledMotions(),
                 haptics = settings.haptics,
                 printerBorder = settings.printerBorder,
@@ -826,6 +829,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.paletteId = palette.id
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
+    }
+
+    fun setSwipeControls(on: Boolean) {
+        settings.swipeControls = on
+        mutable.update { it.copy(swipeControls = on) }
     }
 
     fun setReduceMotion(on: Boolean) {

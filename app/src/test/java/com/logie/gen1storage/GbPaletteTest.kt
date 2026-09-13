@@ -121,7 +121,7 @@ class GbPaletteTest {
         assertEquals(Color(0xFFAEC2D4), GbPalette.SILVER.lightest)
         assertEquals(Color(0xFF4277A3), GbPalette.CRYSTAL.darkest)
         assertEquals(Color(0xFFCC91C2), GbPalette.CRYSTAL.lightest)
-        assertEquals(Color(0xFF72B3E2), GbPalette.SUICUNE.darkest)
+        assertEquals(Color(0xFF9676B5), GbPalette.SUICUNE.darkest)
         assertEquals(Color(0xFF73B8C7), GbPalette.SUICUNE.lightest)
     }
 

@@ -207,11 +207,13 @@ data class GbPalette(
 
         val SUICUNE = GbPalette(
             id = "suicune", label = "SUICUNE",
-            darkest = Color(0xFF72B3E2),
+            // The purple at the foot of the screen, with the blue it started
+            // at moved up into its place.
+            darkest = Color(0xFF9676B5),
             dark = Color(0xFFC7EAF6),
-            light = Color(0xFF9676B5),
+            light = Color(0xFF72B3E2),
             lightest = Color(0xFF73B8C7),
-            surround = Color(0xFF87C1E7),
+            surround = Color(0xFFA293C5),
             tintsSprites = true,
         )
 

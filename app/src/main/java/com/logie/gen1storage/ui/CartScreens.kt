@@ -173,15 +173,20 @@ fun ChooseCartScreen(
             }
         }
 
-        // Which shelf this is, and the way to the other one. A row rather
-        // than only the swipe: the swipe is the nice way in and a tap is the
-        // one that is always there.
+        // Which way the other shelf is. A mark and nothing more — the shelf
+        // turns by swiping across the cards, so a line that could be tapped
+        // would be a second way to do it and the wrong one to learn.
+        //
+        // Written with the plain angle brackets rather than the solid
+        // triangles: the font has ▶ and no ◀ at all (a missing glyph draws as
+        // a box), and one of each way round matters more here than the nicer
+        // shape one way round.
         Box(
-            Modifier.fillMaxWidth().gen1Clickable { showingGen2 = !showingGen2 },
+            Modifier.fillMaxWidth(),
             contentAlignment = if (showingGen2) Alignment.CenterStart else Alignment.CenterEnd,
         ) {
             GbText(
-                if (showingGen2) "◀ GEN I" else "GEN II ▶",
+                if (showingGen2) "< GEN I" else "GEN II >",
                 style = Gen1TextSmall,
                 maxLines = 1,
             )

@@ -1,6 +1,7 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,10 +25,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
@@ -95,11 +100,35 @@ fun ChooseCartScreen(
         else saves.getOrNull(index)?.let(choose)
     }
 
+    // Which shelf of cards is on top. Generation II is a second page rather
+    // than three more cards in the row: they are here to be looked at and
+    // there is nothing to pick, so they should not sit among the three that
+    // can be.
+    var showingGen2 by remember { mutableStateOf(false) }
+
     Column(
         Modifier
             .fillMaxSize()
             .gen1Ground()
-            .padding(gen1Dp(4)),
+            .padding(gen1Dp(4))
+            // A swipe across the cards turns the shelf. Its own handler
+            // rather than the app's gesture layer, because that layer is off
+            // unless a player has asked for it and this page has to be
+            // reachable either way; horizontal only, so a list underneath
+            // still scrolls.
+            .pointerInput(Unit) {
+                var travelled = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { travelled = 0f },
+                    onDragEnd = {
+                        if (travelled <= -PAGE_TURN_PX) showingGen2 = true
+                        if (travelled >= PAGE_TURN_PX) showingGen2 = false
+                    },
+                ) { change, amount ->
+                    travelled += amount
+                    change.consume()
+                }
+            },
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -107,7 +136,7 @@ fun ChooseCartScreen(
         ) {
             games.forEachIndexed { index, (version, _) ->
                 Box(Modifier.weight(1f)) {
-                    CardCursor(pickingGame && cursor == index)
+                    CardCursor(!showingGen2 && pickingGame && cursor == index)
                 }
             }
         }
@@ -115,18 +144,55 @@ fun ChooseCartScreen(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
         ) {
-            games.forEach { (version, art) ->
-                TitleCard(
-                    version = version,
-                    art = art,
-                    chosen = game == version.id,
-                    modifier = Modifier.weight(1f),
-                    onClick = { openGame(version) },
-                )
+            if (showingGen2) {
+                GEN2_CARDS.forEach { card ->
+                    TitleCard(
+                        label = card.label,
+                        art = card.art,
+                        palette = card.palette,
+                        chosen = false,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            model.prompt(
+                                Prompt.Message(listOf("${card.label} IS NOT SUPPORTED YET."))
+                            )
+                        },
+                    )
+                }
+            } else {
+                games.forEach { (version, art) ->
+                    TitleCard(
+                        label = version.label,
+                        art = art,
+                        palette = paletteFor(version.id),
+                        chosen = game == version.id,
+                        modifier = Modifier.weight(1f),
+                        onClick = { openGame(version) },
+                    )
+                }
             }
         }
 
-        Spacer(Modifier.height(gen1Dp(5)))
+        // Which shelf this is, and the way to the other one. A row rather
+        // than only the swipe: the swipe is the nice way in and a tap is the
+        // one that is always there.
+        Box(
+            Modifier.fillMaxWidth().gen1Clickable { showingGen2 = !showingGen2 },
+            contentAlignment = if (showingGen2) Alignment.CenterStart else Alignment.CenterEnd,
+        ) {
+            GbText(
+                if (showingGen2) "◀ GEN I" else "GEN II ▶",
+                style = Gen1TextSmall,
+                maxLines = 1,
+            )
+        }
+
+        Spacer(Modifier.height(gen1Dp(3)))
+
+        if (showingGen2) {
+            Notice("GOLD, SILVER AND CRYSTAL ARE NOT READY YET.")
+            return@Column
+        }
 
         if (game == null) {
             Notice(if (sending) "Send to whose card?" else "INSERT YOUR TRAINER CARD")
@@ -183,15 +249,71 @@ internal fun paletteFor(gameId: String?): GbPalette = when (gameId) {
     else -> GbPalette.ORIGINAL
 }
 
+/**
+ * One Generation II game, as a card to look at.
+ *
+ * The art is the same four flat greys every card in the app ships as, and the
+ * palette is what makes it gold, silver or crystal — see [Gen1Art].
+ */
+private data class Gen2Card(val label: String, val art: Int, val palette: GbPalette)
+
+/**
+ * The colours the three Generation II cards are drawn in.
+ *
+ * Each is built around one colour: the game's own, given as the shade the art
+ * reads as rather than as its darkest. A mid-tone used as the darkest of four
+ * leaves nothing under it and the card comes out a wash — Silver especially,
+ * whose colour is nearly white — so the ramp runs down from it instead and
+ * the card keeps the contrast the Red, Blue and Yellow cards have.
+ */
+private val GOLD_CARD = GbPalette(
+    id = "card_gold", label = "GOLD",
+    darkest = Color(0xFF242013),
+    dark = Color(0xFF5A4F30),
+    light = Color(0xFFA39058),
+    lightest = Color(0xFFDCD5C0),
+    surround = Color(0xFF242013),
+    tintsSprites = true,
+)
+
+private val SILVER_CARD = GbPalette(
+    id = "card_silver", label = "SILVER",
+    darkest = Color(0xFF2A3033),
+    dark = Color(0xFF687780),
+    light = Color(0xFFBDD8E9),
+    lightest = Color(0xFFE6F0F7),
+    surround = Color(0xFF2A3033),
+    tintsSprites = true,
+)
+
+private val CRYSTAL_CARD = GbPalette(
+    id = "card_crystal", label = "CRYSTAL",
+    darkest = Color(0xFF192732),
+    dark = Color(0xFF3F627C),
+    light = Color(0xFF72B3E2),
+    lightest = Color(0xFFC9E2F4),
+    surround = Color(0xFF192732),
+    tintsSprites = true,
+)
+
+private val GEN2_CARDS = listOf(
+    Gen2Card("GOLD", R.drawable.title_gold, GOLD_CARD),
+    Gen2Card("SILVER", R.drawable.title_silver, SILVER_CARD),
+    Gen2Card("CRYSTAL", R.drawable.title_crystal, CRYSTAL_CARD),
+)
+
+/** How far a finger has to travel across the cards to turn the shelf. */
+private const val PAGE_TURN_PX = 90f
+
 @Composable
 private fun TitleCard(
-    version: GameVersion,
+    label: String,
     art: Int,
+    palette: GbPalette,
     chosen: Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
-    val palette = paletteFor(version.id)
     Gen1Frame(
         modifier.aspectRatio(1f).gen1Clickable(onClick = onClick),
         fill = palette.lightest,
@@ -199,7 +321,7 @@ private fun TitleCard(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Gen1Art(art, palette, Modifier.fillMaxSize(), version.label)
+            Gen1Art(art, palette, Modifier.fillMaxSize(), label)
         }
     }
 }

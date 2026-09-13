@@ -27,10 +27,25 @@ class GbPaletteTest {
         assertEquals(
             setOf(
                 "original", "red", "blue", "green", "yellow", "pastel", "route", "purple_rain",
+                "gold", "ho_oh", "lugia", "silver", "crystal", "suicune",
             ),
             ids,
         )
     }
+
+    /**
+     * The palettes that are ramps, as against sets of four named colours.
+     *
+     * A Game Boy palette is four slots a tile's shade indexes into, and
+     * nothing says slot 2 has to be brighter than slot 1 — the Super Game Boy
+     * tables are full of pairs that are not. The ones listed here were built
+     * as ramps, though, so a swapped pair in one of them would be a mistake
+     * rather than a choice, and that is what [the ramp runs darkest to
+     * lightest] is guarding.
+     */
+    private val brightnessRamps = setOf(
+        "original", "red", "blue", "green", "yellow", "pastel", "route", "purple_rain",
+    )
 
     /**
      * The route palette is transcribed from the disassembly, so it is worth
@@ -79,12 +94,35 @@ class GbPaletteTest {
             assertEquals(palette.dark, palette.ramp[1])
             assertEquals(palette.light, palette.ramp[2])
             assertEquals(palette.lightest, palette.ramp[3])
+            if (palette.id !in brightnessRamps) return@forEach
             val luma = palette.ramp.map { luminance(it) }
             assertTrue(
                 "${palette.id} ramp is not monotonic: $luma",
                 luma.zipWithNext().all { (a, b) -> a < b },
             )
         }
+    }
+
+    /**
+     * The six named sets, pinned in the order they were given: bottom of the
+     * screen first, top last. The ground is drawn from the middle two and the
+     * lightest ([Modifier.gen1Ground]), so a pair swapped here turns the
+     * screen upside down.
+     */
+    @Test
+    fun `the named colour sets are in the order they were given`() {
+        assertEquals(Color(0xFFB7404A), GbPalette.GOLD.darkest)
+        assertEquals(Color(0xFFD8CFA9), GbPalette.GOLD.lightest)
+        assertEquals(Color(0xFFED8047), GbPalette.HO_OH.darkest)
+        assertEquals(Color(0xFFFCFFE0), GbPalette.HO_OH.lightest)
+        assertEquals(Color(0xFF31408E), GbPalette.LUGIA.darkest)
+        assertEquals(Color(0xFFFEFEFE), GbPalette.LUGIA.lightest)
+        assertEquals(Color(0xFF96147C), GbPalette.SILVER.darkest)
+        assertEquals(Color(0xFFAEC2D4), GbPalette.SILVER.lightest)
+        assertEquals(Color(0xFF4277A3), GbPalette.CRYSTAL.darkest)
+        assertEquals(Color(0xFFCC91C2), GbPalette.CRYSTAL.lightest)
+        assertEquals(Color(0xFF72B3E2), GbPalette.SUICUNE.darkest)
+        assertEquals(Color(0xFF73B8C7), GbPalette.SUICUNE.lightest)
     }
 
     @Test

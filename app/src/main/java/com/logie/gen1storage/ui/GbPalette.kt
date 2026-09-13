@@ -140,8 +140,82 @@ data class GbPalette(
             tintsSprites = true,
         )
 
-        val ALL =
-            listOf(ORIGINAL, RED, BLUE, GREEN, YELLOW, GBC_PASTEL, ROUTE, PURPLE_RAIN)
+        /**
+         * Six named by hand rather than read off a cartridge, each given as
+         * four colours from the foot of the screen upwards — which is the
+         * order they are written in here, darkest first.
+         *
+         * Several of them do not climb in brightness the whole way, and that
+         * is deliberate: a Game Boy palette is four slots a tile's shade
+         * indexes into, not a gradient, and these were chosen as sets. Each
+         * one's ground is its darkest shade carried a quarter of the way
+         * towards the next, so the screen behind the windows belongs to the
+         * palette rather than being black.
+         */
+        val GOLD = GbPalette(
+            id = "gold", label = "GOLD",
+            darkest = Color(0xFFB7404A),
+            dark = Color(0xFFD2C190),
+            light = Color(0xFF85A2A8),
+            lightest = Color(0xFFD8CFA9),
+            surround = Color(0xFFBE605C),
+            tintsSprites = true,
+        )
+
+        val HO_OH = GbPalette(
+            id = "ho_oh", label = "HO-OH",
+            darkest = Color(0xFFED8047),
+            dark = Color(0xFFB0C52C),
+            light = Color(0xFFFFF220),
+            lightest = Color(0xFFFCFFE0),
+            surround = Color(0xFFDE9140),
+            tintsSprites = true,
+        )
+
+        val LUGIA = GbPalette(
+            id = "lugia", label = "LUGIA",
+            darkest = Color(0xFF31408E),
+            dark = Color(0xFFB1DCFE),
+            light = Color(0xFF6ACCF8),
+            lightest = Color(0xFFFEFEFE),
+            surround = Color(0xFF5167AA),
+            tintsSprites = true,
+        )
+
+        val SILVER = GbPalette(
+            id = "silver", label = "SILVER",
+            darkest = Color(0xFF96147C),
+            dark = Color(0xFF239786),
+            light = Color(0xFFEEDD0A),
+            lightest = Color(0xFFAEC2D4),
+            surround = Color(0xFF79357F),
+            tintsSprites = true,
+        )
+
+        val CRYSTAL = GbPalette(
+            id = "crystal", label = "CRYSTAL",
+            darkest = Color(0xFF4277A3),
+            dark = Color(0xFF55BFA4),
+            light = Color(0xFFEDF2F6),
+            lightest = Color(0xFFCC91C2),
+            surround = Color(0xFF4789A3),
+            tintsSprites = true,
+        )
+
+        val SUICUNE = GbPalette(
+            id = "suicune", label = "SUICUNE",
+            darkest = Color(0xFF72B3E2),
+            dark = Color(0xFFC7EAF6),
+            light = Color(0xFF9676B5),
+            lightest = Color(0xFF73B8C7),
+            surround = Color(0xFF87C1E7),
+            tintsSprites = true,
+        )
+
+        val ALL = listOf(
+            ORIGINAL, RED, BLUE, GREEN, YELLOW, GBC_PASTEL, ROUTE, PURPLE_RAIN,
+            GOLD, HO_OH, LUGIA, SILVER, CRYSTAL, SUICUNE,
+        )
 
         fun fromId(id: String?): GbPalette = ALL.firstOrNull { it.id == id } ?: ORIGINAL
     }

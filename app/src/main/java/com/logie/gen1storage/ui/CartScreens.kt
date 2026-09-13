@@ -275,11 +275,18 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
     val fallback = "CARD $slot"
     val title = remember(key, state.cartRevision) { model.cartName(key) }?.uppercase() ?: fallback
     val chosen = remember(key, state.cartRevision) { model.trainerSprite(key) }
-    // The three things this card can be told to do, and then the way out.
+    // Which of the game's saves this card is. The server's listing does not
+    // say, and the game's launch link will not take anything else, so it is
+    // asked for here: a number counted off the game's own save screen, kept
+    // with the card it belongs to. Nothing set means the app names the game
+    // and the game opens whatever it had open.
+    val gameSlot = remember(key, state.cartRevision) { model.gameSlot(key) }
+    // The four things this card can be told to do, and then the way out.
     val actions = listOf<Pair<String, () -> Unit>>(
         "INSERT" to { model.chooseCart(key, thenOpenStorage = true) },
         "TRAINER" to { model.prompt(Prompt.ChooseTrainerSprite(key)) },
         "RENAME" to { model.prompt(Prompt.RenameCart(key, fallback)) },
+        "IN GAME SAVE ${gameSlot?.toString() ?: "-"}" to { model.cycleGameSlot(key) },
         "BACK" to { model.back() },
     )
     val at = rememberCursorLayer(actions.size) { actions[it].second() }

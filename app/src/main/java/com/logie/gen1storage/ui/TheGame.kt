@@ -54,26 +54,23 @@ object TheGame {
      * [slot] is the save itself rather than the game: an account can hold
      * several playthroughs of one version, and the one worth opening is the
      * one that was just written to. Upstream's `LaunchOptions.selectSlot`
-     * takes either a slot id or an index and makes it active before the game
-     * boots, and the id the server lists is the id that device uploaded it
-     * under. A save first made on another phone has no matching slot here, in
-     * which case the game boots whichever save is already active — the sync
-     * still happens, which is the part that matters.
+     * takes either a slot id or a position in that game's save list, and
+     * makes it active before the game boots.
+     *
+     * Never the launcher, even with no slot to name. A link that names a game
+     * goes through `Prelaunch`, which runs `SyncEngine:syncNow` on the way in
+     * every single time; the launcher only syncs the first time it is opened
+     * in a session, so a second trip to it in the same sitting would show the
+     * player a save list and quietly sync nothing. Landing on the wrong save
+     * of the right game still leaves the Pokémon where it was sent — the sync
+     * covers every save on the account, not the one being opened.
      *
      * Returns false if nothing could be started, so a caller can say so rather
      * than look like it did something.
      */
-    fun open(
-        context: Context,
-        gameVersionId: String? = null,
-        slot: String? = null,
-        chooseSave: Boolean = false,
-    ): Boolean {
+    fun open(context: Context, gameVersionId: String? = null, slot: String? = null): Boolean {
         val name = installedPackage(context) ?: return false
-        val deepLink = Intent(
-            Intent.ACTION_VIEW,
-            launchUri(gameVersionId, slot, chooseSave),
-        ).apply {
+        val deepLink = Intent(Intent.ACTION_VIEW, launchUri(gameVersionId, slot)).apply {
             setPackage(name)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
@@ -83,23 +80,18 @@ object TheGame {
         return start(context, launcher)
     }
 
-    private fun launchUri(gameVersionId: String?, slot: String?, chooseSave: Boolean): Uri =
+    private fun launchUri(gameVersionId: String?, slot: String?): Uri =
         Uri.Builder()
             .scheme(SCHEME)
             .authority("launch")
             .apply {
                 gameVersionId?.lowercase()?.takeIf { it.isNotBlank() }
                     ?.let { appendQueryParameter("game", it) }
-                // Only alongside a game: a slot id means nothing without the
+                // Only alongside a game: a slot means nothing without the
                 // version it belongs to, and upstream reads the two together.
-                val named = gameVersionId != null && !slot.isNullOrBlank()
-                if (named) appendQueryParameter("slot", slot)
-                // Nothing to name, and more than one save it could be: land on
-                // the game's save list rather than on whichever save happens to
-                // be open. The launcher syncs as it opens — `RomImporter`'s
-                // first `_pumpSync` calls `syncNow` — so the Pokémon is there
-                // by the time the player picks the card it went to.
-                if (!named && chooseSave) appendQueryParameter("launcher", "1")
+                if (gameVersionId != null && !slot.isNullOrBlank()) {
+                    appendQueryParameter("slot", slot)
+                }
             }
             .build()
 

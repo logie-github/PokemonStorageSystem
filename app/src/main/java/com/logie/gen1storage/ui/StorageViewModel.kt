@@ -202,19 +202,17 @@ sealed interface Prompt {
      * of one version, and opening the game at the wrong one would sync the
      * right save and then show the player a different game.
      *
-     * [chooseSave] is what to do when the slot is not known — the server does
-     * not always carry one, and a slot another device wrote has no match on
-     * this one. Then the game is opened at its save list for that version
-     * instead of at a save: the launcher syncs as it opens, so the Pokémon is
-     * there either way, and the player picks the card rather than this app
-     * guessing and landing them in somebody else's game.
+     * A null slot still opens the game, at whichever save it had last. That
+     * is worth doing on its own: the sync the game runs on the way in covers
+     * every save on the account, so the Pokémon lands in the right file
+     * whatever the player is looking at. The slot only decides where they
+     * arrive.
      */
     data class Cartridge(
         val versionId: String,
         val slot: String?,
         val label: String,
         val trainerName: String?,
-        val chooseSave: Boolean,
     )
     data class Confirm(
         val lines: List<String>,
@@ -516,20 +514,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val cartridge = when {
             written != null -> Prompt.Cartridge(
                 versionId = written.version.id,
-                slot = written.slot,
+                // What the server lists, and failing that what the player has
+                // told this card it is. Neither is guesswork: the first is
+                // the id the game uploaded, the second is a position counted
+                // off the game's own save screen.
+                slot = written.slot ?: settings.gameSlot(written.key)?.toString(),
                 label = written.version.label,
                 trainerName = written.summary.trainerName?.uppercase(),
-                // With one playthrough of that game there is nothing to pick
-                // between: whatever save the game has open is that one. With
-                // several and no slot to name, the list is the only honest
-                // place to land.
-                chooseSave = written.slot == null &&
-                    state.saves.count { it.version == written.version } > 1,
             )
             else -> touched.firstNotNullOfOrNull { key ->
                 GameVersion.fromId(key.substringBefore('/'))
             }?.let {
-                Prompt.Cartridge(it.id, null, it.label, null, chooseSave = false)
+                Prompt.Cartridge(it.id, null, it.label, null)
             }
         }
         val said = Prompt.Message(lines, openGame = cartridge)
@@ -1327,6 +1323,32 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setTrainerSprite(key: String, id: String?) {
         settings.setTrainerSprite(key, id)
         mutable.update { it.copy(cartRevision = it.cartRevision + 1, prompt = null) }
+    }
+
+    /**
+     * Which of the game's saves this card is, counted as the game's own save
+     * screen counts them. Null until a player says.
+     */
+    fun gameSlot(key: String): Int? = settings.gameSlot(key)
+
+    /**
+     * Takes the next one round, which is the only way to set it.
+     *
+     * A number rather than a name because that is all the game's launch link
+     * understands, and a number the player reads off their own save screen
+     * rather than one this app works out: the server's listing does not say
+     * which slot a playthrough is in, and a slot id belongs to the device
+     * that made it. Round again past the last comes back to nothing set,
+     * which is the app naming the game and letting it open what it likes.
+     */
+    fun cycleGameSlot(key: String) {
+        val next = when (val now = settings.gameSlot(key)) {
+            null -> 1
+            in 1 until MAX_GAME_SLOTS -> now + 1
+            else -> null
+        }
+        settings.setGameSlot(key, next)
+        mutable.update { it.copy(cartRevision = it.cartRevision + 1) }
     }
 
     /**
@@ -2148,3 +2170,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 private val DOWNLOAD_TOTAL: Int =
     SpriteSet.downloadable.size * 151 + 151 + 251 +
         (TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size)
+
+/**
+ * How many save slots a card can be told it sits in.
+ *
+ * The game does not cap them — `SaveData` allocates one past the highest it
+ * has — but a row that has to be tapped a hundred times to come back round
+ * is not a row. Six is past what anyone keeps of one version and short enough
+ * to walk.
+ */
+private const val MAX_GAME_SLOTS = 6

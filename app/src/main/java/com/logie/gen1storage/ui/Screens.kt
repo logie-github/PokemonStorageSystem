@@ -1648,12 +1648,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     else listOf(
                         "YES" to {
                             model.dismissPrompt()
-                            val opened = TheGame.open(
-                                context,
-                                game.versionId,
-                                game.slot,
-                                game.chooseSave,
-                            )
+                            val opened = TheGame.open(context, game.versionId, game.slot)
                             if (!opened) {
                                 model.prompt(Prompt.Message(listOf("THE GAME WOULD NOT OPEN.")))
                             }

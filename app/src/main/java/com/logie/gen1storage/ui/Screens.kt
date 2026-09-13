@@ -1160,12 +1160,6 @@ private fun OptionsDrawerContent(
                     model.setShowAllItems(!state.showAllItems)
                 })
                 add(
-                    OptionRow(
-                        "WITHDRAW/DEPOSIT",
-                        if (state.classicTransferLabels) "ON" else "OFF",
-                    ) { model.setClassicTransferLabels(!state.classicTransferLabels) }
-                )
-                add(
                     OptionRow("BILL'S PC", if (state.billsPc) "ON" else "OFF") {
                         model.setBillsPc(!state.billsPc)
                     }
@@ -1249,7 +1243,6 @@ private fun OptionsDrawerContent(
                 } else {
                     add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
                 }
-                add(OptionRow("SAVE FILES") { model.open(Screen.Restore) })
             }
 
             OptionsDrawer.ABOUT -> {
@@ -1648,7 +1641,12 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                     else listOf(
                         "YES" to {
                             model.dismissPrompt()
-                            val opened = TheGame.open(context, game.versionId, game.slot)
+                            val opened = TheGame.open(
+                                context,
+                                game.versionId,
+                                game.slot,
+                                game.playthroughId,
+                            )
                             if (!opened) {
                                 model.prompt(Prompt.Message(listOf("THE GAME WOULD NOT OPEN.")))
                             }

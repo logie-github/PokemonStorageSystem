@@ -117,8 +117,6 @@ sealed interface Screen {
     /** One playthrough's trainer card, read at full size. */
     data class TrainerCard(val key: String) : Screen
     data object Options : Screen
-    /** Every copy the app kept of a save before it wrote over it. */
-    data object Restore : Screen
     /** The four that only evolve by being traded, and the machine to do it. */
     data object Trade : Screen
     /** One Pokédex over every cartridge at once, and over the PC. */
@@ -211,6 +209,8 @@ sealed interface Prompt {
     data class Cartridge(
         val versionId: String,
         val slot: String?,
+        /** What every device on the account calls this save. */
+        val playthroughId: String?,
         val label: String,
         val trainerName: String?,
     )
@@ -265,7 +265,6 @@ data class UiState(
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
     val windowsOnRight: Boolean = true,
-    val classicTransferLabels: Boolean = false,
     /** Whether this app's storage is called BILL'S PC instead of LOGIE'S PC. */
     val billsPc: Boolean = false,
     /** How fast the text prints, as the games' OPTIONS screen puts it. */
@@ -320,8 +319,8 @@ data class UiState(
     val pokemonPcLabel: String get() = if (billsPc) "BILL'S PC" else "LOGIE'S PC"
 
     /** Out of this PC, and into it, as the player has asked them to be named. */
-    val outLabel: String get() = if (classicTransferLabels) "WITHDRAW" else "TRANSFER OUT"
-    val inLabel: String get() = if (classicTransferLabels) "DEPOSIT" else "TRANSFER IN"
+    val outLabel: String get() = "TRANSFER OUT"
+    val inLabel: String get() = "TRANSFER IN"
     val palette: GbPalette get() = GbPalette.fromId(paletteId)
     val saves: List<RemoteSave> get() = account?.saves.orEmpty()
     fun remote(key: String?): RemoteSave? = saves.firstOrNull { it.key == key }
@@ -414,7 +413,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
-                classicTransferLabels = settings.classicTransferLabels,
                 billsPc = settings.billsPc,
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
@@ -519,13 +517,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 // the id the game uploaded, the second is a position counted
                 // off the game's own save screen.
                 slot = written.slot ?: settings.gameSlot(written.key)?.toString(),
+                playthroughId = written.playthroughId,
                 label = written.version.label,
                 trainerName = written.summary.trainerName?.uppercase(),
             )
             else -> touched.firstNotNullOfOrNull { key ->
                 GameVersion.fromId(key.substringBefore('/'))
             }?.let {
-                Prompt.Cartridge(it.id, null, it.label, null)
+                Prompt.Cartridge(it.id, null, null, it.label, null)
             }
         }
         val said = Prompt.Message(lines, openGame = cartridge)
@@ -816,11 +815,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.paletteId = palette.id
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
-    }
-
-    fun setClassicTransferLabels(on: Boolean) {
-        settings.classicTransferLabels = on
-        mutable.update { it.copy(classicTransferLabels = on) }
     }
 
     fun setReduceMotion(on: Boolean) {
@@ -1787,7 +1781,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 is TransferResult.Refused -> add(stopped.reason)
                 is TransferResult.NeedsRecovery -> {
                     add(stopped.reason)
-                    add("NOTHING WAS LOST. OPEN SAVE FILES TO FINISH IT.")
+                    add("NOTHING WAS LOST. THE NEXT SYNC FINISHES IT.")
                 }
             }
         }
@@ -1837,7 +1831,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             is TransferResult.Refused -> message(result.reason)
             is TransferResult.NeedsRecovery -> message(
                 result.reason,
-                "NOTHING WAS LOST. OPEN SAVE FILES TO FINISH IT.",
+                "NOTHING WAS LOST. THE NEXT SYNC FINISHES IT.",
             )
         }
         refreshTransferSources(*touched)
@@ -2080,54 +2074,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun localBackups(): List<SaveBackups.Entry> = backups.all()
-
-    // ------- the copies kept before each write
-
-    /** One kept copy, as SAVE FILES reads it. */
-    data class BackupRow(
-        /** The cartridge it belongs to, named the way the carts are. */
-        val cart: String,
-        val takenAt: String,
-        /** What is in it, so a player can tell two copies apart. */
-        val summary: String,
-        val readable: Boolean,
-    )
-
-    /**
-     * Every copy the app has kept, newest first.
-     *
-     * Read and classified so the list can say what is in each rather than
-     * only when it was taken. Evidence, and nothing more: this app cannot put
-     * one back over a cartridge. The game is what owns a save, and an app that
-     * can overwrite one wholesale is an app that can undo an evening of
-     * playing because a transfer looked wrong.
-     */
-    fun backupRows(): List<BackupRow> {
-        val current = mutable.value
-        return backups.all().map { entry ->
-            val remote = current.remote(entry.key)
-            val cart = remote?.let {
-                settings.cartName(it.key) ?: "${it.version.label} ${it.label}"
-            } ?: entry.key
-            val save = backups.read(entry)?.let { SaveClassifier.classify(it).save }
-            BackupRow(
-                cart = cart.uppercase(),
-                takenAt = Instant.ofEpochMilli(entry.savedAtMillis).toString().take(19).replace('T', ' '),
-                summary = save?.let {
-                    "${it.partyCount} OUT, ${it.storedCount} STORED, ${it.badgeCount} BADGES"
-                } ?: "UNREADABLE",
-                readable = save != null,
-            )
-        }
-    }
-
-    /** What the app believes it has handed to which cartridge. */
-    fun placements(): List<Placement> = engine.placements()
-
-    fun forgetPlacement(fingerprint: String) {
-        engine.forgetPlacement(fingerprint)
-        message("THE RECORD WAS CLEARED.")
-    }
 
     fun debugReport(): String {
         val current = mutable.value

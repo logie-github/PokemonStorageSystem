@@ -62,7 +62,7 @@ data class Placement(
  * right behaviour: a Pokémon the player has actually used has clearly not been
  * duplicated by this app, and its entry stops matching anything. Stale entries
  * are pruned by age rather than kept forever, and a player who knows an entry
- * is wrong can drop it from SAVE FILES.
+ * is wrong takes it out of that save.
  */
 class PlacementLedger(private val directory: File) {
 

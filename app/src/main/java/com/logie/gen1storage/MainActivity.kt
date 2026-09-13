@@ -55,7 +55,6 @@ import com.logie.gen1storage.ui.Gen1NoOverscroll
 import com.logie.gen1storage.ui.rememberConfirmTick
 import com.logie.gen1storage.ui.rememberCursorTick
 import com.logie.gen1storage.ui.Gen1EvolutionScene
-import com.logie.gen1storage.ui.RestoreScreen
 import com.logie.gen1storage.ui.DexEntryScreen
 import com.logie.gen1storage.ui.DexStatsScreen
 import com.logie.gen1storage.ui.DexScreen
@@ -362,7 +361,6 @@ private fun ScreenContent(
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
         is Screen.TrainerCard -> TrainerCardScreen(state, model, screen.key)
-        Screen.Restore -> RestoreScreen(state, model)
         Screen.Trade -> TradeScreen(state, model)
         Screen.Dex -> DexScreen(state, model)
         is Screen.DexEntry -> DexEntryScreen(state, model, screen.speciesId)

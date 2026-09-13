@@ -89,7 +89,7 @@ class TransferEngine(
         targetBox: Int = 1,
     ): TransferResult {
         journal.read()?.let {
-            return TransferResult.Refused("A PREVIOUS TRANSFER IS UNRESOLVED. OPEN SAVE FILES FIRST.")
+            return TransferResult.Refused("A PREVIOUS TRANSFER IS UNRESOLVED. SYNC FIRST.")
         }
 
         // 1. Re-read now: anything listed or opened earlier may be stale.
@@ -154,7 +154,7 @@ class TransferEngine(
                 // Bookkeeping, and bookkeeping never decides a transfer. The
                 // write has landed by this point; a ledger that could not be
                 // updated must not turn a move that happened into a failure
-                // report, and a stale record is droppable from SAVE FILES.
+                // report.
                 runCatching { ledger.forgetFrom(removedFingerprint, fresh.key) }
                 if (!holdsExactlyOne(uid)) {
                     TransferResult.NeedsRecovery("THE PC DID NOT END UP WITH EXACTLY ONE COPY. CHECK STORAGE BOXES.")
@@ -190,7 +190,7 @@ class TransferEngine(
         target: WithdrawTarget,
     ): TransferResult {
         journal.read()?.let {
-            return TransferResult.Refused("A PREVIOUS TRANSFER IS UNRESOLVED. OPEN SAVE FILES FIRST.")
+            return TransferResult.Refused("A PREVIOUS TRANSFER IS UNRESOLVED. SYNC FIRST.")
         }
         val stored = storage.get(uid) ?: return TransferResult.Refused("THAT POKéMON IS NOT IN STORAGE")
 
@@ -217,7 +217,7 @@ class TransferEngine(
             if (held.saveKey != fresh.key) {
                 return TransferResult.Refused(
                     "THE PC PUT ${stored.pokemon.displayName.uppercase()} IN ${held.savePath.uppercase()}. " +
-                        "TAKE IT OUT OF THERE FIRST, OR CLEAR THE RECORD IN SAVE FILES."
+                        "TAKE IT OUT OF THERE FIRST."
                 )
             }
         }
@@ -320,7 +320,7 @@ class TransferEngine(
                 listOf(
                     "A ${entry.kind.name.lowercase()} on ${entry.savePath} was interrupted and the " +
                         "game has since saved over it. Both copies were kept. Check the PC and the " +
-                        "save, then clear the record from SAVE FILES."
+                        "save."
                 ),
             )
         }

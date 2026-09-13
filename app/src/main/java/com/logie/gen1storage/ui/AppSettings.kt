@@ -72,15 +72,6 @@ class AppSettings(private val prefs: SharedPreferences) {
     }
 
     /**
-      * Say WITHDRAW and DEPOSIT rather than TRANSFER OUT and TRANSFER IN, on
-      * the Pokémon PC and the item PC alike. Off, so the plain reading of
-      * which way a thing is going is what a player meets first.
-      */
-    var classicTransferLabels: Boolean
-        get() = prefs.getBoolean(KEY_CLASSIC_LABELS, false)
-        set(value) = prefs.edit().putBoolean(KEY_CLASSIC_LABELS, value).apply()
-
-    /**
      * How fast the text prints, as the games' own OPTIONS put it.
      *
      * MID is the cartridge's default and this one's. Kept as the enum's name
@@ -223,7 +214,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_CART_PREFIX = "cart-name-"
         const val KEY_TRAINER_PREFIX = "trainer-sprite-"
         const val KEY_GAME_SLOT_PREFIX = "game-slot-"
-        const val KEY_CLASSIC_LABELS = "classic-transfer-labels"
         const val KEY_BILLS_PC = "bills-pc"
         const val KEY_TRADE_EVOLUTION = "trade-evolution"
         const val KEY_TRADE_ANIMATION = "trade-animation"

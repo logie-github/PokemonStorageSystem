@@ -51,11 +51,17 @@ object TheGame {
     /**
      * Starts the game, at [gameVersionId] and [slot] where they are known.
      *
-     * [slot] is the save itself rather than the game: an account can hold
-     * several playthroughs of one version, and the one worth opening is the
-     * one that was just written to. Upstream's `LaunchOptions.selectSlot`
-     * takes either a slot id or a position in that game's save list, and
-     * makes it active before the game boots.
+     * [slot] and [playthroughId] are the save itself rather than the game: an
+     * account can hold several playthroughs of one version, and the one worth
+     * opening is the one that was just written to.
+     *
+     * `LaunchOptions.selectSlot` takes a slot id or a position in that game's
+     * save list, and both of those are the device's own business — the slot
+     * id is its private numbering and the position is whatever order it lists
+     * them in. The playthrough id is the one name a save has outside the
+     * device holding it, which is why it is sent as well: a build that
+     * resolves it opens the right save with nothing to configure, and one
+     * that does not ignores the parameter.
      *
      * Never the launcher, even with no slot to name. A link that names a game
      * goes through `Prelaunch`, which runs `SyncEngine:syncNow` on the way in
@@ -68,9 +74,17 @@ object TheGame {
      * Returns false if nothing could be started, so a caller can say so rather
      * than look like it did something.
      */
-    fun open(context: Context, gameVersionId: String? = null, slot: String? = null): Boolean {
+    fun open(
+        context: Context,
+        gameVersionId: String? = null,
+        slot: String? = null,
+        playthroughId: String? = null,
+    ): Boolean {
         val name = installedPackage(context) ?: return false
-        val deepLink = Intent(Intent.ACTION_VIEW, launchUri(gameVersionId, slot)).apply {
+        val deepLink = Intent(
+            Intent.ACTION_VIEW,
+            launchUri(gameVersionId, slot, playthroughId),
+        ).apply {
             setPackage(name)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
@@ -80,17 +94,23 @@ object TheGame {
         return start(context, launcher)
     }
 
-    private fun launchUri(gameVersionId: String?, slot: String?): Uri =
+    private fun launchUri(gameVersionId: String?, slot: String?, playthroughId: String?): Uri =
         Uri.Builder()
             .scheme(SCHEME)
             .authority("launch")
             .apply {
                 gameVersionId?.lowercase()?.takeIf { it.isNotBlank() }
                     ?.let { appendQueryParameter("game", it) }
-                // Only alongside a game: a slot means nothing without the
-                // version it belongs to, and upstream reads the two together.
-                if (gameVersionId != null && !slot.isNullOrBlank()) {
-                    appendQueryParameter("slot", slot)
+                // Both only alongside a game: neither means anything without
+                // the version it belongs to, and upstream reads them together.
+                if (gameVersionId != null) {
+                    if (!slot.isNullOrBlank()) appendQueryParameter("slot", slot)
+                    // The one name for a save that exists outside the device
+                    // that holds it. A build that does not know the parameter
+                    // ignores it, which is the same as not sending it.
+                    if (!playthroughId.isNullOrBlank()) {
+                        appendQueryParameter("playthrough", playthroughId)
+                    }
                 }
             }
             .build()

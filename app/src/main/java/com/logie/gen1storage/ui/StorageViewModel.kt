@@ -1249,8 +1249,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // One bar over the lot rather than four in a row: the sets run one
         // after another and a bar that restarts three times reads as three
         // downloads rather than as one that is three quarters done.
-        val done = current.spritesInstalled + current.criesInstalled +
-            current.followersInstalled + current.trainersInstalled
+        //
+        // Counted a file at a time rather than a set at a time. The installed
+        // counts are only recounted off the disk when a set finishes, so a bar
+        // reading them alone sat still through four hundred files and then
+        // jumped a quarter — which is a bar that only says whether the thing
+        // is done, four times. Whichever is further along counts: the set
+        // running reports each file as it lands, and the three not running
+        // report what is already here.
+        val done = maxOf(current.spritesInstalled, current.spriteProgress?.done ?: 0) +
+            maxOf(current.criesInstalled, current.cryProgress?.done ?: 0) +
+            maxOf(current.followersInstalled, current.followerProgress?.done ?: 0) +
+            maxOf(current.trainersInstalled, current.trainerProgress?.done ?: 0)
         val running = all.any { !it.finished }
         return DownloadProgress(
             done = done.coerceAtMost(DOWNLOAD_TOTAL),

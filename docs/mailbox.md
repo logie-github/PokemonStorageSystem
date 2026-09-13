@@ -100,10 +100,14 @@ On sync, for each note addressed to a playthrough this device has:
    game is running, and the sync engine's `protectedKey` already refuses to
    write over a loaded save. A note for the save being played waits until the
    player is back in the launcher. That is also when they will next see it.
-2. **Open the slot and apply it** — `Trade.openSlot`, then `Trade.planIncoming`
-   for a `give` or `Trade.plan` for a `take`, then `Trade.commit`. This is the
-   same path online trades already use: no new save-editing code, and the same
-   validation and backups.
+2. **Open the slot and apply it.** `Trade.openSlot(version, slotId, cartId)`
+   gives a handle on a save that is not loaded, and `Trade.commit` writes one
+   with the validation and backups an online trade gets. What is *not* reusable
+   is the planning either side of it: `Trade.plan` and `Trade.planIncoming` are
+   both one-for-one swaps — `planIncoming` refuses an empty target ("that's not
+   in the PC") because it needs a Pokémon to send back. A note is one-way, so
+   the insert and the remove have to come from the game's own box code, the
+   same calls its PC screen makes, with `openSlot`/`commit` around them.
 3. **Check `expect` before a `take`.** If it does not match, resolve the note
    `refused` with a reason and change nothing.
 4. **Resolve the note, then upload the save.** In that order. A crash between

@@ -45,6 +45,30 @@ class Gen1Cursor {
         var index by mutableIntStateOf(0)
 
         /**
+         * Whether this is the layer the cursor is actually on.
+         *
+         * A screen that opens a list over itself keeps its own layer pushed —
+         * it is still there, underneath — but the cursor belongs to the list,
+         * and the screen underneath must stop drawing a mark it can no longer
+         * move. Two arrows on one screen, only one of which answers, is the
+         * single thing that made the swipe controls read as broken.
+         */
+        var active by mutableStateOf(true)
+
+        /**
+         * How many of the first indices are laid out as a grid.
+         *
+         * Everything from here on is a full-width row under it, one step
+         * apart: the box is six across and then CANCEL, and the two cannot
+         * share one column count. Defaults to all of them, which is every
+         * layer that is only ever one shape.
+         */
+        var grid: Int = Int.MAX_VALUE
+
+        /** The grid spot last stood on, so coming back up lands where it left. */
+        internal var lastInGrid: Int = 0
+
+        /**
          * A row that does something of its own with left and right — a count
          * to wind up and down, say. Given the row and the direction, and
          * returning whether it took it; anything it leaves alone moves the
@@ -72,10 +96,17 @@ class Gen1Cursor {
 
     fun push(layer: Layer) {
         layers.add(layer)
+        refresh()
     }
 
     fun remove(layer: Layer) {
         layers.remove(layer)
+        refresh()
+    }
+
+    /** Only the topmost layer is the cursor's, and only it draws a mark. */
+    private fun refresh() {
+        layers.forEachIndexed { at, layer -> layer.active = at == layers.lastIndex }
     }
 
     /** Up and down move by a row; left and right only where there are columns. */
@@ -86,6 +117,19 @@ class Gen1Cursor {
         if (direction == GbButton.LEFT || direction == GbButton.RIGHT) {
             if (layer.onSide?.invoke(layer.index, direction) == true) return
         }
+        val grid = layer.grid.coerceAtMost(layer.count)
+        if (layer.index >= grid) {
+            // In the rows under the grid: one step each way, and up off the
+            // first of them goes back to the spot in the grid it came from.
+            when (direction) {
+                GbButton.UP ->
+                    if (layer.index == grid) layer.index = layer.lastInGrid.coerceIn(0, grid - 1)
+                    else layer.index -= 1
+                GbButton.DOWN -> if (layer.index + 1 < layer.count) layer.index += 1
+                else -> Unit
+            }
+            return
+        }
         val step = when (direction) {
             GbButton.UP -> -layer.columns
             GbButton.DOWN -> layer.columns
@@ -94,12 +138,19 @@ class Gen1Cursor {
             else -> 0
         }
         if (step == 0) return
-        if (layer.wraps) {
+        if (layer.wraps && layer.count <= grid) {
             layer.index = ((layer.index + step) % layer.count + layer.count) % layer.count
             return
         }
         val target = layer.index + step
-        if (target !in 0 until layer.count) return
+        // Down off the bottom of the grid is the first row under it, where
+        // there is one — that is how CANCEL is reached without a finger.
+        if (direction == GbButton.DOWN && target >= grid && grid < layer.count) {
+            layer.lastInGrid = layer.index
+            layer.index = grid
+            return
+        }
+        if (target !in 0 until grid) return
         // Sideways has to stay on its own row as well as inside the grid:
         // index + 1 off the right-hand edge is a real index, just the wrong
         // one — the first spot of the next row down.
@@ -153,9 +204,20 @@ fun rememberCursorLayer(
     count: Int,
     columns: Int = 1,
     wraps: Boolean = true,
+    grid: Int = Int.MAX_VALUE,
     onSide: ((Int, GbButton) -> Boolean)? = null,
     onConfirm: (Int) -> Unit,
-): Int = rememberCursorLayerHandle(count, columns, wraps, onSide, onConfirm).index
+): Int = rememberCursorLayerHandle(count, columns, wraps, grid, onSide, onConfirm).at
+
+/**
+ * Where the cursor is on this layer, or -1 while something on top of it has
+ * the cursor instead.
+ *
+ * Every screen marks its row with `cursor == index`, so a layer that is not
+ * the active one reporting -1 is the whole of "the parent menu stops showing
+ * a cursor when a child opens" — no screen has to know it is underneath.
+ */
+val Gen1Cursor.Layer.at: Int get() = if (active) index else -1
 
 /**
  * The same layer, handed back whole.
@@ -169,6 +231,8 @@ fun rememberCursorLayerHandle(
     count: Int,
     columns: Int = 1,
     wraps: Boolean = true,
+    /** How many of the first indices are a grid; the rest are rows under it. */
+    grid: Int = Int.MAX_VALUE,
     onSide: ((Int, GbButton) -> Boolean)? = null,
     onConfirm: (Int) -> Unit,
 ): Gen1Cursor.Layer {
@@ -177,6 +241,7 @@ fun rememberCursorLayerHandle(
     layer.count = count
     layer.columns = columns
     layer.wraps = wraps
+    layer.grid = grid
     layer.onSide = onSide
     layer.onConfirm = onConfirm
     DisposableEffect(cursor, layer) {
@@ -227,27 +292,6 @@ class Gen1WindowBounds {
      */
     fun isHoldClaimed(point: Offset): Boolean = holds.values.any { it.contains(point) }
 
-    /** Lists that scroll by finger even while swipes are driving the cursor. */
-    private val scrollers = mutableStateMapOf<Any, Rect>()
-
-    fun setScroller(owner: Any, rect: Rect) {
-        scrollers[owner] = rect
-    }
-
-    fun forgetScroller(owner: Any) {
-        scrollers.remove(owner)
-    }
-
-    /**
-     * Whether a drag starting here belongs to a list rather than the cursor.
-     *
-     * One exception to swipe controls, and a narrow one: a list long enough
-     * to need dragging is a list the cursor can only walk one row at a time,
-     * and thirty taps to reach the bottom of it is worse than losing the
-     * swipe over that one rectangle. Everything else on the screen still
-     * reads a swipe as the D-pad.
-     */
-    fun isScroller(point: Offset): Boolean = scrollers.values.any { it.contains(point) }
 }
 
 val LocalGen1WindowBounds = staticCompositionLocalOf { Gen1WindowBounds() }
@@ -264,18 +308,6 @@ fun Modifier.gen1HoldRegion(): Modifier {
     return onGloballyPositioned { registry.setHold(owner, it.boundsInRoot()) }
 }
 
-/**
- * Marks this list as one that keeps its own drags: the gesture layer leaves
- * vertical swipes that start inside it alone, so it scrolls by finger even
- * with SWIPE CONTROLS on.
- */
-@Composable
-fun Modifier.gen1ScrollRegion(): Modifier {
-    val registry = LocalGen1WindowBounds.current
-    val owner = remember { Any() }
-    DisposableEffect(registry, owner) { onDispose { registry.forgetScroller(owner) } }
-    return onGloballyPositioned { registry.setScroller(owner, it.boundsInRoot()) }
-}
 
 /**
  * Reports this window's position to the gesture layer, and forgets it again

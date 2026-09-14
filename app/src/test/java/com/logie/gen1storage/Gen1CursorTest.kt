@@ -2,6 +2,7 @@ package com.logie.gen1storage
 
 import com.logie.gen1storage.ui.GbButton
 import com.logie.gen1storage.ui.Gen1Cursor
+import com.logie.gen1storage.ui.at
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -22,6 +23,102 @@ class Gen1CursorTest {
         wraps: Boolean = true,
         onConfirm: (Int) -> Unit = {},
     ) = Gen1Cursor.Layer(count, columns, wraps, onConfirm)
+
+    @Test
+    fun `only the topmost layer shows a cursor`() {
+        val cursor = Gen1Cursor()
+        val menu = layer(4)
+        cursor.push(menu)
+        assertTrue("alone, so it is the cursor's", menu.active)
+
+        val list = layer(9)
+        cursor.push(list)
+        assertFalse("a list opened over it takes the cursor", menu.active)
+        assertTrue(list.active)
+
+        cursor.remove(list)
+        assertTrue("and hands it back when it closes", menu.active)
+    }
+
+    @Test
+    fun `a layer under another reports no row at all`() {
+        val cursor = Gen1Cursor()
+        val menu = layer(4)
+        cursor.push(menu)
+        cursor.move(GbButton.DOWN)
+        assertEquals(1, menu.at)
+
+        cursor.push(layer(3))
+        // Every screen marks its row with `cursor == index`, so -1 is the
+        // whole of "the menu underneath stops drawing an arrow".
+        assertEquals(-1, menu.at)
+        assertEquals("and it is where it was when it comes back", 1, menu.index)
+    }
+
+    @Test
+    fun `down off the grid reaches the rows under it`() {
+        // The box: twenty spots six across, then CANCEL and a button.
+        val taken = mutableListOf<Int>()
+        val box = Gen1Cursor.Layer(22, 6, wraps = false) { taken += it }
+        box.grid = 20
+        val cursor = Gen1Cursor()
+        cursor.push(box)
+
+        // Along the top row and down to the bottom one.
+        repeat(3) { cursor.move(GbButton.DOWN) }
+        assertEquals(18, box.index)
+        cursor.move(GbButton.RIGHT)
+        assertEquals(19, box.index)
+
+        cursor.move(GbButton.DOWN)
+        assertEquals("the first row under the grid", 20, box.index)
+        cursor.move(GbButton.DOWN)
+        assertEquals(21, box.index)
+        cursor.move(GbButton.DOWN)
+        assertEquals("and no further", 21, box.index)
+
+        cursor.confirm()
+        assertEquals(listOf(21), taken)
+    }
+
+    @Test
+    fun `up off the rows lands back where it left the grid`() {
+        val box = Gen1Cursor.Layer(22, 6, wraps = false) { }
+        box.grid = 20
+        val cursor = Gen1Cursor()
+        cursor.push(box)
+
+        box.index = 15
+        cursor.move(GbButton.DOWN)
+        assertEquals(20, box.index)
+        cursor.move(GbButton.UP)
+        assertEquals("back to the spot it came from", 15, box.index)
+    }
+
+    @Test
+    fun `sideways does nothing on the rows under the grid`() {
+        val box = Gen1Cursor.Layer(22, 6, wraps = false) { }
+        box.grid = 20
+        val cursor = Gen1Cursor()
+        cursor.push(box)
+        box.index = 20
+
+        cursor.move(GbButton.LEFT)
+        cursor.move(GbButton.RIGHT)
+        assertEquals(20, box.index)
+    }
+
+    @Test
+    fun `a grid with nothing under it behaves as it always did`() {
+        val box = Gen1Cursor.Layer(20, 6, wraps = false) { }
+        box.grid = 20
+        val cursor = Gen1Cursor()
+        cursor.push(box)
+        box.index = 19
+
+        cursor.move(GbButton.DOWN)
+        assertEquals("the bottom row is the bottom", 19, box.index)
+    }
 
     @Test
     fun `the topmost menu owns the cursor`() {

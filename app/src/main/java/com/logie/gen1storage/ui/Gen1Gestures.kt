@@ -59,8 +59,6 @@ fun Modifier.gen1Gestures(
     swipes: Boolean,
     isFreeSpace: (Offset) -> Boolean,
     isHoldClaimed: (Offset) -> Boolean,
-    /** A list that keeps its own vertical drags. See [Modifier.gen1ScrollRegion]. */
-    isScroller: (Offset) -> Boolean = { false },
     onButton: (GbButton) -> Unit,
 ): Modifier = if (!swipes) this else this.then(
     Modifier.pointerInput(Unit) {
@@ -87,7 +85,6 @@ fun Modifier.gen1Gestures(
                 return@awaitEachGesture
             }
             val free = isFreeSpace(start)
-            val scroller = isScroller(start)
             var travelled = Offset.Zero
 
             /** Follows the pointer to its end, returning how far it ever got. */
@@ -137,17 +134,17 @@ fun Modifier.gen1Gestures(
             if (outcome == GestureOutcome.CANCELLED) return@awaitEachGesture
 
             // A swipe is the D-pad wherever it starts, and it is consumed so
-            // the list under it does not also move. A tap still belongs to
-            // whatever it landed on unless that was the screen itself.
+            // the list under it does not also move. Nowhere is exempt: a list
+            // that kept its own drags was one rectangle of the screen where
+            // up and down meant something else, and one exception is what
+            // makes the rest read as arbitrary rather than as a rule.
+            //
+            // A tap over a window belongs to the window, which hands it to
+            // [gen1Tap] and so to the cursor. Only a tap on the screen itself
+            // reaches the A below.
             if (!free) {
                 if (outcome == GestureOutcome.RELEASED) return@awaitEachGesture
-                // Except over a list that scrolls: a drag down it is the
-                // list's, so nothing is taken and nothing is consumed. A
-                // sideways one is still the D-pad.
-                if (scroller && abs(travelled.y) >= abs(travelled.x)) return@awaitEachGesture
-                val swiped = drain(travelled, consume = true)
-                if (scroller && abs(swiped.y) >= abs(swiped.x)) return@awaitEachGesture
-                direction(swiped, swipeThreshold)?.let(onButton)
+                direction(drain(travelled, consume = true), swipeThreshold)?.let(onButton)
                 return@awaitEachGesture
             }
 

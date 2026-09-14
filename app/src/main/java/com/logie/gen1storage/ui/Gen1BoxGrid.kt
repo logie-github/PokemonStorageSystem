@@ -213,12 +213,14 @@ fun Gen1BoxGrid(
     val rows = StorageLayout.BOX_ROWS
     val scroll = rememberLazyListState()
     val cries = LocalGen1Audio.current
-    // With swipes on the bracket is walked to a spot and then pressed, so a
-    // tap takes the spot the bracket is on wherever the finger lands — the
-    // cry included, which otherwise spoke for one Pokemon while another was
-    // taken. See [gen1Tap], which says the same thing for every other tap in
-    // the app.
+    // With swipes on the bracket is walked to a spot and then pressed: a tap
+    // anywhere is the A button and A takes whatever the cursor is holding,
+    // which may be a spot in this grid or one of the rows under it. So the
+    // tap goes to the cursor rather than to the cell it landed on — the cry
+    // included, which otherwise spoke for one Pokemon while another was
+    // taken. See [gen1Tap], which says the same for every other tap.
     val tapTakesCursor = LocalGen1Swipe.current
+    val whole = LocalGen1Cursor.current
 
     // Every row is exactly one cell tall, so how far the list has travelled is
     // arithmetic rather than a measurement.
@@ -286,11 +288,15 @@ fun Gen1BoxGrid(
                         .gen1HoldRegion()
                         .pointerInput(row, columns, cellPx) {
                             detectTapGestures { at ->
-                                val touched = slotAt(onGrid(at))
-                                val slot =
-                                    if (tapTakesCursor) cursorSlot.takeIf { touched != null }
-                                    else touched
-                                slot?.let {
+                                if (tapTakesCursor) {
+                                    cursorSlot?.let { slot ->
+                                        box.slots.getOrNull(slot)?.pokemon?.species?.dexNumber
+                                            ?.let { dex -> cries?.cry(dex) }
+                                    }
+                                    whole.confirm()
+                                    return@detectTapGestures
+                                }
+                                slotAt(onGrid(at))?.let {
                                     // It speaks when it is touched, the way the
                                     // sprite on the status screen does.
                                     box.slots.getOrNull(it)?.pokemon?.species?.dexNumber
@@ -506,19 +512,38 @@ fun BoxGridOverlay(
      */
     onRename: (() -> Unit)? = null,
 ) {
-    // The grid owns the cursor while this window is open, and a tap puts the
-    // cursor where the finger went so both ways of driving it agree about
-    // what is picked.
+    // The window owns the cursor while it is open, and it owns all of it: the
+    // grid, then the rows under it. A choice the cursor could not reach was a
+    // choice only a finger could take, and a screen where some things answer
+    // to the cursor and some do not is the whole of what made the swipe
+    // controls read as arbitrary.
     val slots = StorageLayout.BOX_CAPACITY
+    val tail = buildList<Pair<String, () -> Unit>> {
+        add("CANCEL" to onCancel)
+        if (actionLabel != null) add(actionLabel to onAction)
+        if (onRename != null) add(box.label to onRename)
+    }
     val layer = rememberCursorLayerHandle(
-        count = slots,
+        count = slots + tail.size,
         columns = StorageLayout.BOX_COLUMNS,
         wraps = false,
-    ) { slot -> onTap(slot) }
+        grid = slots,
+    ) { index ->
+        if (index < slots) onTap(index) else tail.getOrNull(index - slots)?.second?.invoke()
+    }
     // Once, on the way in: after that the cursor is the player's.
     LaunchedEffect(Unit) { startSlot?.let { layer.index = it.coerceIn(0, slots - 1) } }
-    val cursorSlot = layer.index
-    LaunchedEffect(cursorSlot) { onHighlight(cursorSlot) }
+    // The spot the bracket is on, and null while the cursor is on a row under
+    // the grid or has been taken by a window over this one.
+    val cursorSlot = layer.index.takeIf { layer.active && it < slots }
+    // What the head shows: the last spot stood on, so walking down to CANCEL
+    // does not empty the picture above the box.
+    var headSlot by remember { mutableIntStateOf(0) }
+    LaunchedEffect(layer.index) { if (layer.index < slots) headSlot = layer.index }
+    val onTail = layer.at.takeIf { it >= slots }?.minus(slots) ?: -1
+    // The pane beside the box follows the spot last stood on, so it keeps
+    // showing that Pokemon while the cursor is down on CANCEL.
+    LaunchedEffect(headSlot) { onHighlight(headSlot) }
 
 
     // Folded there is one column and the box is the whole of what is on
@@ -545,19 +570,29 @@ fun BoxGridOverlay(
             // and the room it took is room the grid could have had.
             if (!unfolded) {
                 BoxHead(
-                    stored = box.slots.getOrNull(cursorSlot),
+                    stored = box.slots.getOrNull(headSlot),
                     sprites = sprites,
                     spriteRevision = revision,
                     modifier = Modifier.width(gen1Dp(HEAD_PIXELS)),
                 )
                 Spacer(Modifier.height(gen1Dp(3)))
             }
-            GbText(
-                box.label,
-                modifier = if (onRename == null) Modifier
-                else Modifier.gen1Clickable(offCursor = true) { onRename() },
-                maxLines = 1,
-            )
+            // The name, with the cursor's mark before it when the cursor is
+            // on it — it is a row like any other, it just happens to sit at
+            // the top of the window rather than the bottom.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onRename != null) {
+                    Box(Modifier.width(gen1Dp(CURSOR_MARK_PIXELS))) {
+                        if (onTail == tail.lastIndex) GbText("▶", maxLines = 1)
+                    }
+                }
+                GbText(
+                    box.label,
+                    modifier = if (onRename == null) Modifier
+                    else Modifier.gen1Clickable { onRename() },
+                    maxLines = 1,
+                )
+            }
             GbText(
                 when {
                     heldName != null -> "PUT $heldName WHERE?"
@@ -595,10 +630,9 @@ fun BoxGridOverlay(
             Spacer(Modifier.height(gen1Dp(2)))
             Gen1MenuRow(
                 "CANCEL",
-                selected = false,
+                selected = onTail == 0,
                 onSelect = {},
                 onConfirm = onCancel,
-                offCursor = true,
             )
         }
         if (actionLabel != null) {
@@ -606,7 +640,7 @@ fun BoxGridOverlay(
                 Modifier.fillMaxSize().padding(gen1Dp(4)),
                 contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
             ) {
-                Gen1BoxButton(actionLabel, onAction, offCursor = true)
+                Gen1BoxButton(actionLabel, onAction, selected = onTail == 1)
             }
         }
     }
@@ -647,6 +681,9 @@ private const val SPRITE_PIXELS = 16
 
 /** How far each arm of a cursor bracket reaches along its edges. */
 private const val BRACKET_ARM_PIXELS = 4
+
+/** The width the cursor's mark is given beside the box's name. */
+private const val CURSOR_MARK_PIXELS = 10
 
 /** The front sprite over the box, at the size the games draw one. */
 private const val HEAD_SPRITE_PIXELS = 56

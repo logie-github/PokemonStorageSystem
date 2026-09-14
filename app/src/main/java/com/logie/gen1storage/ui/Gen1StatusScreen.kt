@@ -85,8 +85,21 @@ fun Gen1StatusScreen(
      * Pokémon above it, so it belongs to it.
      */
     underBox: @Composable () -> Unit = {},
+    /**
+     * Which page is showing, where the screen around this one is driving it.
+     *
+     * The pages are a sideways thing — the cartridge turns them with left and
+     * right — and the cursor on this screen belongs to the actions beside it,
+     * so the screen that owns that cursor is the one that can give left and
+     * right to the pages. Left null the pages turn themselves, which is what
+     * a pane and a tap do.
+     */
+    page: Int? = null,
+    onPage: ((Int) -> Unit)? = null,
 ) {
-    var page by remember(pokemon.fingerprint) { mutableStateOf(0) }
+    var ownPage by remember(pokemon.fingerprint) { mutableStateOf(0) }
+    val shownPage = page ?: ownPage
+    val turnPage: (Int) -> Unit = onPage ?: { ownPage = it }
 
     // One cry, when a Pokémon is opened — not on every page turn, and not
     // again when something unrelated recomposes.
@@ -103,9 +116,7 @@ fun Gen1StatusScreen(
         Gen1Frame(
             Modifier
                 .fillMaxWidth()
-                // No cursor turns these pages, so the tap that does stays
-                // its own under swipes.
-                .gen1Clickable(offCursor = true) { page = (page + 1) % PAGES },
+                .gen1Clickable { turnPage((shownPage + 1) % PAGES) },
         ) {
             // Drawn here rather than inside either page. Turning the page used
             // to build a new sprite whose image started empty, and the
@@ -130,7 +141,7 @@ fun Gen1StatusScreen(
                 }
                 Spacer(Modifier.width(gen1Dp(4)))
                 Gen1CornerRule(Modifier.weight(1f)) {
-                    when (page) {
+                    when (shownPage) {
                         0 -> StatusHeaderOne(pokemon)
                         1 -> StatusHeaderTwo(pokemon)
                         else -> StatusHeaderThree(pokemon, gameVersionId)
@@ -141,7 +152,7 @@ fun Gen1StatusScreen(
             // No prompt to turn the page. The whole window takes a tap and
             // there are only three: a player finds that in one tap and never
             // needs telling again.
-            when (page) {
+            when (shownPage) {
                 0 -> StatusPageOne(pokemon)
                 1 -> StatusPageTwo(pokemon)
                 else -> StatusPageThree(pokemon, gameVersionId)
@@ -390,4 +401,4 @@ private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
 }
 
 /** Stats, moves, and the Pokédex entry. */
-private const val PAGES = 3
+const val PAGES = 3

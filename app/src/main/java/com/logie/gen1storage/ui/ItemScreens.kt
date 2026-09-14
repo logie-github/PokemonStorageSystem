@@ -86,13 +86,14 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
     var mode by remember { mutableStateOf(ItemMode.MENU) }
 
     if (!state.showAllItems && (save == null || key == null)) {
+        val only = rememberCursorLayer(1) { model.open(Screen.ChooseCart(null)) }
         ScreenColumn {
             item { Gen1Frame(Modifier.wrapContentWidth()) { GbText("NO CART IN THE MACHINE.") } }
             item {
                 Gen1BoxButton(
                     "TRAINER CARD",
                     { model.open(Screen.ChooseCart(null)) },
-                    offCursor = true,
+                    selected = only == 0,
                 )
             }
         }
@@ -116,7 +117,12 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
         state.outLabel to { mode = ItemMode.WITHDRAW },
         state.inLabel to { mode = ItemMode.DEPOSIT },
     )
-    val cursor = rememberCursorLayer(rows.size) { rows[it].second() }
+    // BACK is the third row rather than a button off the cursor's list: every
+    // choice on a screen belongs to the cursor, or the swipe controls are a
+    // rule with exceptions.
+    val cursor = rememberCursorLayer(rows.size + 1) { index ->
+        if (index < rows.size) rows[index].second() else model.back()
+    }
 
     Box(Modifier.fillMaxSize()) {
         ScreenColumn {
@@ -144,7 +150,7 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
                     }
                 }
             }
-            item { Gen1BoxButton("BACK", { model.back() }, offCursor = true) }
+            item { Gen1BoxButton("BACK", { model.back() }, selected = cursor == rows.size) }
         }
 
         if (mode != ItemMode.MENU) {

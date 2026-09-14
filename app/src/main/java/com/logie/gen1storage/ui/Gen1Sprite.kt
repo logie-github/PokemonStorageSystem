@@ -91,6 +91,8 @@ fun Gen1Sprite(
         settled = true
     }
 
+    val swipes = LocalGen1Swipe.current
+    val cursor = LocalGen1Cursor.current
     Box(
         modifier
             .then(if (sizeInPixels == null) Modifier else Modifier.size(gen1Dp(sizeInPixels)))
@@ -99,9 +101,21 @@ fun Gen1Sprite(
                     // Claims the hold when it has one of its own, so the back
                     // gesture does not fire alongside the picker.
                     (if (onLongPress != null) Modifier.gen1HoldRegion() else Modifier)
-                        .pointerInput(speciesId, onTap) {
+                        .pointerInput(speciesId, onTap, swipes, cursor) {
                         detectTapGestures(
-                            onTap = onTap?.let { tap -> { _ -> tap() } },
+                            onTap = onTap?.let { tap ->
+                                { _ ->
+                                    // A sprite's tap speaks rather than
+                                    // chooses, so it is not a choice the
+                                    // cursor can be on. Under swipes a tap is
+                                    // still the A button as well: it cries
+                                    // and then takes whatever is selected,
+                                    // instead of being the one place on the
+                                    // screen where a tap does nothing.
+                                    tap()
+                                    if (swipes) cursor.confirm()
+                                }
+                            },
                             onLongPress = onLongPress?.let { press -> { _ -> press(speciesId) } },
                         )
                     }

@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -802,9 +803,17 @@ fun StatusScreen(
         addAll(cardActions)
         add(BACK_LABEL to { model.back() })
     }
-    val at = rememberCursorLayer(actions.size) { index ->
-        actions.getOrNull(index)?.second?.invoke()
-    }
+    // Up and down walk the actions; left and right turn the pages, which is
+    // how the cartridge turns them and the only place on this screen a
+    // sideways swipe has anything to do.
+    var page by remember(pokemon.fingerprint) { mutableIntStateOf(0) }
+    val at = rememberCursorLayer(
+        actions.size,
+        onSide = { _, button ->
+            page = (page + if (button == GbButton.RIGHT) 1 else PAGES - 1) % PAGES
+            true
+        },
+    ) { index -> actions.getOrNull(index)?.second?.invoke() }
     fun isOn(label: String) = actions.getOrNull(at)?.first == label
 
     Gen1StatusScreen(
@@ -812,6 +821,8 @@ fun StatusScreen(
         gameVersionId = gameVersionId,
         store = model.sprites,
         spriteRevision = state.spriteRevision,
+        page = page,
+        onPage = { page = it },
         // Only for one this app is holding: a Pokémon still in a save came
         // from the save it is in.
         provenance = if (key == null) {

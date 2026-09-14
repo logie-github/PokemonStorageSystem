@@ -181,13 +181,13 @@ fun ChooseCartScreen(
             if (!pickingGame) scroll.scrollToRow(cursor / columns) else scroll.scrollToRow(0)
         }
         LazyColumn(
-            // The one list in the app that scrolls by finger whatever SWIPE
-            // CONTROLS is set to: an account can hold a dozen cards and
-            // walking to the last of them a row at a time is not a way to
-            // pick one. A sideways swipe over it is still the D-pad.
-            Modifier.gen1ScrollRegion(),
             state = scroll,
             verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+            // With swipes on the list follows the cursor and nothing else: a
+            // drag that both scrolls and steps does neither predictably, and
+            // one list that dragged while the rest did not was worse than
+            // either rule on its own.
+            userScrollEnabled = !LocalGen1Swipe.current,
         ) {
             items(saves.chunked(columns)) { row ->
                 Row(

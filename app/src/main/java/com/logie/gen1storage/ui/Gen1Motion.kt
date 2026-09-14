@@ -69,7 +69,11 @@ object Gen1Motion {
  * making the app harder to use.
  */
 suspend fun LazyListState.scrollToRow(index: Int) {
-    if (Gen1Motion.moves(Motion.SCROLL)) animateScrollToItem(index) else scrollToItem(index)
+    // A screen whose cursor has been taken by something on top of it reports
+    // no row at all, and a list still following it should sit where it is
+    // rather than be asked to scroll to nowhere.
+    val row = index.coerceAtLeast(0)
+    if (Gen1Motion.moves(Motion.SCROLL)) animateScrollToItem(row) else scrollToItem(row)
 }
 
 /**

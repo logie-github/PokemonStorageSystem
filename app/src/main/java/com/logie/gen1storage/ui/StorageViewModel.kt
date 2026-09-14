@@ -296,6 +296,8 @@ data class UiState(
     val reduceMotion: Boolean = false,
     /** Whether Android may copy this app into the player's Google account. */
     val cloudBackup: Boolean = false,
+    /** Whether Generation II art follows the palette instead of its own colours. */
+    val gbcFollowsPalette: Boolean = false,
     /** Swipes drive the cursor, and lists do not scroll under a finger. */
     val swipeControls: Boolean = false,
     val motionsOn: Set<String> = emptySet(),
@@ -412,6 +414,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         noticeRestore()
+        sprites.gbcFollowsPalette = settings.gbcFollowsPalette
         applySpriteTint(GbPalette.fromId(settings.paletteId))
         mutable.update {
             it.copy(
@@ -428,6 +431,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
                 cloudBackup = settings.cloudBackup,
+                gbcFollowsPalette = settings.gbcFollowsPalette,
                 swipeControls = settings.swipeControls,
                 motionsOn = enabledMotions(),
                 haptics = settings.haptics,
@@ -844,6 +848,20 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setReduceMotion(on: Boolean) {
         settings.reduceMotion = on
         mutable.update { it.copy(reduceMotion = on, motionsOn = enabledMotions()) }
+    }
+
+    /**
+     * Whether Generation II art is shown in the palette or in its own colours.
+     *
+     * The sprite cache is keyed on it, so the change is on screen at once
+     * rather than at the next thing that happens to reload a sprite.
+     */
+    fun setGbcFollowsPalette(on: Boolean) {
+        settings.gbcFollowsPalette = on
+        sprites.gbcFollowsPalette = on
+        mutable.update {
+            it.copy(gbcFollowsPalette = on, spriteRevision = it.spriteRevision + 1)
+        }
     }
 
     fun setPrinterBorder(on: Boolean) {
@@ -2221,5 +2239,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
  * the trainers with the sheets that come down beside them.
  */
 private val DOWNLOAD_TOTAL: Int =
-    SpriteSet.downloadable.size * 151 + 151 + 251 +
+    // Every set's 151 sprites, and — once — the shiny colours the three
+    // Generation II sets share.
+    SpriteSet.downloadable.size * 151 +
+        (if (SpriteSet.downloadable.any { it.generation == 2 }) 151 else 0) +
+        151 + 251 +
         (TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size)

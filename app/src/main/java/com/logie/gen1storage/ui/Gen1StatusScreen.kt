@@ -117,6 +117,7 @@ fun Gen1StatusScreen(
                     revision = spriteRevision,
                     onLongPress = onSpriteLongPress,
                     onTap = { cries?.cry(pokemon.species?.dexNumber) },
+                    shiny = pokemon.isShiny,
                 )
             }
             Row(Modifier.fillMaxWidth()) {

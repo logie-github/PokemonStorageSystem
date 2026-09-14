@@ -1,7 +1,6 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,10 +24,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -68,23 +64,27 @@ fun ChooseCartScreen(
     // already held at the revision the account reports, so coming back here is
     // free.
     LaunchedEffect(state.saves) { model.loadAllSaves() }
-    val games = listOf(
-        GameVersion.RED to R.drawable.title_red,
-        GameVersion.BLUE to R.drawable.title_blue,
-        GameVersion.YELLOW to R.drawable.title_yellow,
-    )
+    // The six cards on the shelf. The Generation I three open that game's
+    // saves; the Generation II three say so and do nothing else, which is all
+    // an app that cannot read a Gold save yet can honestly offer.
+    val shelf = TITLE_CARDS
 
     val saves = if (game == null) emptyList() else state.saves.filter { it.version.id == game }
     // Two columns once there is room for two, one otherwise. A save is a
     // window like every other window here, so it is capped the same way and
     // never runs the width of an opened screen.
     val columns = if (isUnfolded()) 2 else 1
-    val choose: (RemoteSave) -> Unit = { remote ->
+    val chooseSave: (RemoteSave) -> Unit = { remote ->
         if (sending) model.chooseWithdrawSave(sendUids, remote.key)
         else model.chooseCart(remote.key, thenOpenStorage)
     }
-    val openGame: (GameVersion) -> Unit = { version ->
-        model.replace(Screen.ChooseCart(version.id, sendUids, thenOpenStorage))
+    val choose: (TitleCardArt) -> Unit = { card ->
+        val version = card.version
+        if (version != null) {
+            model.replace(Screen.ChooseCart(version.id, sendUids, thenOpenStorage))
+        } else {
+            model.prompt(Prompt.Message(listOf("${card.label} IS NOT SUPPORTED YET.")))
+        }
     }
     // Whichever of the two things on this screen is the one to take: the games
     // until one is picked and shown to have saves, the saves after that. The
@@ -93,111 +93,48 @@ fun ChooseCartScreen(
     // only be tapped.
     val pickingGame = saves.isEmpty()
     val cursor = rememberCursorLayer(
-        count = if (pickingGame) games.size else saves.size,
-        columns = if (pickingGame) games.size else columns,
+        count = if (pickingGame) shelf.size else saves.size,
+        columns = if (pickingGame) shelf.size else columns,
     ) { index ->
-        if (pickingGame) games.getOrNull(index)?.let { (version, _) -> openGame(version) }
-        else saves.getOrNull(index)?.let(choose)
+        if (pickingGame) shelf.getOrNull(index)?.let(choose)
+        else saves.getOrNull(index)?.let(chooseSave)
     }
-
-    // Which shelf of cards is on top. Generation II is a second page rather
-    // than three more cards in the row: they are here to be looked at and
-    // there is nothing to pick, so they should not sit among the three that
-    // can be.
-    var showingGen2 by remember { mutableStateOf(false) }
 
     Column(
         Modifier
             .fillMaxSize()
             .gen1Ground()
-            .padding(gen1Dp(4))
-            // A swipe across the cards turns the shelf. Its own handler
-            // rather than the app's gesture layer, because that layer is off
-            // unless a player has asked for it and this page has to be
-            // reachable either way; horizontal only, so a list underneath
-            // still scrolls.
-            .pointerInput(Unit) {
-                var travelled = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { travelled = 0f },
-                    onDragEnd = {
-                        if (travelled <= -PAGE_TURN_PX) showingGen2 = true
-                        if (travelled >= PAGE_TURN_PX) showingGen2 = false
-                    },
-                ) { change, amount ->
-                    travelled += amount
-                    change.consume()
-                }
-            },
+            .padding(gen1Dp(4)),
     ) {
+        // All six in one row, the three that can be picked and the three that
+        // are only there to be looked at. Six across whatever the screen is:
+        // the shelf is the shelf, and a card that moved to a second row on a
+        // folded phone would be a card a player has to go looking for.
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+            horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
         ) {
-            games.forEachIndexed { index, (version, _) ->
-                Box(Modifier.weight(1f)) {
-                    CardCursor(!showingGen2 && pickingGame && cursor == index)
-                }
+            shelf.forEachIndexed { index, _ ->
+                Box(Modifier.weight(1f)) { CardCursor(pickingGame && cursor == index) }
             }
         }
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+            horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
         ) {
-            if (showingGen2) {
-                GEN2_CARDS.forEach { card ->
-                    TitleCard(
-                        label = card.label,
-                        art = card.art,
-                        palette = card.palette,
-                        chosen = false,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            model.prompt(
-                                Prompt.Message(listOf("${card.label} IS NOT SUPPORTED YET."))
-                            )
-                        },
-                    )
-                }
-            } else {
-                games.forEach { (version, art) ->
-                    TitleCard(
-                        label = version.label,
-                        art = art,
-                        palette = paletteFor(version.id),
-                        chosen = game == version.id,
-                        modifier = Modifier.weight(1f),
-                        onClick = { openGame(version) },
-                    )
-                }
+            shelf.forEach { card ->
+                TitleCard(
+                    label = card.label,
+                    art = card.art,
+                    palette = card.palette,
+                    chosen = card.version != null && game == card.version.id,
+                    modifier = Modifier.weight(1f),
+                    onClick = { choose(card) },
+                )
             }
-        }
-
-        // Which way the other shelf is. A mark and nothing more — the shelf
-        // turns by swiping across the cards, so a line that could be tapped
-        // would be a second way to do it and the wrong one to learn.
-        //
-        // Written with the plain angle brackets rather than the solid
-        // triangles: the font has ▶ and no ◀ at all (a missing glyph draws as
-        // a box), and one of each way round matters more here than the nicer
-        // shape one way round.
-        Box(
-            Modifier.fillMaxWidth(),
-            contentAlignment = if (showingGen2) Alignment.CenterStart else Alignment.CenterEnd,
-        ) {
-            GbText(
-                if (showingGen2) "< GEN I" else "GEN II >",
-                style = Gen1TextSmall,
-                maxLines = 1,
-            )
         }
 
         Spacer(Modifier.height(gen1Dp(3)))
-
-        if (showingGen2) {
-            Notice("GOLD, SILVER AND CRYSTAL ARE NOT READY YET.")
-            return@Column
-        }
 
         if (game == null) {
             Notice(if (sending) "Send to whose card?" else "INSERT YOUR TRAINER CARD")
@@ -235,7 +172,7 @@ fun ChooseCartScreen(
                             model = model,
                             cursor = cursor == index,
                             loaded = !sending && state.activeSaveKey == remote.key,
-                            onChoose = { choose(remote) },
+                            onChoose = { chooseSave(remote) },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -255,12 +192,18 @@ internal fun paletteFor(gameId: String?): GbPalette = when (gameId) {
 }
 
 /**
- * One Generation II game, as a card to look at.
+ * One card on the shelf.
  *
  * The art is the same four flat greys every card in the app ships as, and the
- * palette is what makes it gold, silver or crystal — see [Gen1Art].
+ * palette is what makes it red, gold or crystal — see [Gen1Art]. [version] is
+ * null for the three this app cannot open yet.
  */
-private data class Gen2Card(val label: String, val art: Int, val palette: GbPalette)
+private data class TitleCardArt(
+    val label: String,
+    val art: Int,
+    val palette: GbPalette,
+    val version: GameVersion? = null,
+)
 
 /**
  * The colours the three Generation II cards are drawn in.
@@ -301,14 +244,14 @@ private val CRYSTAL_CARD = GbPalette(
     tintsSprites = true,
 )
 
-private val GEN2_CARDS = listOf(
-    Gen2Card("GOLD", R.drawable.title_gold, GOLD_CARD),
-    Gen2Card("SILVER", R.drawable.title_silver, SILVER_CARD),
-    Gen2Card("CRYSTAL", R.drawable.title_crystal, CRYSTAL_CARD),
+private val TITLE_CARDS = listOf(
+    TitleCardArt("RED", R.drawable.title_red, GbPalette.RED, GameVersion.RED),
+    TitleCardArt("BLUE", R.drawable.title_blue, GbPalette.BLUE, GameVersion.BLUE),
+    TitleCardArt("YELLOW", R.drawable.title_yellow, GbPalette.YELLOW, GameVersion.YELLOW),
+    TitleCardArt("GOLD", R.drawable.title_gold, GOLD_CARD),
+    TitleCardArt("SILVER", R.drawable.title_silver, SILVER_CARD),
+    TitleCardArt("CRYSTAL", R.drawable.title_crystal, CRYSTAL_CARD),
 )
-
-/** How far a finger has to travel across the cards to turn the shelf. */
-private const val PAGE_TURN_PX = 90f
 
 @Composable
 private fun TitleCard(

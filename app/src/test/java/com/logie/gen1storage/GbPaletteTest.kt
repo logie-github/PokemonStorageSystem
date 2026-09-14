@@ -112,7 +112,7 @@ class GbPaletteTest {
     @Test
     fun `the named colour sets are in the order they were given`() {
         assertEquals(Color(0xFFB7404A), GbPalette.GOLD.darkest)
-        assertEquals(Color(0xFFD8CFA9), GbPalette.GOLD.lightest)
+        assertEquals(Color(0xFFFCFFE0), GbPalette.GOLD.lightest)
         assertEquals(Color(0xFFED8047), GbPalette.HO_OH.darkest)
         assertEquals(Color(0xFFFCFFE0), GbPalette.HO_OH.lightest)
         assertEquals(Color(0xFF31408E), GbPalette.LUGIA.darkest)

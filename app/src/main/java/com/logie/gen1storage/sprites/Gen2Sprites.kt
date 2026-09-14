@@ -1,0 +1,191 @@
+package com.logie.gen1storage.sprites
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.ByteArrayOutputStream
+import java.io.File
+
+/**
+ * Generation II art, as pret's decompilations store it.
+ *
+ * Two things make it different from the Generation I sets, and both are in the
+ * files rather than in how they are drawn:
+ *
+ * **The colours are already in the picture.** A Generation I sprite is four
+ * greys this app tints; a Generation II sprite is an indexed PNG whose own
+ * four-entry palette *is* what the Game Boy Color showed — white, the light
+ * colour, the dark colour, black, in that order. The order is the point: the
+ * light colour can be brighter or darker than the dark one depending on the
+ * Pokémon, so it cannot be recovered by looking at the pixels afterwards.
+ * [paletteOf] reads it straight out of the file's PLTE chunk while the bytes
+ * are still on hand, and [Store] writes it down beside the sprite.
+ *
+ * **Crystal's sprites are a strip.** `front.png` there holds the still frame
+ * and every animation frame under it, all one square wide; Gold and Silver
+ * keep theirs as a single square. [firstFrame] takes the top square either
+ * way.
+ *
+ * Shininess is a separate two-colour file per species, and it is the same
+ * file in pokegold and pokecrystal — checked across a spread of twelve — so
+ * one copy is fetched and all three sets read it.
+ */
+object Gen2Sprites {
+
+    /** Where a set's sprite for one species lives upstream. */
+    fun url(set: SpriteSet, speciesId: String): String? {
+        val repo = set.repo ?: return null
+        val file = set.frontFile ?: return null
+        return "https://raw.githubusercontent.com/$repo/master/gfx/pokemon/" +
+            "${gen2SpriteFolder(speciesId)}/$file"
+    }
+
+    /** The two middle colours of a species' shiny palette, from pokecrystal. */
+    fun shinyUrl(speciesId: String): String =
+        "https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/pokemon/" +
+            "${gen2SpriteFolder(speciesId)}/shiny.pal"
+
+    /**
+     * The four colours a PNG's own palette holds, in index order.
+     *
+     * Read from the bytes rather than from a decoded bitmap because decoding
+     * throws the indexes away, and index order is the whole of what this is
+     * for. Null if the file is not an indexed PNG with at least four entries,
+     * which is not something pret's art ever is.
+     */
+    fun paletteOf(bytes: ByteArray): IntArray? {
+        var at = PNG_HEADER
+        while (at + 8 <= bytes.size) {
+            val length = readInt(bytes, at)
+            if (length < 0) return null
+            val type = String(bytes, at + 4, 4, Charsets.US_ASCII)
+            if (type == "PLTE") {
+                if (length < 12) return null
+                val start = at + 8
+                return IntArray(4) { i ->
+                    argb(
+                        bytes[start + i * 3].toInt() and 0xFF,
+                        bytes[start + i * 3 + 1].toInt() and 0xFF,
+                        bytes[start + i * 3 + 2].toInt() and 0xFF,
+                    )
+                }
+            }
+            at += 12 + length
+        }
+        return null
+    }
+
+    /**
+     * `RGB r, g, b` twice over: the light colour and the dark one, five bits
+     * each as the Game Boy Color stored them, widened to eight.
+     */
+    fun parsePal(text: String): IntArray? {
+        val found = PAL_LINE.findAll(text).map { match ->
+            val (r, g, b) = match.destructured
+            argb(widen(r.toInt()), widen(g.toInt()), widen(b.toInt()))
+        }.take(2).toList()
+        return if (found.size == 2) found.toIntArray() else null
+    }
+
+    /** The top square of a sprite strip, or the sprite itself where it is one. */
+    fun firstFrame(bytes: ByteArray): ByteArray? {
+        val decoded = runCatching {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            })
+        }.getOrNull() ?: return null
+        if (decoded.width <= 0 || decoded.height <= 0) return null
+        if (decoded.height <= decoded.width) return bytes
+        val square = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.width)
+        val out = ByteArrayOutputStream()
+        val written = square.compress(Bitmap.CompressFormat.PNG, 100, out)
+        square.recycle()
+        decoded.recycle()
+        return if (written) out.toByteArray() else null
+    }
+
+    /**
+     * The colours read off the art, kept beside it.
+     *
+     * One file per set for the Pokémon's own four, one file for the shiny
+     * pair every set shares. Plain text, a line per species, because it is
+     * read once per session and a line that can be looked at with a text
+     * editor is worth more here than a byte saved.
+     */
+    class Store(private val directory: File) {
+
+        private val normal = mutableMapOf<String, MutableMap<String, IntArray>>()
+        private var shiny: MutableMap<String, IntArray>? = null
+
+        fun normalFile(set: SpriteSet): File = File(File(directory, FOLDER), "${set.id}.txt")
+
+        fun shinyFile(): File = File(File(directory, FOLDER), "shiny.txt")
+
+        /** A species' own four colours in that set, lightest entry first. */
+        fun normalOf(set: SpriteSet, speciesId: String): IntArray? =
+            table(set)[spriteFileName(speciesId)]
+
+        /** Its shiny light and dark, which every Generation II set shares. */
+        fun shinyOf(speciesId: String): IntArray? {
+            val loaded = shiny ?: read(shinyFile()).also { shiny = it }
+            return loaded[spriteFileName(speciesId)]
+        }
+
+        fun write(set: SpriteSet, colours: Map<String, IntArray>) =
+            write(normalFile(set), colours).also { normal.remove(set.id) }
+
+        fun writeShiny(colours: Map<String, IntArray>) =
+            write(shinyFile(), colours).also { shiny = null }
+
+        private fun table(set: SpriteSet): Map<String, IntArray> =
+            normal.getOrPut(set.id) { read(normalFile(set)) }
+
+        private fun write(file: File, colours: Map<String, IntArray>) {
+            if (colours.isEmpty()) return
+            file.parentFile?.mkdirs()
+            // Merged with whatever is already there: a download that was
+            // interrupted and run again should add to the file rather than
+            // leave it holding only the species of the second run.
+            val merged = read(file).toMutableMap()
+            colours.forEach { (species, values) -> merged[species] = values }
+            val text = merged.entries.sortedBy { it.key }.joinToString("\n") { (species, values) ->
+                "$species " + values.joinToString(",") { "%06x".format(it and 0xFFFFFF) }
+            }
+            runCatching { file.writeText(text) }
+        }
+
+        private fun read(file: File): MutableMap<String, IntArray> {
+            val out = mutableMapOf<String, IntArray>()
+            if (!file.isFile) return out
+            runCatching {
+                file.forEachLine { line ->
+                    val space = line.indexOf(' ')
+                    if (space <= 0) return@forEachLine
+                    val values = line.substring(space + 1).split(',').mapNotNull {
+                        it.trim().takeIf { piece -> piece.isNotEmpty() }
+                            ?.toIntOrNull(16)?.let { rgb -> rgb or (0xFF shl 24) }
+                    }
+                    if (values.isNotEmpty()) out[line.substring(0, space)] = values.toIntArray()
+                }
+            }
+            return out
+        }
+    }
+
+    private const val FOLDER = "gen2"
+    private const val PNG_HEADER = 8
+    private val PAL_LINE = Regex("""RGB\s+(\d+)\s*,\s*(\d+)\s*,\s*(\d+)""")
+
+    /** Five bits to eight, the way the hardware's colours widen. */
+    private fun widen(value: Int): Int = (value shl 3) or (value shr 2)
+
+    private fun argb(r: Int, g: Int, b: Int): Int =
+        (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+
+    private fun readInt(bytes: ByteArray, at: Int): Int {
+        if (at + 4 > bytes.size) return -1
+        return ((bytes[at].toInt() and 0xFF) shl 24) or
+            ((bytes[at + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[at + 2].toInt() and 0xFF) shl 8) or
+            (bytes[at + 3].toInt() and 0xFF)
+    }
+}

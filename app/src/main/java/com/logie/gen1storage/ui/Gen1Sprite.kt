@@ -62,8 +62,15 @@ fun Gen1Sprite(
     onTap: (() -> Unit)? = null,
     /** Drops the sprite's white field, for a sprite that sits on a window. */
     cutout: Boolean = false,
+    /**
+     * Whether to draw the shiny colours, where the art has them.
+     *
+     * Generation II kept a second pair of colours per species and this is the
+     * switch between them. Generation I had no such thing and ignores it.
+     */
+    shiny: Boolean = false,
 ) {
-    var image by remember(speciesId, gameVersionId, revision, cutout) {
+    var image by remember(speciesId, gameVersionId, revision, cutout, shiny) {
         mutableStateOf<ImageBitmap?>(null)
     }
     // Whether the answer is in yet. Without this the first frame after a
@@ -72,14 +79,14 @@ fun Gen1Sprite(
     // per save, every time the game was switched.
     var settled by remember(speciesId, gameVersionId, revision) { mutableStateOf(false) }
 
-    LaunchedEffect(speciesId, gameVersionId, store, revision, cutout) {
+    LaunchedEffect(speciesId, gameVersionId, store, revision, cutout, shiny) {
         settled = false
         // Off the main thread: this decodes a PNG and then walks it twice to
         // point sample and recolour it, and on the main thread that is a
         // dropped frame every time a sprite changes — which, walking a box
         // with the cursor, is every spot.
         image = speciesId?.let { id ->
-            withContext(Dispatchers.IO) { store.load(id, gameVersionId, cutout) }
+            withContext(Dispatchers.IO) { store.load(id, gameVersionId, cutout, shiny) }
         }
         settled = true
     }

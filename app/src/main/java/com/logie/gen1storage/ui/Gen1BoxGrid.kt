@@ -408,6 +408,7 @@ private fun BoxHead(
                     sprites,
                     revision = spriteRevision,
                     sizeInPixels = HEAD_SPRITE_PIXELS,
+                    shiny = pokemon.isShiny,
                 )
             }
             Spacer(Modifier.height(gen1Dp(2)))

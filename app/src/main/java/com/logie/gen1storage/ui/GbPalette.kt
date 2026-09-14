@@ -160,7 +160,10 @@ data class GbPalette(
             darkest = Color(0xFFB7404A),
             dark = Color(0xFFD2C190),
             light = Color(0xFF85A2A8),
-            lightest = Color(0xFFD8CFA9),
+            // Ho-Oh's palest, standing in for the tan this one was given
+            // twice over: the top of the screen and the shade under it were
+            // the same colour to look at.
+            lightest = Color(0xFFFCFFE0),
             surround = Color(0xFFBE605C),
             tintsSprites = true,
         )

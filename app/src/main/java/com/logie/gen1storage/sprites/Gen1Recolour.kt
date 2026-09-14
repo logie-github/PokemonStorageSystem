@@ -119,6 +119,50 @@ private fun field(buckets: IntArray, width: Int, height: Int): BooleanArray {
 private const val LIGHTEST = 3
 
 /** Which of the four shades a pixel is, ignoring what colour it is drawn in. */
+/**
+ * Swaps one exact set of four colours for another, pixel for pixel.
+ *
+ * For art that already carries its colours — Generation II's, where the file
+ * holds what the Game Boy Color showed — rather than for the four greys
+ * [recolourToRamp] tints. Nothing is measured or bucketed: a pixel that is
+ * the second entry of [from] becomes the second entry of [to] and a pixel
+ * that is none of them is left alone, so a sprite saved with a stray colour
+ * keeps it instead of being rounded into the nearest shade.
+ *
+ * [cutOut] drops the field around the picture the way the tinting path does,
+ * reading it from the border rather than by colour so an interior highlight
+ * of the same shade survives.
+ */
+fun swapColours(source: Bitmap, from: IntArray, to: IntArray, cutOut: Boolean): Bitmap {
+    require(from.size >= 4 && to.size >= 4) { "four colours, in and out" }
+    val width = source.width
+    val height = source.height
+    val pixels = IntArray(width * height)
+    source.getPixels(pixels, 0, width, 0, 0, width, height)
+
+    val field = if (cutOut) {
+        val buckets = IntArray(pixels.size) { i ->
+            if (pixels[i] ushr 24 == 0) LIGHTEST else bucketOf(pixels[i])
+        }
+        field(buckets, width, height)
+    } else null
+
+    for (i in pixels.indices) {
+        if (field != null && field[i]) {
+            pixels[i] = 0
+            continue
+        }
+        if (pixels[i] ushr 24 == 0) continue
+        val opaque = pixels[i] or (0xFF shl 24)
+        val at = from.indexOfFirst { it or (0xFF shl 24) == opaque }
+        if (at in 0..3) pixels[i] = to[at] or (0xFF shl 24)
+    }
+
+    val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    out.setPixels(pixels, 0, width, 0, 0, width, height)
+    return out
+}
+
 private fun bucketOf(pixel: Int): Int {
     // Integer luma weights, the usual 77/151/28 over 256.
     val luma = (

@@ -120,6 +120,18 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putString(KEY_TEXT_SPEED, value.id).apply()
 
     /**
+     * Whether Generation II sprites take the chosen palette rather than the
+     * colours the Game Boy Color gave them.
+     *
+     * Off: a Gold sprite is the colours in its own file, and a shiny one the
+     * pair the cartridge swapped in. On: tinted like the Generation I art,
+     * with a shiny reading the palette backwards.
+     */
+    var gbcFollowsPalette: Boolean
+        get() = prefs.getBoolean(KEY_GBC_FOLLOWS_PALETTE, false)
+        set(value) = prefs.edit().putBoolean(KEY_GBC_FOLLOWS_PALETTE, value).apply()
+
+    /**
      * Which trainer a playthrough's card wears, by its sprite id.
      *
      * Kept per save and on disk, because it is a choice about a playthrough
@@ -249,6 +261,7 @@ class AppSettings(private val prefs: SharedPreferences) {
     private companion object {
         const val KEY_TEXT_SPEED = "text-speed"
         const val KEY_CLOUD_BACKUP = "cloud-backup"
+        const val KEY_GBC_FOLLOWS_PALETTE = "gbc-follows-palette"
         const val KEY_RESTORED_UIDS = "restored-uids"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"

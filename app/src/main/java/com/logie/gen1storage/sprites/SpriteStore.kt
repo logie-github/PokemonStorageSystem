@@ -50,6 +50,25 @@ class SpriteStore(
     private var tintId: String = "original"
     private var tintRamp: IntArray? = null
 
+    /** The colours Generation II art carries, read off the files as they land. */
+    val gen2Colours = Gen2Sprites.Store(directory)
+
+    /**
+     * Whether Generation II art takes the chosen palette instead of the
+     * colours the Game Boy Color gave it.
+     *
+     * Off, a Gold sprite is the colours in its own file and a shiny one is
+     * the two the cartridge swapped in. On, it is tinted like everything else
+     * — and a shiny then reads the palette backwards, which is the same idea
+     * the cartridge had: the same drawing, lit the other way round.
+     */
+    var gbcFollowsPalette: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            memory.clear()
+        }
+
     /**
      * Points every sprite at a palette. [id] takes part in the cache key, so a
      * change repaints from the files rather than handing back the old colours.
@@ -101,12 +120,24 @@ class SpriteStore(
         overrideFor(speciesId)?.takeIf { has(it, speciesId) }?.let { return it }
         val preferred = SpriteSet.forGameId(gameVersionId)
         if (has(preferred, speciesId)) return preferred
-        return SpriteSet.entries.firstOrNull { has(it, speciesId) }
+        // Within the generation it came from, and no further. A Pidgey out of
+        // a Red save falls back to Yellow's drawing of it, never to Gold's:
+        // they are different drawings and a box that mixed them would read as
+        // two games at once. Only the player picking a set for a species
+        // crosses that line.
+        return SpriteSet.entries.firstOrNull {
+            it.generation == preferred.generation && has(it, speciesId)
+        }
     }
 
-    fun load(speciesId: String, gameVersionId: String?, cutout: Boolean = false): ImageBitmap? {
+    fun load(
+        speciesId: String,
+        gameVersionId: String?,
+        cutout: Boolean = false,
+        shiny: Boolean = false,
+    ): ImageBitmap? {
         val set = resolve(speciesId, gameVersionId) ?: return null
-        return load(set, speciesId, cutout)
+        return load(set, speciesId, cutout, shiny)
     }
 
     /**
@@ -115,8 +146,19 @@ class SpriteStore(
      * different pictures and a screen asking for one must not be handed the
      * other.
      */
-    fun load(set: SpriteSet, speciesId: String, cutout: Boolean = false): ImageBitmap? {
-        val key = "$tintId/${set.id}/${if (cutout) "cut/" else ""}${spriteFileName(speciesId)}"
+    fun load(
+        set: SpriteSet,
+        speciesId: String,
+        cutout: Boolean = false,
+        shiny: Boolean = false,
+    ): ImageBitmap? {
+        val key = buildString {
+            append(tintId).append('/').append(set.id).append('/')
+            if (cutout) append("cut/")
+            if (shiny) append("shiny/")
+            if (set.generation == 2 && gbcFollowsPalette) append("tinted/")
+            append(spriteFileName(speciesId))
+        }
         memory[key]?.let { return it }
         val file = fileFor(set, speciesId)
         if (!file.isFile) return null
@@ -132,12 +174,15 @@ class SpriteStore(
             full.recycle()
             return null
         }
-        val ramp = tintRamp
         val shown = runCatching {
-            when {
-                ramp != null -> recolourToRamp(reduced, ramp, cutout)
-                cutout -> cutOutLightest(reduced)
-                else -> reduced
+            if (set.generation == 2) gen2(reduced, set, speciesId, cutout, shiny)
+            else {
+                val ramp = tintRamp
+                when {
+                    ramp != null -> recolourToRamp(reduced, ramp, cutout)
+                    cutout -> cutOutLightest(reduced)
+                    else -> reduced
+                }
             }
         }.getOrNull() ?: reduced
 
@@ -148,6 +193,49 @@ class SpriteStore(
         val image = shown.asImageBitmap()
         memory[key] = image
         return image
+    }
+
+    /**
+     * Generation II art, which arrives already coloured.
+     *
+     * The file's own four entries are white, the light colour, the dark
+     * colour and black, in that order, and the pixels are those colours
+     * exactly — so the work is a swap of one for another rather than a tint
+     * of a grey. Which four they are swapped for is the whole of what varies:
+     *
+     *  - shown as the cartridge did, a shiny takes the pair out of its
+     *    `shiny.pal` and keeps white and black
+     *  - told to follow the palette, all four come from the palette, and a
+     *    shiny takes it backwards — the dark end where the light was
+     *
+     * A species whose colours were never written down is left exactly as the
+     * file has it, which is the normal picture.
+     */
+    private fun gen2(
+        source: Bitmap,
+        set: SpriteSet,
+        speciesId: String,
+        cutout: Boolean,
+        shiny: Boolean,
+    ): Bitmap {
+        val own = gen2Colours.normalOf(set, speciesId)?.takeIf { it.size >= 4 }
+            ?: return if (cutout) cutOutLightest(source) else source
+        val palette = tintRamp
+        val wanted = when {
+            gbcFollowsPalette && palette != null && palette.size >= 4 ->
+                // The ramp runs darkest first; the file's runs lightest
+                // first, so a straight read of one into the other is already
+                // the right way round for a shiny.
+                if (shiny) intArrayOf(palette[0], palette[1], palette[2], palette[3])
+                else intArrayOf(palette[3], palette[2], palette[1], palette[0])
+
+            shiny -> gen2Colours.shinyOf(speciesId)?.takeIf { it.size >= 2 }
+                ?.let { intArrayOf(own[0], it[0], it[1], own[3]) }
+
+            else -> null
+        } ?: return if (cutout) cutOutLightest(source) else source
+
+        return swapColours(source, own, wanted, cutout)
     }
 
     /**

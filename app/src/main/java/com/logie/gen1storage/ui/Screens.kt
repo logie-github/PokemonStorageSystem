@@ -994,7 +994,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
     androidx.activity.compose.BackHandler(enabled = drawer != null) { drawer = null }
 
     if (drawer != null && !isUnfolded()) {
-        OptionsDrawerContent(drawer!!, state, model, onShareReport) { drawer = null }
+        OptionsDrawerContent(drawer!!, state, model, onShareReport, { drawer = it }) { drawer = null }
         return
     }
 
@@ -1005,14 +1005,22 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
             if (!Gen1Layout.windowsOnRight) {
                 Box(Modifier.weight(1f)) { OptionsList(state, model) { drawer = it } }
                 Box(Modifier.weight(1f)) {
-                    drawer?.let {
-                        OptionsDrawerContent(it, state, model, onShareReport) { drawer = null }
+                    drawer?.let { open ->
+                        OptionsDrawerContent(
+                            open, state, model, onShareReport,
+                            onOpen = { drawer = it },
+                            onBack = { drawer = null },
+                        )
                     }
                 }
             } else {
                 Box(Modifier.weight(1f)) {
-                    drawer?.let {
-                        OptionsDrawerContent(it, state, model, onShareReport) { drawer = null }
+                    drawer?.let { open ->
+                        OptionsDrawerContent(
+                            open, state, model, onShareReport,
+                            onOpen = { drawer = it },
+                            onBack = { drawer = null },
+                        )
                     }
                 }
                 Box(Modifier.weight(1f)) { OptionsList(state, model) { drawer = it } }
@@ -1027,6 +1035,7 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
 /** The drawers, in the order they are offered. */
 enum class OptionsDrawer(val label: String) {
     VISUAL("VISUAL"),
+    PALETTES("PALETTES"),
     AUDIO("AUDIO"),
     MOTION("ACCESSIBILITY"),
     LAYOUT("LAYOUT"),
@@ -1041,7 +1050,9 @@ private fun OptionsList(
     model: StorageViewModel,
     onOpen: (OptionsDrawer) -> Unit,
 ) {
-    val drawers = OptionsDrawer.entries
+    // PALETTES is not here: it opens from VISUAL, which is where a player
+    // looking for the colours goes first.
+    val drawers = OptionsDrawer.entries.filter { it != OptionsDrawer.PALETTES }
     val cursor = rememberCursorLayer(drawers.size) { onOpen(drawers[it]) }
     ScreenColumn {
         item {
@@ -1085,6 +1096,8 @@ private fun OptionsDrawerContent(
     state: UiState,
     model: StorageViewModel,
     onShareReport: () -> Unit,
+    /** For a drawer with a drawer of its own: VISUAL opens PALETTES. */
+    onOpen: (OptionsDrawer) -> Unit,
     onBack: () -> Unit,
 ) {
     val audio = LocalGen1Audio.current
@@ -1094,15 +1107,16 @@ private fun OptionsDrawerContent(
                 // The games' own first option, and in their order: FAST, MID,
                 // SLOW, taken by pressing the row.
                 add(OptionRow("TEXT SPEED", state.textSpeed.label) { model.cycleTextSpeed() })
-                GbPalette.ALL.forEach { palette ->
-                    add(
-                        OptionRow(
-                            palette.label,
-                            trailing = if (state.paletteId == palette.id) "ON" else null,
-                            swatch = palette,
-                        ) { model.setPalette(palette.id) }
-                    )
-                }
+                // The colours have a drawer of their own: there are fourteen
+                // of them now and they were burying the three rows under
+                // them.
+                add(
+                    OptionRow(
+                        "PALETTES",
+                        trailing = GbPalette.fromId(state.paletteId).label,
+                        swatch = GbPalette.fromId(state.paletteId),
+                    ) { onOpen(OptionsDrawer.PALETTES) }
+                )
                 add(
                     OptionRow(
                         "BLACK ON WHITE BOXES",
@@ -1114,6 +1128,27 @@ private fun OptionsDrawerContent(
                         model.setPrinterBorder(!state.printerBorder)
                     }
                 )
+                // Generation II art arrives already coloured, so it has a
+                // choice the Generation I art does not: its own colours, or
+                // the palette everything else is drawn through.
+                add(
+                    OptionRow(
+                        "GBC SPRITES",
+                        if (state.gbcFollowsPalette) "PALETTE" else "ORIGINAL",
+                    ) { model.setGbcFollowsPalette(!state.gbcFollowsPalette) }
+                )
+            }
+
+            OptionsDrawer.PALETTES -> {
+                GbPalette.ALL.forEach { palette ->
+                    add(
+                        OptionRow(
+                            palette.label,
+                            trailing = if (state.paletteId == palette.id) "ON" else null,
+                            swatch = palette,
+                        ) { model.setPalette(palette.id) }
+                    )
+                }
             }
 
             OptionsDrawer.AUDIO -> {

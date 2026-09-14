@@ -1542,6 +1542,14 @@ fun CreditsScreen() {
                         "github.com/pret/pokered",
                     )
                 }
+                item {
+                    Credit(
+                        "GEN II DATA",
+                        "PRET/POKEGOLD",
+                        "PRET/POKECRYSTAL",
+                        "github.com/pret/pokegold",
+                    )
+                }
                 item { Spacer(Modifier.height(gen1Dp(4))) }
                 item {
                     Column {

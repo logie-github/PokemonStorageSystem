@@ -104,6 +104,32 @@ class Gen1Pokemon(
     }
 
     /**
+     * This Pokémon's Pokédex page, in the words of the cartridge it is being
+     * read on — out of its own generation's table.
+     *
+     * Generation II's three games agree about almost nothing here: each one
+     * rewrote the prose, GOLD and SILVER call NATU a LITTLEBIRD where CRYSTAL
+     * gives it the space, and GOLD has ENTEI four inches taller than CRYSTAL
+     * does. [gameVersionId] is which of them is doing the printing.
+     */
+    fun dexPage(gameVersionId: String?): DexPage? =
+        if (generation >= 2) {
+            Gen2Data.dexEntry(speciesId)?.forGame(gameVersionId)?.let {
+                DexPage(it.category, it.heightText, it.weightText, it.lines, it.flowing)
+            }
+        } else {
+            Gen1Data.dexEntry(speciesId)?.let {
+                DexPage(
+                    it.category,
+                    it.heightText,
+                    it.weightText,
+                    it.lines(gameVersionId),
+                    it.flowing(gameVersionId),
+                )
+            }
+        }
+
+    /**
      * The stats the status screen prints under HP: four in Generation I and
      * five in Generation II, where Special is two stats and the save stores
      * them under their own keys.

@@ -27,6 +27,24 @@ interface SpeciesInfo {
 }
 
 /**
+ * A Pokédex page as the screens show one, whichever generation wrote it.
+ *
+ * The two tables are shaped differently — Generation I holds one entry with
+ * Red's and Yellow's texts inside it, Generation II holds three whole pages —
+ * so this is what a screen asks a Pokémon for, and [Gen1Pokemon.dexPage] is
+ * what decides which table answers.
+ */
+data class DexPage(
+    val category: String,
+    val heightText: String,
+    val weightText: String,
+    /** The entry's own lines, with the page break kept as a blank one. */
+    val lines: List<String>,
+    /** The entry as prose, to be wrapped by whatever shows it. */
+    val flowing: String,
+)
+
+/**
  * One species as pokecrystal stores it. [id] is the
  * `constants/pokemon_constants.asm` name, which is what Gen1Recomp writes into
  * a Generation II `save.lua` (`mon.species`) — the same spelling Generation I
@@ -93,6 +111,71 @@ enum class Gen2Stat(val key: String, val label: String) {
 }
 
 /**
+ * One species' Pokédex entry as one cartridge prints it.
+ *
+ * Height is stored as the cartridge stores it — feet and inches — and weight
+ * to a tenth of a pound, the same as Generation I's table, so the app never
+ * quietly disagrees with the screen it is copying.
+ */
+data class Gen2DexPage(
+    /** The classification printed over the entry: "SEED", "ROCK SNAKE". */
+    val category: String,
+    val heightFeet: Int,
+    val heightInches: Int,
+    val weightTenthsOfAPound: Int,
+    /** The two pages of three lines, with the page break kept as a blank one. */
+    val text: String,
+) {
+    val heightText: String get() = "$heightFeet'${"%02d".format(heightInches)}\""
+
+    val weightText: String get() =
+        "%d.%dlb".format(weightTenthsOfAPound / 10, weightTenthsOfAPound % 10)
+
+    /** The entry as separate lines, with the page break kept as a blank one. */
+    val lines: List<String> get() = text.split("\n")
+
+    /**
+     * The entry as one piece of prose, to be wrapped by whatever shows it —
+     * the same treatment [Gen1DexEntry.flowing] gives Generation I's, and for
+     * the same reason: the cartridge's line breaks are where its own window
+     * ran out of room, not where the sentence wanted one.
+     */
+    val flowing: String get() = text.split("\n").joinToString(" ") { it.trim() }
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+/**
+ * One species' Pokédex entry, in each of the three cartridges' own words.
+ *
+ * Gold, Silver and Crystal each print something different, and not only the
+ * prose: GOLD and SILVER call NATU a LITTLEBIRD where CRYSTAL gives it the
+ * space, GOLD has ENTEI four inches taller than CRYSTAL does, and SILVER does
+ * the same to TYRANITAR. So each game gets a whole page rather than a shared
+ * set of facts with three texts hung off it.
+ */
+data class Gen2DexEntry(
+    val speciesId: String,
+    val gold: Gen2DexPage,
+    val silver: Gen2DexPage,
+    val crystal: Gen2DexPage,
+) {
+    /**
+     * The page the given game prints.
+     *
+     * Generation I could fall back on "whatever is not Yellow", since two of
+     * its three cartridges share one set of entries. These three agree about
+     * nothing, so a Pokémon whose version cannot be read gets GOLD's — the
+     * first of the three, and the first card on the shelf.
+     */
+    fun forGame(gameVersionId: String?): Gen2DexPage = when (gameVersionId?.lowercase()) {
+        "crystal" -> crystal
+        "silver" -> silver
+        else -> gold
+    }
+}
+
+/**
  * The Generation II species table, generated from pret/pokecrystal by
  * `tools/generate_gen2_data.py`.
  *
@@ -109,9 +192,16 @@ object Gen2Data {
 
     val species: List<Gen2Species> = GEN2_SPECIES_TABLE
 
+    /** Generated from pret/pokegold and pret/pokecrystal by `tools/generate_gen2_dex.py`. */
+    val dex: List<Gen2DexEntry> = GEN2_DEX_TABLE
+
     private val speciesById: Map<String, Gen2Species> = species.associateBy { it.id }
+    private val dexById: Map<String, Gen2DexEntry> = dex.associateBy { it.speciesId }
 
     fun species(id: String?): Gen2Species? = id?.let { speciesById[it] }
+
+    /** The Pokédex entry for a species, or null for one the tables never had. */
+    fun dexEntry(id: String?): Gen2DexEntry? = id?.let { dexById[it] }
 
     fun speciesName(id: String?): String = species(id)?.displayName ?: id.orEmpty()
 

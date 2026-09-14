@@ -2248,8 +2248,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 /**
  * Every file the download fetches, counted once.
  *
- * The sprite sets, the hundred and fifty one cries, the follower sheets, and
- * the trainers with the sheets that come down beside them.
+ * The sprite sets, the cries, the follower sheets, and the trainers with the
+ * sheets that come down beside them.
  */
 private val DOWNLOAD_TOTAL: Int =
     // Each set over the species its own generation has — 151 for the
@@ -2257,6 +2257,6 @@ private val DOWNLOAD_TOTAL: Int =
     // shiny colours the three Generation II sets share.
     SpriteSet.downloadable.sumOf { if (it.generation == 2) Gen2Data.SPECIES_COUNT else 151 } +
         (if (SpriteSet.downloadable.any { it.generation == 2 }) Gen2Data.SPECIES_COUNT else 0) +
-        151 + FollowerStore.LAST_SHEET +
+        CryStore.LAST_CRY + FollowerStore.LAST_SHEET +
         TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size + TrainerStore.GEN2_ART.size +
         TrainerStore.GEN2_TRAINER_IDS.size

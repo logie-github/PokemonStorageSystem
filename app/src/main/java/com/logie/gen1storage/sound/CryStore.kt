@@ -2,7 +2,6 @@ package com.logie.gen1storage.sound
 
 import android.content.Context
 import com.logie.gen1storage.download.DownloadProgress
-import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.download.fetchInParallel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -19,6 +18,9 @@ import kotlin.coroutines.coroutineContext
  * is fetched from the PokéAPI archive and kept here. One file per dex number,
  * which is all the naming this needs — the archive is keyed the same way.
  *
+ * Its `legacy` folder is the Game Boy recordings, Johto's among them, so the
+ * same place answers for all 251.
+ *
  * Both the player that sounds them and the bulk download go through this, so
  * there is one place that knows where a cry lives and where it comes from.
  */
@@ -30,7 +32,7 @@ class CryStore(private val directory: File) {
 
     fun has(dexNumber: Int): Boolean = file(dexNumber).let { it.isFile && it.length() > 0 }
 
-    fun count(): Int = (1..LAST_GEN1).count(::has)
+    fun count(): Int = (1..LAST_CRY).count(::has)
 
     fun bytesOnDisk(): Long =
         directory.walkTopDown().filter { it.isFile }.sumOf { it.length() }
@@ -44,7 +46,7 @@ class CryStore(private val directory: File) {
      * could not be had — a missing cry is silence, never a failure.
      */
     fun fetch(dexNumber: Int): File? {
-        if (dexNumber !in 1..LAST_GEN1) return null
+        if (dexNumber !in 1..LAST_CRY) return null
         val target = file(dexNumber)
         if (target.isFile && target.length() > 0) return target
 
@@ -81,15 +83,23 @@ class CryStore(private val directory: File) {
      */
     suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
         withContext(Dispatchers.IO) {
-            val total = Gen1Data.species.size
+            val total = LAST_CRY
             onProgress(DownloadProgress(0, total))
             val counted = fetchInParallel(1..total, total, onProgress) { fetch(it) }
             DownloadProgress(total, total, counted, finished = true).also(onProgress)
         }
 
-    private companion object {
-        const val LAST_GEN1 = 151
-        const val BASE_URL =
+    companion object {
+        /**
+         * As far as this app's Pokémon go.
+         *
+         * The archive's `legacy` folder is the Game Boy recordings and it runs
+         * well past here — it has every generation's — so the cap is this
+         * app's rather than the archive's: 251 is what a Gold, Silver or
+         * Crystal save can hold.
+         */
+        const val LAST_CRY = 251
+        private const val BASE_URL =
             "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/legacy"
     }
 }

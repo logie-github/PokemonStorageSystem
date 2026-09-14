@@ -123,7 +123,9 @@ object PokemonCardImage {
 
         // Out of the Pokémon's own generation's table; see [Gen1Pokemon.species].
         val species = (pokemon.species?.displayName ?: pokemon.speciesId.orEmpty()).uppercase()
-        val entry = Gen1Data.dexEntry(pokemon.speciesId)
+        // In the words of the cartridge it was deposited from, where the
+        // card knows which that was.
+        val entry = pokemon.dexPage(provenance?.gameVersion)
         write(72, 22, pokemon.displayName.uppercase())
         write(72, 34, ":L${pokemon.level}")
         write(72, 46, pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???")

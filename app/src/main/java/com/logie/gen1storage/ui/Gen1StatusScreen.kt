@@ -133,7 +133,7 @@ fun Gen1StatusScreen(
                     when (page) {
                         0 -> StatusHeaderOne(pokemon)
                         1 -> StatusHeaderTwo(pokemon)
-                        else -> StatusHeaderThree(pokemon)
+                        else -> StatusHeaderThree(pokemon, gameVersionId)
                     }
                 }
             }
@@ -327,8 +327,8 @@ private fun StatusPageTwo(pokemon: Gen1Pokemon) {
  * a dex page that is not a sentence.
  */
 @Composable
-private fun StatusHeaderThree(pokemon: Gen1Pokemon) {
-    val entry = Gen1Data.dexEntry(pokemon.speciesId)
+private fun StatusHeaderThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
+    val entry = pokemon.dexPage(gameVersionId)
     GbText(
         pokemon.displayName.uppercase(),
         modifier = Modifier.fillMaxWidth(),
@@ -359,7 +359,8 @@ private fun StatusHeaderThree(pokemon: Gen1Pokemon) {
  * The Pokédex entry itself, in the words of the game it came from.
  *
  * Red and Blue share a set of entries and Yellow rewrote nearly all of them,
- * so the text follows the save rather than the species: a Pikachu out of a
+ * and Gold, Silver and Crystal each wrote their own again, so the text follows
+ * the save rather than the species: a Pikachu out of a
  * Yellow cartridge reads differently from one out of Red, and it should. Which
  * game it is goes unsaid — the card already says where the Pokémon came from,
  * and a line of credit under every entry is the app talking about itself.
@@ -371,7 +372,7 @@ private fun StatusHeaderThree(pokemon: Gen1Pokemon) {
  */
 @Composable
 private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
-    val entry = Gen1Data.dexEntry(pokemon.speciesId)
+    val entry = pokemon.dexPage(gameVersionId)
     // The entry is the body text of this page, so it is drawn in the same
     // ink and at the same size as everything else on it. The cartridge's own
     // breaks are dropped and the words wrap to this window instead: see
@@ -384,7 +385,7 @@ private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
             GbText("NO DATA ON THIS POKéMON.", style = style, maxLines = 1)
             return@Column
         }
-        GbText(entry.flowing(gameVersionId), modifier = Modifier.fillMaxWidth(), style = style)
+        GbText(entry.flowing, modifier = Modifier.fillMaxWidth(), style = style)
     }
 }
 

@@ -53,6 +53,8 @@ fun Gen1MenuRow(
     mark: Boolean = false,
     /** What taking this row sounds like. Null for rows that are not a choice. */
     sound: SoundEffect? = SoundEffect.CURSOR,
+    /** For a row no cursor layer covers. See [Modifier.gen1Clickable]. */
+    offCursor: Boolean = false,
 ) {
     val audio = LocalGen1Audio.current
     val tick = rememberConfirmTick()
@@ -62,7 +64,7 @@ fun Gen1MenuRow(
             .heightIn(min = 44.dp)
             // One tap takes the row. The two-tap cursor-then-A rhythm belongs
             // to the swipe controls, where there is a cursor to move first.
-            .gen1Clickable(enabled) {
+            .gen1Clickable(enabled, offCursor) {
                 sound?.let { audio?.play(it) }
                 tick()
                 onSelect()

@@ -103,7 +103,9 @@ fun Gen1StatusScreen(
         Gen1Frame(
             Modifier
                 .fillMaxWidth()
-                .gen1Clickable { page = (page + 1) % PAGES },
+                // No cursor turns these pages, so the tap that does stays
+                // its own under swipes.
+                .gen1Clickable(offCursor = true) { page = (page + 1) % PAGES },
         ) {
             // Drawn here rather than inside either page. Turning the page used
             // to build a new sprite whose image started empty, and the

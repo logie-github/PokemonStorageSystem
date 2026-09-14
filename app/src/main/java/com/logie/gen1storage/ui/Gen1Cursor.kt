@@ -120,6 +120,28 @@ class Gen1Cursor {
 val LocalGen1Cursor = staticCompositionLocalOf { Gen1Cursor() }
 
 /**
+ * What a tap should actually do.
+ *
+ * With SWIPE CONTROLS on, a tap is the A button and A takes whatever the
+ * cursor is on: the finger is saying "now", not "this one". So a tap that
+ * lands on a row is still the cursor's row, and a player who walked the
+ * cursor somewhere and then pressed cannot be given a different answer by
+ * where their thumb happened to be.
+ *
+ * With swipes off there is no second way to point at things and a tap means
+ * the thing under it, which is how the app has always worked.
+ *
+ * Anything with nothing holding the cursor — a screen that registered no
+ * layer — keeps its own tap either way, since there is no cursor to defer to.
+ */
+@Composable
+fun gen1Tap(onTap: () -> Unit): () -> Unit {
+    val cursor = LocalGen1Cursor.current
+    val defer = LocalGen1Swipe.current && cursor.hasLayer
+    return if (defer) ({ cursor.confirm() }) else onTap
+}
+
+/**
  * Claims the cursor for as long as this menu is on screen, and reports where
  * it currently is.
  *

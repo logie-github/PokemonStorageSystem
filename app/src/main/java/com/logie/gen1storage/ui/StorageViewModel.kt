@@ -415,6 +415,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     init {
         noticeRestore()
         sprites.gbcFollowsPalette = settings.gbcFollowsPalette
+        // The trainers were left out of this, so GBC SPRITES / PALETTE
+        // recoloured the Pokemon and the Generation II trainer art went on
+        // wearing its own greens and browns beside them.
+        trainers.gbcFollowsPalette = settings.gbcFollowsPalette
         applySpriteTint(GbPalette.fromId(settings.paletteId))
         mutable.update {
             it.copy(
@@ -859,6 +863,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setGbcFollowsPalette(on: Boolean) {
         settings.gbcFollowsPalette = on
         sprites.gbcFollowsPalette = on
+        trainers.gbcFollowsPalette = on
         mutable.update {
             it.copy(gbcFollowsPalette = on, spriteRevision = it.spriteRevision + 1)
         }

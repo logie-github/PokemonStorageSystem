@@ -213,6 +213,12 @@ fun Gen1BoxGrid(
     val rows = StorageLayout.BOX_ROWS
     val scroll = rememberLazyListState()
     val cries = LocalGen1Audio.current
+    // With swipes on the bracket is walked to a spot and then pressed, so a
+    // tap takes the spot the bracket is on wherever the finger lands — the
+    // cry included, which otherwise spoke for one Pokemon while another was
+    // taken. See [gen1Tap], which says the same thing for every other tap in
+    // the app.
+    val tapTakesCursor = LocalGen1Swipe.current
 
     // Every row is exactly one cell tall, so how far the list has travelled is
     // arithmetic rather than a measurement.
@@ -280,12 +286,16 @@ fun Gen1BoxGrid(
                         .gen1HoldRegion()
                         .pointerInput(row, columns, cellPx) {
                             detectTapGestures { at ->
-                                slotAt(onGrid(at))?.let { slot ->
+                                val touched = slotAt(onGrid(at))
+                                val slot =
+                                    if (tapTakesCursor) cursorSlot.takeIf { touched != null }
+                                    else touched
+                                slot?.let {
                                     // It speaks when it is touched, the way the
                                     // sprite on the status screen does.
-                                    box.slots.getOrNull(slot)?.pokemon?.species?.dexNumber
-                                        ?.let { cries?.cry(it) }
-                                    onTap(slot)
+                                    box.slots.getOrNull(it)?.pokemon?.species?.dexNumber
+                                        ?.let { dex -> cries?.cry(dex) }
+                                    onTap(it)
                                 }
                             }
                         }
@@ -545,7 +555,7 @@ fun BoxGridOverlay(
             GbText(
                 box.label,
                 modifier = if (onRename == null) Modifier
-                else Modifier.gen1Clickable { onRename() },
+                else Modifier.gen1Clickable(offCursor = true) { onRename() },
                 maxLines = 1,
             )
             GbText(
@@ -583,14 +593,20 @@ fun BoxGridOverlay(
                     ),
             )
             Spacer(Modifier.height(gen1Dp(2)))
-            Gen1MenuRow("CANCEL", selected = false, onSelect = {}, onConfirm = onCancel)
+            Gen1MenuRow(
+                "CANCEL",
+                selected = false,
+                onSelect = {},
+                onConfirm = onCancel,
+                offCursor = true,
+            )
         }
         if (actionLabel != null) {
             Box(
                 Modifier.fillMaxSize().padding(gen1Dp(4)),
                 contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
             ) {
-                Gen1BoxButton(actionLabel, onAction)
+                Gen1BoxButton(actionLabel, onAction, offCursor = true)
             }
         }
     }

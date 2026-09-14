@@ -467,12 +467,28 @@ fun GbText(
  * interface reads as a smear across the window. The cursor already says what
  * is selected, so nothing else needs to.
  */
-fun Modifier.gen1Clickable(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+fun Modifier.gen1Clickable(
+    enabled: Boolean = true,
+    /**
+     * For a choice the cursor cannot reach: the box's own name, a button in
+     * the corner outside the grid's layer, the status page that turns when it
+     * is touched. Handing those to the cursor under swipes would not move the
+     * choice somewhere else, it would lose it — and worse, the tap would take
+     * whatever the cursor was sitting on instead.
+     */
+    offCursor: Boolean = false,
+    onClick: () -> Unit,
+): Modifier = composed {
+    // Every tap in the app comes through here, which is why the swipe rule
+    // lives here rather than at each of the places that can be pressed. See
+    // [gen1Tap].
+    val deferred = gen1Tap(onClick)
+    val take = if (offCursor) onClick else deferred
     clickable(
         enabled = enabled,
         interactionSource = remember { MutableInteractionSource() },
         indication = null,
-        onClick = onClick,
+        onClick = take,
     )
 }
 
@@ -504,7 +520,7 @@ fun Gen1Button(
     Box(
         modifier
             .heightIn(min = 48.dp)
-            .gen1Clickable(enabled, onClick)
+            .gen1Clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -531,6 +547,8 @@ fun Gen1BoxButton(
     enabled: Boolean = true,
     /** Whether the cursor is on it, so a swipe can reach it like any row. */
     selected: Boolean = false,
+    /** For a button no cursor layer covers. See [Modifier.gen1Clickable]. */
+    offCursor: Boolean = false,
 ) {
     // The arrow stands outside the window rather than inside it. A cursor is
     // the thing pointing at a choice; drawn within the border it becomes part
@@ -540,7 +558,7 @@ fun Gen1BoxButton(
         Box(Modifier.width(gen1Dp(CURSOR_PIXELS))) {
             if (selected && enabled) GbText("▶", style = Gen1Text)
         }
-        Gen1FrameBox(modifier.gen1Clickable(enabled, onClick)) {
+        Gen1FrameBox(modifier.gen1Clickable(enabled, offCursor, onClick)) {
             GbText(
                 label.uppercase(),
                 style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),

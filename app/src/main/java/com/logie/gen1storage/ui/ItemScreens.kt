@@ -88,7 +88,13 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
     if (!state.showAllItems && (save == null || key == null)) {
         ScreenColumn {
             item { Gen1Frame(Modifier.wrapContentWidth()) { GbText("NO CART IN THE MACHINE.") } }
-            item { Gen1BoxButton("TRAINER CARD", { model.open(Screen.ChooseCart(null)) }) }
+            item {
+                Gen1BoxButton(
+                    "TRAINER CARD",
+                    { model.open(Screen.ChooseCart(null)) },
+                    offCursor = true,
+                )
+            }
         }
         return
     }
@@ -138,7 +144,7 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
                     }
                 }
             }
-            item { Gen1BoxButton("BACK", { model.back() }) }
+            item { Gen1BoxButton("BACK", { model.back() }, offCursor = true) }
         }
 
         if (mode != ItemMode.MENU) {

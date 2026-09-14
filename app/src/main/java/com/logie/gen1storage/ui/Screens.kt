@@ -1329,18 +1329,9 @@ private fun OptionsDrawerContent(
         add(OptionRow("BACK", action = onBack))
     }
 
-    val cursor = rememberCursorLayer(rows.size) { rows[it].action() }
-
-    // With SWIPE CONTROLS on, the colours stop taking taps of their own: a
-    // tap is the A button, and A takes whatever the cursor is on. A palette
-    // applies the moment it is taken and repaints the whole app, so a tap
-    // that lands a row away from where the cursor sits is the one mistake
-    // here that is loud and immediate.
-    val tapTakesCursor = LocalGen1Swipe.current && drawer == OptionsDrawer.PALETTES
-    val take: (Int) -> Unit = { index ->
-        val row = rows.getOrNull(if (tapTakesCursor) cursor else index)
-        if (row != null && row.enabled) row.action()
-    }
+    // A row the drawer has greyed out is not a choice, and A should not be
+    // able to take one the way a tap never could.
+    val cursor = rememberCursorLayer(rows.size) { rows[it].takeIf(OptionRow::enabled)?.action?.invoke() }
 
     ScreenColumn {
         item { Gen1Frame(Modifier.wrapContentWidth()) { GbText(drawer.label) } }
@@ -1412,14 +1403,14 @@ private fun OptionsDrawerContent(
                 itemsIndexed(rows) { index, row ->
                     if (row.swatch != null) {
                         Row(
-                            Modifier.fillMaxWidth().gen1Clickable { take(index) },
+                            Modifier.fillMaxWidth().gen1Clickable { row.action() },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Gen1MenuRow(
                                 row.label,
                                 selected = cursor == index,
                                 onSelect = {},
-                                onConfirm = { take(index) },
+                                onConfirm = row.action,
                                 trailing = row.trailing,
                                 modifier = Modifier.weight(1f),
                             )
@@ -1430,7 +1421,7 @@ private fun OptionsDrawerContent(
                             row.label,
                             selected = cursor == index,
                             onSelect = {},
-                            onConfirm = { take(index) },
+                            onConfirm = row.action,
                             trailing = row.trailing,
                             enabled = row.enabled,
                         )

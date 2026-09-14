@@ -88,6 +88,11 @@ class TransferEngine(
         location: SaveLocation,
         targetBox: Int = 1,
     ): TransferResult {
+        if (!loaded.isWritable) {
+            return TransferResult.Refused(
+                "${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP."
+            )
+        }
         journal.read()?.let {
             return TransferResult.Refused("A PREVIOUS TRANSFER IS UNRESOLVED. SYNC FIRST.")
         }
@@ -189,6 +194,11 @@ class TransferEngine(
         uid: String,
         target: WithdrawTarget,
     ): TransferResult {
+        if (!loaded.isWritable) {
+            return TransferResult.Refused(
+                "${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP."
+            )
+        }
         journal.read()?.let {
             return TransferResult.Refused("A PREVIOUS TRANSFER IS UNRESOLVED. SYNC FIRST.")
         }

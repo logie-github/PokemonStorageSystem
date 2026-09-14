@@ -116,11 +116,22 @@ fun Gen1TrainerCard(
                 Field("TIME", save?.playTimeText ?: " ")
             }
             val badges: @Composable () -> Unit = {
-                Badges(
-                    save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
-                    trainers,
-                    spriteRevision,
-                )
+                // A Generation II card has sixteen to show, and they are two
+                // different sets: Johto's eight off pokecrystal's own sheet,
+                // Kanto's eight off the one this app already had — the same
+                // eight badges Red wins, because they are the same gyms.
+                if (save?.isGen2 == true) {
+                    Column(verticalArrangement = Arrangement.spacedBy(gen1Dp(BADGE_GAP))) {
+                        Badges(save.johtoBadges, trainers, spriteRevision, johto = true)
+                        Badges(save.kantoBadges, trainers, spriteRevision)
+                    }
+                } else {
+                    Badges(
+                        save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
+                        trainers,
+                        spriteRevision,
+                    )
+                }
             }
             val portrait: @Composable (Modifier, Dp) -> Unit = { portraitModifier, width ->
                 Portrait(
@@ -130,7 +141,14 @@ fun Gen1TrainerCard(
                     // is on a trainer card. It used to wear nothing at all,
                     // and a card with only the party's lead on it reads as a
                     // card that failed to load rather than as a default.
-                    trainerSprite = trainerSprite ?: TrainerStore.PLAYER,
+                    // Nobody chosen: the game's own player, which for a
+                    // Generation II save is the boy or the girl its trainer
+                    // card wears rather than Red.
+                    trainerSprite = trainerSprite ?: when {
+                        save?.isGen2 != true -> TrainerStore.PLAYER
+                        save.isFemale -> TrainerStore.GEN2_PLAYER_FEMALE
+                        else -> TrainerStore.GEN2_PLAYER_MALE
+                    },
                     trainers = trainers,
                     lead = if (read) lead else null,
                     gameVersionId = remote.version.id,
@@ -321,10 +339,16 @@ private fun Field(label: String, value: String) {
  * from reading as one shape now that they are cut out of their own field.
  */
 @Composable
-private fun Badges(won: List<Boolean>, trainers: TrainerStore, revision: Int) {
+private fun Badges(
+    won: List<Boolean>,
+    trainers: TrainerStore,
+    revision: Int,
+    /** Johto's row, which is drawn from the Generation II sheet. */
+    johto: Boolean = false,
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(BADGE_GAP))) {
         for (gym in 0 until TrainerStore.BADGES) {
-            Badge(gym, won.getOrElse(gym) { false }, trainers, revision)
+            Badge(gym, won.getOrElse(gym) { false }, trainers, revision, johto)
         }
     }
 }
@@ -337,10 +361,18 @@ private fun Badges(won: List<Boolean>, trainers: TrainerStore, revision: Int) {
  * DOWNLOADS fills it in.
  */
 @Composable
-private fun Badge(gym: Int, earned: Boolean, trainers: TrainerStore, revision: Int) {
-    var image by remember(gym, revision) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(gym, revision, earned, trainers) {
-        image = if (!earned) null else withContext(Dispatchers.IO) { trainers.badge(gym) }
+private fun Badge(
+    gym: Int,
+    earned: Boolean,
+    trainers: TrainerStore,
+    revision: Int,
+    johto: Boolean = false,
+) {
+    var image by remember(gym, revision, johto) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(gym, revision, earned, trainers, johto) {
+        image = if (!earned) null else withContext(Dispatchers.IO) {
+            if (johto) trainers.johtoBadge(gym) else trainers.badge(gym)
+        }
     }
     Box(Modifier.size(gen1Dp(BADGE_PIXELS))) {
         image?.let {

@@ -229,8 +229,9 @@ class SyncApi(
                 val playthroughId = key.substringAfter('/', "")
                 val version = GameVersion.fromId(versionId)
                 if (version == null || playthroughId.isEmpty()) {
-                    // A Gold/Silver/Crystal playthrough on the same account is
-                    // listed but out of scope; naming it beats hiding it.
+                    // A game this app has never heard of — a later generation,
+                    // or something upstream has added since. Named rather than
+                    // hidden, so an account that holds one says so.
                     unsupported += key
                     continue
                 }

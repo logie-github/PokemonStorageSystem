@@ -57,7 +57,8 @@ class TrainerStore(private val directory: File) {
     fun has(id: String): Boolean = file(id).let { it.isFile && it.length() > 0 }
 
     /** The trainers, plus the sheets the badges and the trade are cut from. */
-    fun count(): Int = ALL.count { has(it.id) } + EXTRA_ART.keys.count { has(it) }
+    fun count(): Int = ALL.count { has(it.id) } +
+        EXTRA_ART.keys.count { has(it) } + GEN2_ART.keys.count { has(it) }
 
     /**
      * One of the extra sheets whole, recoloured onto the palette in force.
@@ -66,7 +67,7 @@ class TrainerStore(private val directory: File) {
      * and the ball are tile strips and are cut up by [tile].
      */
     fun art(id: String): ImageBitmap? {
-        if (id !in EXTRA_ART) return null
+        if (id !in EXTRA_ART && id !in GEN2_ART) return null
         val key = "$tintId/art/$id"
         memory[key]?.let { return it }
         val decoded = decode(file(id)) ?: return null
@@ -78,7 +79,7 @@ class TrainerStore(private val directory: File) {
      * the order the cartridge's own tilemaps index them in.
      */
     fun tile(id: String, index: Int, cutout: Boolean = false): ImageBitmap? {
-        if (id !in EXTRA_ART) return null
+        if (id !in EXTRA_ART && id !in GEN2_ART) return null
         val key = "$tintId/tile/${if (cutout) "cut/" else ""}$id/$index"
         memory[key]?.let { return it }
         val sheet = decode(file(id)) ?: return null
@@ -165,7 +166,7 @@ class TrainerStore(private val directory: File) {
     fun load(id: String, cutout: Boolean = false): ImageBitmap? {
         // The player is not one of the trainer classes and is still a picture
         // a card can wear, so the extras are askable for by name too.
-        if (ALL.none { it.id == id } && id !in EXTRA_ART) return null
+        if (ALL.none { it.id == id } && id !in EXTRA_ART && id !in GEN2_ART) return null
         val key = "$tintId/${if (cutout) "cut/" else ""}$id"
         memory[key]?.let { return it }
 
@@ -188,14 +189,36 @@ class TrainerStore(private val directory: File) {
         return finished.asImageBitmap().also { memory[key] = it }
     }
 
+    /**
+     * One of Johto's eight, off pokecrystal's sheet.
+     *
+     * Which is badges alone rather than leaders and badges alternating, so
+     * the tile wanted is the gym itself and not twice it plus one.
+     */
+    fun johtoBadge(gym: Int): ImageBitmap? {
+        if (gym !in 0 until BADGES) return null
+        val key = "$tintId/johto/cut/$gym"
+        memory[key]?.let { return it }
+
+        val sheet = decode(file(GEN2_BADGE_SHEET)) ?: return null
+        if (sheet.width != BADGE_SIZE || sheet.height != BADGE_SIZE * GEN2_BADGE_TILES) {
+            sheet.recycle()
+            return null
+        }
+        val cut = Bitmap.createBitmap(sheet, 0, gym * BADGE_SIZE, BADGE_SIZE, BADGE_SIZE)
+        sheet.recycle()
+        return tinted(cut, cutout = true).asImageBitmap().also { memory[key] = it }
+    }
+
     /** Fetches one if it is not here yet. */
     fun fetch(id: String): File? {
-        val extra = EXTRA_ART[id]
+        val extra = EXTRA_ART[id] ?: GEN2_ART[id]
         if (extra == null && ALL.none { it.id == id }) return null
         val target = file(id)
         if (target.isFile && target.length() > 0) return target
 
-        val url = URL(if (extra != null) "$ROOT_URL/$extra" else "$ROOT_URL/gfx/trainers/$id.png")
+        val root = GEN2_ROOT_URL.takeIf { id in GEN2_ART } ?: ROOT_URL
+        val url = URL(if (extra != null) "$root/$extra" else "$root/gfx/trainers/$id.png")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 20_000
@@ -230,7 +253,7 @@ class TrainerStore(private val directory: File) {
             // The sheets go with them: the badges are the other half of what a
             // trainer card is drawn from, and the trade art is the rest of what
             // pokered has that is not a Pokémon.
-            val wanted = ALL.map { it.id } + EXTRA_ART.keys
+            val wanted = ALL.map { it.id } + EXTRA_ART.keys + GEN2_ART.keys
             val total = wanted.size
             onProgress(DownloadProgress(0, total))
             val failed = fetchInParallel(wanted, total, onProgress) { fetch(it) }
@@ -255,6 +278,12 @@ class TrainerStore(private val directory: File) {
         private const val ROOT_URL = "https://raw.githubusercontent.com/pret/pokered/$COMMIT"
 
         /**
+         * Generation II's, from the tip rather than a pinned commit: this art
+         * has been still for years and pokecrystal is the reference for it.
+         */
+        private const val GEN2_ROOT_URL = "https://raw.githubusercontent.com/pret/pokecrystal/master"
+
+        /**
          * The player's own pic, which is who a trainer card has on it.
          *
          * `gfx/player/red.png` — the picture the cartridge draws in the Hall
@@ -266,6 +295,23 @@ class TrainerStore(private val directory: File) {
 
         /** The badge sheet, kept under this name beside the trainers. */
         const val BADGE_SHEET = "badges"
+
+        /**
+         * Johto's eight, from pokecrystal's own trainer card.
+         *
+         * Kanto's eight are the sheet above: a Generation II playthrough wins
+         * the same eight badges Red does over there, so the art this app
+         * already has is the art for them.
+         *
+         * The sheet is badges alone, eleven tiles of them — the eight and
+         * three pieces of the card's own furniture — where Generation I's
+         * alternates a leader's face with their badge.
+         */
+        const val GEN2_BADGE_SHEET = "badges_gen2"
+
+        /** The two the Generation II card wears, by the player's gender. */
+        const val GEN2_PLAYER_MALE = "chris"
+        const val GEN2_PLAYER_FEMALE = "kris"
 
         /** The Game Boy the trade animation draws, already a whole picture. */
         const val TRADE_GAME_BOY = "trade-game-boy"
@@ -313,9 +359,28 @@ class TrainerStore(private val directory: File) {
             DEX_BALLS to "gfx/battle/balls.png",
         )
 
+        /**
+         * Generation II's art, from pokecrystal rather than pokered.
+         *
+         * Its own map so [fetch] knows which decompilation to ask; everything
+         * else about it — where it lands, how it is cut out, how it is tinted
+         * — is the same as the rest.
+         */
+        val GEN2_ART: Map<String, String> = linkedMapOf(
+            GEN2_BADGE_SHEET to "gfx/trainer_card/badges.png",
+            GEN2_PLAYER_MALE to "gfx/trainer_card/chris_card.png",
+            GEN2_PLAYER_FEMALE to "gfx/trainer_card/kris_card.png",
+        )
+
+        /** Tiles down the Generation II sheet: eight badges, then furniture. */
+        const val GEN2_BADGE_TILES = 11
+
         /** What each must measure, so a proxy's error page cannot land as art. */
         val EXTRA_SIZE: Map<String, Pair<Int, Int>> = mapOf(
             BADGE_SHEET to (BADGE_SIZE to BADGE_SIZE * BADGE_TILES),
+            GEN2_BADGE_SHEET to (BADGE_SIZE to BADGE_SIZE * GEN2_BADGE_TILES),
+            GEN2_PLAYER_MALE to (40 to 56),
+            GEN2_PLAYER_FEMALE to (40 to 56),
             TRADE_GAME_BOY to (48 to 64),
             TRADE_CABLE to (24 to 40),
             TRADE_BALL to (16 to 16),

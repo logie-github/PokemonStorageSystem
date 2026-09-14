@@ -79,12 +79,7 @@ fun ChooseCartScreen(
         else model.chooseCart(remote.key, thenOpenStorage)
     }
     val choose: (TitleCardArt) -> Unit = { card ->
-        val version = card.version
-        if (version != null) {
-            model.replace(Screen.ChooseCart(version.id, sendUids, thenOpenStorage))
-        } else {
-            model.prompt(Prompt.Message(listOf("${card.label} IS NOT SUPPORTED YET.")))
-        }
+        model.replace(Screen.ChooseCart(card.version.id, sendUids, thenOpenStorage))
     }
     // Whichever of the two things on this screen is the one to take: the games
     // until one is picked and shown to have saves, the saves after that. The
@@ -127,7 +122,7 @@ fun ChooseCartScreen(
                     label = card.label,
                     art = card.art,
                     palette = card.palette,
-                    chosen = card.version != null && game == card.version.id,
+                    chosen = game == card.version.id,
                     modifier = Modifier.weight(1f),
                     onClick = { choose(card) },
                 )
@@ -144,6 +139,14 @@ fun ChooseCartScreen(
         if (saves.isEmpty()) {
             Notice("NO TRAINER CARDS FOUND.")
             return@Column
+        }
+
+        // Said once, above the cards themselves: a Generation II card can be
+        // read — its trainer, its badges, its boxes — and nothing in this app
+        // will change one.
+        if (GameVersion.fromId(game)?.isWritable == false) {
+            Notice("READ ONLY. NOTHING IS WRITTEN TO THESE.")
+            Spacer(Modifier.height(gen1Dp(3)))
         }
 
         if (sending) {
@@ -188,6 +191,9 @@ internal fun paletteFor(gameId: String?): GbPalette = when (gameId) {
     GameVersion.RED.id -> GbPalette.RED
     GameVersion.BLUE.id -> GbPalette.BLUE
     GameVersion.YELLOW.id -> GbPalette.YELLOW
+    GameVersion.GOLD.id -> GOLD_CARD
+    GameVersion.SILVER.id -> SILVER_CARD
+    GameVersion.CRYSTAL.id -> CRYSTAL_CARD
     else -> GbPalette.ORIGINAL
 }
 
@@ -202,7 +208,7 @@ private data class TitleCardArt(
     val label: String,
     val art: Int,
     val palette: GbPalette,
-    val version: GameVersion? = null,
+    val version: GameVersion,
 )
 
 /**
@@ -248,9 +254,9 @@ private val TITLE_CARDS = listOf(
     TitleCardArt("RED", R.drawable.title_red, GbPalette.RED, GameVersion.RED),
     TitleCardArt("BLUE", R.drawable.title_blue, GbPalette.BLUE, GameVersion.BLUE),
     TitleCardArt("YELLOW", R.drawable.title_yellow, GbPalette.YELLOW, GameVersion.YELLOW),
-    TitleCardArt("GOLD", R.drawable.title_gold, GOLD_CARD),
-    TitleCardArt("SILVER", R.drawable.title_silver, SILVER_CARD),
-    TitleCardArt("CRYSTAL", R.drawable.title_crystal, CRYSTAL_CARD),
+    TitleCardArt("GOLD", R.drawable.title_gold, GOLD_CARD, GameVersion.GOLD),
+    TitleCardArt("SILVER", R.drawable.title_silver, SILVER_CARD, GameVersion.SILVER),
+    TitleCardArt("CRYSTAL", R.drawable.title_crystal, CRYSTAL_CARD, GameVersion.CRYSTAL),
 )
 
 @Composable

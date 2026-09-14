@@ -25,8 +25,20 @@ sealed interface SaveClassification {
         val problems: List<String>,
     ) : SaveClassification
 
-    /** Parsed, but it is a Gold/Silver/Crystal save. Out of scope by design. */
-    data class WrongGeneration(val versionId: String?) : SaveClassification
+    /**
+     * Parsed, Generation II, and readable but never writable.
+     *
+     * The trainer card, the party and the boxes are all there to be looked
+     * at. What this app will not do is change one: a Gold save's Pokémon
+     * carry fields Generation I has no place for — held items, happiness, the
+     * split Special — and a transfer that dropped them would quietly damage
+     * the Pokémon it moved. Everything that writes checks
+     * [GameVersion.isWritable] and refuses.
+     */
+    data class ReadOnlyGeneration(
+        override val save: Gen1RecompSave,
+        val versionId: String?,
+    ) : SaveClassification
 
     /** Parsed Lua, but not a Gen1Recomp progress file at all. */
     data class Unsupported(val reason: String) : SaveClassification
@@ -48,7 +60,7 @@ sealed interface SaveClassification {
         get() = when (this) {
             is Valid -> if (warnings.isEmpty()) "OK" else warnings.first()
             is ValidWithInvalidPokemon -> problems.first()
-            is WrongGeneration -> "GEN II SAVE (${versionId ?: "unknown"}) - NOT SUPPORTED"
+            is ReadOnlyGeneration -> "GEN II SAVE (${versionId ?: "unknown"}) - READ ONLY"
             is Unsupported -> reason
             is Malformed -> if (offset != null) "$reason (byte $offset)" else reason
             is Incomplete -> "MISSING: ${missing.joinToString(", ")}"
@@ -85,9 +97,6 @@ object SaveClassifier {
         }
 
         val save = Gen1RecompSave(root)
-        if (save.isGen2) {
-            return SaveClassification.WrongGeneration(root["version"].let { it as? com.logie.gen1storage.lua.LuaValue.Str }?.value)
-        }
 
         // `options.lua`, a mod's own store and a slot registry all parse as
         // valid Lua source; only a progress file carries a player and a party.
@@ -101,8 +110,13 @@ object SaveClassifier {
         if (missing.isNotEmpty()) {
             return SaveClassification.Incomplete(missing)
         }
-        if (save.version == null) {
-            return SaveClassification.Unsupported("UNKNOWN GAME VERSION")
+        val version = save.version ?: return SaveClassification.Unsupported("UNKNOWN GAME VERSION")
+        // Generation II stops here: read, listed, shown as a card, and never
+        // checked against Generation I's rules — a party of six Gold Pokémon
+        // is not a broken Red party. Nothing below this line would be true of
+        // it, and nothing above this line writes.
+        if (!version.isWritable || save.isGen2) {
+            return SaveClassification.ReadOnlyGeneration(save, version.id)
         }
 
         val problems = mutableListOf<String>()

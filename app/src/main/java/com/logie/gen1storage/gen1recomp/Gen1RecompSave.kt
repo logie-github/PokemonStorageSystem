@@ -12,21 +12,36 @@ import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stats
 
-/** The three Generation I games this app supports. Nothing else is in scope. */
-enum class GameVersion(val id: String, val label: String, val saveSuffix: String) {
+/**
+ * The games this app knows.
+ *
+ * The Generation I three are the ones it can *change*: everything that writes
+ * a save refuses anything else, and [generation] is the flag it refuses on.
+ * The Generation II three are here to be read — listed on the shelf, opened
+ * as a trainer card, their boxes looked through — because a player with a
+ * Gold save on the same account should see it rather than be told their
+ * account has something in it this app will not name.
+ */
+enum class GameVersion(
+    val id: String,
+    val label: String,
+    val saveSuffix: String,
+    val generation: Int = 1,
+) {
     RED("red", "RED", ""),
     BLUE("blue", "BLUE", "_blue"),
-    YELLOW("yellow", "YELLOW", "_yellow");
+    YELLOW("yellow", "YELLOW", "_yellow"),
+    GOLD("gold", "GOLD", "_gold", generation = 2),
+    SILVER("silver", "SILVER", "_silver", generation = 2),
+    CRYSTAL("crystal", "CRYSTAL", "_crystal", generation = 2);
+
+    /** Whether this app may write a save of this game. Reading is always on. */
+    val isWritable: Boolean get() = generation == 1
 
     companion object {
         fun fromId(id: String?): GameVersion? = entries.firstOrNull { it.id == id?.lowercase() }
 
-        /**
-         * Generation II ids upstream also knows. They are recognised only so a
-         * Gold/Silver/Crystal save can be reported as out of scope rather than
-         * silently misread as Generation I.
-         */
-        val GEN2_IDS = setOf("gold", "silver", "crystal")
+        val GEN2_IDS: Set<String> = entries.filter { it.generation == 2 }.map { it.id }.toSet()
     }
 }
 
@@ -68,6 +83,14 @@ class Gen1RecompSave(val root: LuaValue.Table) {
     val currentMap: String? get() = player?.get("map").asString()
 
     /**
+     * Which of the two the player is, where the game asked.
+     *
+     * Generation II's own field; Generation I never asked, so it is null
+     * there and the card wears what it always did.
+     */
+    val isFemale: Boolean get() = player?.get("gender").asString()?.lowercase() == "female"
+
+    /**
      * What the player is carrying, for the trainer card's MONEY line.
      *
      * At the root of the save upstream, but looked for on the player too:
@@ -78,8 +101,23 @@ class Gen1RecompSave(val root: LuaValue.Table) {
      */
     val money: Int? get() = root["money"].asInt() ?: player?.get("money").asInt()
 
-    /** `save.playTime` is a plain seconds accumulator in a Generation I save. */
-    val playTimeSeconds: Double get() = root["playTime"].asDouble() ?: 0.0
+    /**
+     * How long this playthrough has been played, in seconds.
+     *
+     * A Generation I save keeps a plain accumulator; a Generation II save
+     * keeps the hours, minutes, seconds and frames apart, the way the
+     * cartridge's own wGameTime bytes do. Both are read, because the card
+     * asks the same question of either.
+     */
+    val playTimeSeconds: Double
+        get() {
+            root["playTime"].asDouble()?.let { return it }
+            val parts = root["playTime"].asTable() ?: return 0.0
+            val hours = parts["hours"].asDouble() ?: 0.0
+            val minutes = parts["minutes"].asDouble() ?: 0.0
+            val seconds = parts["seconds"].asDouble() ?: 0.0
+            return hours * 3600 + minutes * 60 + seconds
+        }
 
     /** Play time as the save screen says it: so many hours, so many minutes. */
     val playTimeLongText: String
@@ -107,9 +145,33 @@ class Gen1RecompSave(val root: LuaValue.Table) {
      */
     val badges: List<Boolean>
         get() {
+            if (isGen2) return johtoBadges
             val inventory = root["inventory"].asTable() ?: return List(BADGE_IDS.size) { false }
             return BADGE_IDS.map { inventory[it] != null }
         }
+
+    /**
+     * Generation II's own eight, which it keeps on the player rather than in
+     * the bag: `player.badges` is the Johto set and `player.kantoBadges` the
+     * Kanto one, each a table of the badges that are in it.
+     */
+    val johtoBadges: List<Boolean> get() = badgeList("badges", JOHTO_BADGE_IDS)
+
+    /** The eight Kanto gyms, which a Generation II playthrough can also hold. */
+    val kantoBadges: List<Boolean> get() = badgeList("kantoBadges", BADGE_IDS)
+
+    private fun badgeList(field: String, ids: List<String>): List<Boolean> {
+        val held = player?.get(field).asTable() ?: return List(ids.size) { false }
+        // Written either as a set keyed by name or as a plain list of them,
+        // so both are read rather than one being assumed.
+        val names = buildSet {
+            held.entries().forEach { (key, value) ->
+                (key as? LuaKey.Name)?.value?.let { if (value.asBoolean() != false) add(it) }
+                value.asString()?.let { add(it) }
+            }
+        }.map { it.uppercase() }
+        return ids.map { it in names }
+    }
 
     val dexOwnedCount: Int get() = dexOwned.size
 
@@ -119,10 +181,21 @@ class Gen1RecompSave(val root: LuaValue.Table) {
     /** Species it has at least seen, which is the wider of the two. */
     val dexSeen: Set<String> get() = dexSet("seen")
 
-    private fun dexSet(which: String): Set<String> =
-        root["pokedex"].asTable()?.get(which).asTable()?.entries().orEmpty()
+    /**
+     * Generation I writes `pokedex.owned` and `pokedex.seen`; Generation II
+     * writes `pokedex.caught` and `pokedex.seen`. The other spelling is read
+     * as a fallback rather than branched on, so a save that carries both —
+     * or neither — answers the same way.
+     */
+    private fun dexSet(which: String): Set<String> {
+        val dex = root["pokedex"].asTable() ?: return emptySet()
+        val table = dex[which].asTable()
+            ?: dex[if (which == "owned") "caught" else "owned"].asTable()
+            ?: return emptySet()
+        return table.entries()
             .filter { it.second.asBoolean() != false }
             .mapNotNullTo(LinkedHashSet()) { (it.first as? LuaKey.Name)?.value }
+    }
 
     // ------- mods
 
@@ -370,6 +443,12 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         const val BOX_CAPACITY = 20
 
         /** Gym order from `src/inventory/Badges.lua`. */
+        /** Johto's eight, in the order the trainer card draws them. */
+        val JOHTO_BADGE_IDS = listOf(
+            "ZEPHYRBADGE", "HIVEBADGE", "PLAINBADGE", "FOGBADGE",
+            "STORMBADGE", "MINERALBADGE", "GLACIERBADGE", "RISINGBADGE",
+        )
+
         val BADGE_IDS = listOf(
             "BOULDERBADGE", "CASCADEBADGE", "THUNDERBADGE", "RAINBOWBADGE",
             "SOULBADGE", "MARSHBADGE", "VOLCANOBADGE", "EARTHBADGE",

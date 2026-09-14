@@ -9,6 +9,7 @@ import com.logie.gen1storage.lua.LuaWriter
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.lua.luaStr
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -20,8 +21,14 @@ import org.junit.Test
  */
 class SaveClassifierTest {
 
+    /**
+     * A Generation II save is read and never written. The classification is
+     * what everything downstream keys on: it carries the save, so the shelf
+     * can list it and the card can be drawn, and it is never [Valid], which
+     * is what the transfer engine requires before it will change anything.
+     */
     @Test
-    fun `a Gen II save is reported as out of scope, never parsed as Gen I`() {
+    fun `a Gen II save is read, and never mistaken for one this app may write`() {
         val gold = LuaValue.Table().apply {
             this["version"] = luaStr("gold")
             this["generation"] = luaNum(2)
@@ -29,8 +36,11 @@ class SaveClassifierTest {
             this["party"] = LuaValue.Table()
         }
         val classification = SaveClassifier.classify(LuaWriter.encode(gold))
-        assertTrue(classification is SaveClassification.WrongGeneration)
-        assertNull(classification.save)
+        assertTrue(classification is SaveClassification.ReadOnlyGeneration)
+        assertNotNull(classification.save)
+        assertEquals("KRIS", classification.save?.trainerName)
+        assertFalse(classification is SaveClassification.Valid)
+        assertFalse(GameVersion.GOLD.isWritable)
     }
 
     @Test

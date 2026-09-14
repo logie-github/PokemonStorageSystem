@@ -17,6 +17,18 @@ data class LoadedSave(
 ) {
     val save: Gen1RecompSave? get() = classification.save
     val isUsable: Boolean get() = save != null
+
+    /**
+     * Whether this app may change this save, as against read it.
+     *
+     * Generation II is read and never written: its Pokémon carry fields
+     * Generation I has no place for, and this app's transfer engine is
+     * Generation I's rules. Checked here and again in
+     * [SaveRepository.commit], because the one place it must never be missed
+     * is the one that uploads.
+     */
+    val isWritable: Boolean
+        get() = isUsable && remote.version.isWritable && save?.isGen2 != true
     val key: String get() = remote.key
 
     /** SHA-256 of the blob. The evidence crash recovery reasons about. */
@@ -110,9 +122,21 @@ class SaveRepository(
      * the revision the save was read at.
      */
     suspend fun commit(loaded: LoadedSave, root: LuaValue.Table): CommitOutcome {
+        // Before anything else, and by the save rather than by the caller: a
+        // Generation II save is read here and never written, and this is the
+        // one function every write in the app goes through.
+        if (!loaded.remote.version.isWritable || loaded.save?.isGen2 == true) {
+            return CommitOutcome.Refused(
+                "REFUSED: ${loaded.remote.version.label} SAVES ARE READ ONLY."
+            )
+        }
+
         val encoded = LuaWriter.encode(root)
 
         val check = SaveClassifier.classify(encoded)
+        if (check is SaveClassification.ReadOnlyGeneration) {
+            return CommitOutcome.Refused("REFUSED: THAT IS A GENERATION II SAVE.")
+        }
         val save = check.save
             ?: return CommitOutcome.Refused("REFUSED: THE NEW SAVE DATA IS INVALID (${check.summary})")
 

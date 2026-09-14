@@ -749,7 +749,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        account.unsupported.forEach { add("- a non-Generation-I save on the account was ignored") }
+        account.unsupported.forEach { add("- a save from a game this app does not know was ignored") }
         add("Devices linked: ${account.devices.size}")
     }
 
@@ -2244,4 +2244,4 @@ private val DOWNLOAD_TOTAL: Int =
     SpriteSet.downloadable.size * 151 +
         (if (SpriteSet.downloadable.any { it.generation == 2 }) 151 else 0) +
         151 + 251 +
-        (TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size)
+        (TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size + TrainerStore.GEN2_ART.size)

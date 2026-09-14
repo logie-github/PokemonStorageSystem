@@ -32,6 +32,11 @@ class ItemTransferEngine(
      * both sides exactly as they were.
      */
     suspend fun deposit(loaded: LoadedSave, id: String, count: Int): TransferResult {
+        if (!loaded.isWritable) {
+            return TransferResult.Refused(
+                "${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP."
+            )
+        }
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
         if (fresh.fingerprint != loaded.fingerprint) {
             return TransferResult.Refused("THE GAME CHANGED THIS SAVE. REFRESH AND TRY AGAIN.")
@@ -82,6 +87,11 @@ class ItemTransferEngine(
         val held = items.count(id)
         if (held <= 0) return TransferResult.Refused("THAT ITEM IS NOT IN THE PC")
 
+        if (!loaded.isWritable) {
+            return TransferResult.Refused(
+                "${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP."
+            )
+        }
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
         if (fresh.fingerprint != loaded.fingerprint) {
             return TransferResult.Refused("THE GAME CHANGED THIS SAVE. REFRESH AND TRY AGAIN.")

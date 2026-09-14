@@ -9,6 +9,7 @@ import com.logie.gen1storage.sync.SyncTransport
 import com.logie.gen1storage.sync.getOrNull
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -91,16 +92,23 @@ class SyncApiTest {
     }
 
     @Test
-    fun `state lists Generation I saves and sets aside anything else`() = runTest {
+    fun `state lists every game it knows and sets aside anything else`() = runTest {
         server.put("red", "quiet-forest-dawn", SaveFixtures.encode(SaveFixtures.save()))
         server.put("blue", "bright-river-noon", SaveFixtures.encode(SaveFixtures.save(version = "blue")))
         server.put("gold", "gen-two-save", "return {}")
+        server.put("ruby", "a-later-game", "return {}")
 
         val state = api.state().getOrNull()!!
-        assertEquals(2, state.saves.size)
-        assertEquals(listOf("gold/gen-two-save"), state.unsupported)
+        // Gold is listed: it is read here, and a player with one on the
+        // account should see it rather than be told their account holds
+        // something unnameable. A game from a generation this app knows
+        // nothing about still is.
+        assertEquals(3, state.saves.size)
+        assertEquals(listOf("ruby/a-later-game"), state.unsupported)
         assertEquals(GameVersion.RED, state.saves[0].version)
         assertEquals("quiet-forest-dawn", state.saves[0].playthroughId)
+        assertEquals(GameVersion.GOLD, state.saves.single { it.version.generation == 2 }.version)
+        assertFalse(GameVersion.GOLD.isWritable)
         assertEquals(1, state.devices.size)
         assertTrue(state.devices.single().isThisDevice)
     }

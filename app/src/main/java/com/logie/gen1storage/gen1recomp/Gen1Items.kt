@@ -32,7 +32,12 @@ object Gen1Items {
     fun read(table: LuaValue.Table?): List<ItemStack> =
         table?.entries().orEmpty().mapNotNull { (key, value) ->
             val id = (key as? LuaKey.Name)?.value ?: return@mapNotNull null
-            if (id in Gen1RecompSave.BADGE_IDS) return@mapNotNull null
+            // Both regions': a Gold save's badges live in the same table its
+            // items do, and a ZEPHYRBADGE is no more a thing to move about
+            // than a BOULDERBADGE is.
+            if (id in Gen1RecompSave.BADGE_IDS || id in Gen1RecompSave.JOHTO_BADGE_IDS) {
+                return@mapNotNull null
+            }
             val count = value.asInt() ?: return@mapNotNull null
             if (count <= 0) null else ItemStack(id, count)
         }.sortedBy { it.id }

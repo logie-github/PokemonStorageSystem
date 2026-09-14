@@ -141,7 +141,13 @@ class TransferEngine(
         )
         journal.write(entry)
 
-        val stored = storage.deposit(removed, provenanceOf(fresh, save, entry), targetBox, uid)
+        val stored = storage.deposit(
+            removed,
+            provenanceOf(fresh, save, entry),
+            targetBox,
+            uid,
+            generation = fresh.remote.version.generation,
+        )
         if (stored == null) {
             journal.clear()
             return TransferResult.Refused("STORAGE IS FULL")
@@ -203,6 +209,28 @@ class TransferEngine(
             return TransferResult.Refused("A PREVIOUS TRANSFER IS UNRESOLVED. SYNC FIRST.")
         }
         val stored = storage.get(uid) ?: return TransferResult.Refused("THAT POKéMON IS NOT IN STORAGE")
+
+        // A Pokémon only ever goes into a cartridge of its own generation.
+        //
+        // The games have exactly one way across and it is a deliberate act:
+        // the Time Capsule, which spends a catch rate on an item and splits
+        // one Special stat in two. Writing a Generation I Pokémon straight
+        // into a Gold save would put a table there that Gold cannot describe
+        // — no held item, no happiness, one Special where it expects two —
+        // and writing a Generation II one into Red would hand Red fields it
+        // has never heard of. Neither is a transfer; both are a corrupted
+        // save, which is the one thing this app must never do.
+        val saveGeneration = loaded.remote.version.generation
+        if (stored.generation != saveGeneration) {
+            val name = stored.pokemon.displayName.uppercase()
+            return TransferResult.Refused(
+                if (stored.generation < saveGeneration) {
+                    "$name IS A GEN I POKéMON. SEND IT THROUGH THE TIME CAPSULE FIRST."
+                } else {
+                    "$name CAME FROM GEN II AND CANNOT GO BACK."
+                }
+            )
+        }
 
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
         if (fresh.fingerprint != loaded.fingerprint) {

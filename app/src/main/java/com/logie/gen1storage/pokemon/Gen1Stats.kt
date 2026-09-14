@@ -54,27 +54,53 @@ object Gen1Stats {
      * through untouched, exactly as upstream does — this app must not "fix"
      * numbers the game is content with.
      */
-    fun ensureStats(mon: LuaValue.Table): Boolean {
-        val existing = mon["stats"].asTable()
-        if (existing != null && Gen1Stat.ORDER.all { existing[it.key].asDouble() != null }) return false
-        val species = Gen1Data.species(Gen1Pokemon.speciesId(mon)) ?: return false
+    fun ensureStats(mon: LuaValue.Table, generation: Int = 1): Boolean {
+        if (hasCompleteStats(mon, generation)) return false
         val level = mon["level"].asInt() ?: 1
         val dvs = Gen1Pokemon.statMap(mon["dvs"].asTable())
         val statExp = Gen1Pokemon.statMap(mon["statExp"].asTable())
-        val stats = calc(species, level, dvs, statExp)
         val table = LuaValue.Table()
-        for (stat in Gen1Stat.ORDER) table[stat.key] = luaNum(stats.getValue(stat))
+        val maxHp: Int
+        if (generation >= 2) {
+            val species = Gen2Data.species(Gen2Data.idOf(Gen1Pokemon.speciesId(mon).orEmpty()))
+                ?: return false
+            // The Special DV and the Special stat experience word feed both
+            // halves, which is `CalcMonStatC` branching SATK and SDEF to the
+            // same code. See [TimeCapsule].
+            val special = dvs[Gen1Stat.SPECIAL] ?: 0
+            val specialExp = statExp[Gen1Stat.SPECIAL] ?: 0
+            Gen2Stat.ORDER.forEach { stat ->
+                val dv = when (stat) {
+                    Gen2Stat.SPECIAL_ATTACK, Gen2Stat.SPECIAL_DEFENSE -> special
+                    else -> dvs[Gen1Stat.byKey(stat.key)] ?: 0
+                }
+                val exp = when (stat) {
+                    Gen2Stat.SPECIAL_ATTACK, Gen2Stat.SPECIAL_DEFENSE -> specialExp
+                    else -> statExp[Gen1Stat.byKey(stat.key)] ?: 0
+                }
+                table[stat.key] = luaNum(
+                    calcOne(species.baseStat(stat), dv, exp, level, stat == Gen2Stat.HP)
+                )
+            }
+            maxHp = table[Gen2Stat.HP.key].asInt() ?: 1
+            mon["maxHp"] = luaNum(maxHp)
+        } else {
+            val species = Gen1Data.species(Gen1Pokemon.speciesId(mon)) ?: return false
+            val stats = calc(species, level, dvs, statExp)
+            for (stat in Gen1Stat.ORDER) table[stat.key] = luaNum(stats.getValue(stat))
+            maxHp = stats.getValue(Gen1Stat.HP)
+        }
         mon["stats"] = table
-        val maxHp = stats.getValue(Gen1Stat.HP)
         val hp = mon["hp"].asInt() ?: maxHp
         mon["hp"] = luaNum(hp.coerceIn(0, maxHp))
         return true
     }
 
-    /** True when `mon.stats` already holds all five stats. */
-    fun hasCompleteStats(mon: LuaValue.Table): Boolean {
+    /** True when `mon.stats` already holds every stat that generation has. */
+    fun hasCompleteStats(mon: LuaValue.Table, generation: Int = 1): Boolean {
         val stats = mon["stats"].asTable() ?: return false
-        return Gen1Stat.ORDER.all { stats[it.key].asDouble() != null }
+        return if (generation >= 2) Gen2Stat.ORDER.all { stats[it.key].asDouble() != null }
+        else Gen1Stat.ORDER.all { stats[it.key].asDouble() != null }
     }
 
     /** Gen II's shiny test applied to Gen I DVs, as upstream `Stats.isShiny` does. */

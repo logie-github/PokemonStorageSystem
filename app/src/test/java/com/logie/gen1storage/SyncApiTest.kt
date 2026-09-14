@@ -108,7 +108,7 @@ class SyncApiTest {
         assertEquals(GameVersion.RED, state.saves[0].version)
         assertEquals("quiet-forest-dawn", state.saves[0].playthroughId)
         assertEquals(GameVersion.GOLD, state.saves.single { it.version.generation == 2 }.version)
-        assertFalse(GameVersion.GOLD.isWritable)
+        assertEquals(2, GameVersion.GOLD.generation)
         assertEquals(1, state.devices.size)
         assertTrue(state.devices.single().isThisDevice)
     }

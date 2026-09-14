@@ -130,6 +130,8 @@ class StorageRepository(private val directory: File) {
         provenance: Provenance,
         preferredBox: Int = 1,
         uid: String = UUID.randomUUID().toString(),
+        /** Which generation's cartridge it came out of. */
+        generation: Int = 1,
     ): StoredPokemon? = synchronized(lock) {
         ensureLoaded()
         val start = (preferredBox - 1).coerceIn(0, StorageLayout.BOX_COUNT - 1)
@@ -137,7 +139,7 @@ class StorageRepository(private val directory: File) {
             val index = (start + offset) % StorageLayout.BOX_COUNT
             val slot = boxes[index].indexOfFirst { it == null }
             if (slot >= 0) {
-                val stored = StoredPokemon(uid, data, provenance)
+                val stored = StoredPokemon(uid, data, provenance, generation = generation)
                 boxes[index][slot] = stored
                 persist()
                 return stored

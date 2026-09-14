@@ -163,11 +163,11 @@ fun ChooseCartScreen(
             return@Column
         }
 
-        // Said once, above the cards themselves: a Generation II card can be
-        // read — its trainer, its badges, its boxes — and nothing in this app
-        // will change one.
-        if (GameVersion.fromId(showing)?.isWritable == false) {
-            Notice("READ ONLY. NOTHING IS WRITTEN TO THESE.")
+        // Said once, above the cards themselves: a Generation II card holds
+        // Generation II Pokemon, and the only way one of this app's
+        // Generation I Pokemon reaches it is the TIME CAPSULE.
+        if (GameVersion.fromId(showing)?.generation == 2) {
+            Notice("GEN II. USE THE TIME CAPSULE TO SEND ONE ON.")
             Spacer(Modifier.height(gen1Dp(3)))
         }
 

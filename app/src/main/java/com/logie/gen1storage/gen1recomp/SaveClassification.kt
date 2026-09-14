@@ -111,11 +111,7 @@ object SaveClassifier {
             return SaveClassification.Incomplete(missing)
         }
         val version = save.version ?: return SaveClassification.Unsupported("UNKNOWN GAME VERSION")
-        // Generation II stops here: read, listed, shown as a card, and never
-        // checked against Generation I's rules — a party of six Gold Pokémon
-        // is not a broken Red party. Nothing below this line would be true of
-        // it, and nothing above this line writes.
-        if (!version.isWritable || save.isGen2) {
+        if (!version.isWritable) {
             return SaveClassification.ReadOnlyGeneration(save, version.id)
         }
 
@@ -144,9 +140,11 @@ object SaveClassifier {
         // Pokémon, not a broken one. It is carried through untouched and only
         // noted, because refusing it would make the app useless on a modded
         // playthrough and "fixing" it would corrupt one.
+        // Against the save's own generation's table: CHIKORITA is not a
+        // non-vanilla species in a Gold save, and MR_MIME is spelled two ways.
         val unknownSpecies = (save.party + save.boxes.flatten())
             .mapNotNull { it.speciesId }
-            .filter { com.logie.gen1storage.pokemon.Gen1Data.species(it) == null }
+            .filter { it.speciesIsUnknownIn(save.isGen2) }
             .distinct()
         if (unknownSpecies.isNotEmpty()) {
             warnings += "NON-VANILLA SPECIES: ${unknownSpecies.take(3).joinToString(", ")}"
@@ -155,4 +153,8 @@ object SaveClassifier {
         return if (problems.isEmpty()) SaveClassification.Valid(save, warnings)
         else SaveClassification.ValidWithInvalidPokemon(save, problems)
     }
+
+    private fun String.speciesIsUnknownIn(gen2: Boolean): Boolean =
+        if (gen2) com.logie.gen1storage.pokemon.Gen2Data.species(this) == null
+        else com.logie.gen1storage.pokemon.Gen1Data.species(this) == null
 }

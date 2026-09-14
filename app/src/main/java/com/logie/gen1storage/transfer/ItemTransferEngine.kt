@@ -31,12 +31,28 @@ class ItemTransferEngine(
      * A commit that fails takes the app's copy back out, so a refusal leaves
      * both sides exactly as they were.
      */
+    /**
+     * Items stay in Generation I for now, and this is why.
+     *
+     * A Pokémon carries its generation and the Time Capsule is the one way
+     * across. An item carries nothing: the app's item PC is a count against a
+     * name, and the two games do not agree about those names — LEFTOVERS and
+     * a GOLD BERRY mean nothing to Red, and a Generation I TM is not a
+     * Generation II one. Moving a count between them would write an item into
+     * a cartridge that cannot describe it, which is the corruption this app
+     * exists to avoid. Tagging the PC's items with a generation is the fix
+     * and it is not a line of code, so until then the answer is no.
+     */
+    private fun refuseUnlessGen1(loaded: LoadedSave): TransferResult? = when {
+        !loaded.isWritable ->
+            TransferResult.Refused("${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP.")
+        loaded.remote.version.generation != 1 ->
+            TransferResult.Refused("ITEMS CANNOT MOVE BETWEEN GEN I AND GEN II YET.")
+        else -> null
+    }
+
     suspend fun deposit(loaded: LoadedSave, id: String, count: Int): TransferResult {
-        if (!loaded.isWritable) {
-            return TransferResult.Refused(
-                "${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP."
-            )
-        }
+        refuseUnlessGen1(loaded)?.let { return it }
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
         if (fresh.fingerprint != loaded.fingerprint) {
             return TransferResult.Refused("THE GAME CHANGED THIS SAVE. REFRESH AND TRY AGAIN.")
@@ -87,11 +103,7 @@ class ItemTransferEngine(
         val held = items.count(id)
         if (held <= 0) return TransferResult.Refused("THAT ITEM IS NOT IN THE PC")
 
-        if (!loaded.isWritable) {
-            return TransferResult.Refused(
-                "${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP."
-            )
-        }
+        refuseUnlessGen1(loaded)?.let { return it }
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
         if (fresh.fingerprint != loaded.fingerprint) {
             return TransferResult.Refused("THE GAME CHANGED THIS SAVE. REFRESH AND TRY AGAIN.")

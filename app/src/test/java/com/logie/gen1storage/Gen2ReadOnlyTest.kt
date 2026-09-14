@@ -87,7 +87,10 @@ class Gen2ReadOnlyTest {
     @Test
     fun `a Gold save reads as a trainer card`() {
         val classification = SaveClassifier.classify(goldSave())
-        assertTrue(classification is SaveClassification.ReadOnlyGeneration)
+        // Judged by Generation II's rules rather than set aside: a party of
+        // six Gold Pokemon is not a broken Red party, and CHIKORITA is not a
+        // non-vanilla species.
+        assertTrue(classification is SaveClassification.Valid)
         val save = classification.save
         assertNotNull(save)
         save!!
@@ -117,7 +120,73 @@ class Gen2ReadOnlyTest {
     }
 
     @Test
-    fun `nothing in the app will write one`() = runTest {
+    fun `a Pokemon only ever goes into a cartridge of its own generation`() = runTest {
+        val blob = goldSave()
+        server.put("gold", "quiet-forest-dawn", blob)
+        // A Red save beside it, for the trip that must not be possible back.
+        server.put("red", "quiet-forest-dawn", LuaWriter.encode(SaveFixtures.save()))
+        val api = SyncApi(transport = server, credentials = { "acct-1" to "tok-1" })
+        val backups = SaveBackups(temporaryFolder.newFolder("backups-${System.nanoTime()}"))
+        val saves = SaveRepository(api, backups)
+        val storageDir = temporaryFolder.newFolder("pc-${System.nanoTime()}")
+        val storage = StorageRepository(storageDir)
+        val engine = TransferEngine(
+            saves,
+            storage,
+            TransferJournal(storageDir),
+            PlacementLedger(storageDir),
+        )
+
+        val remote = (api.state() as SyncResult.Ok).value.saves.single { it.version.id == "gold" }
+        val loaded = (saves.load(remote) as SyncResult.Ok).value
+
+        assertTrue(loaded.isUsable)
+        assertTrue("Generation II saves are written now", loaded.isWritable)
+        assertTrue(GameVersion.GOLD.isWritable)
+
+        // A Generation I Pokemon may not be written into a Gold save. The
+        // games have one way across and it is the Time Capsule; putting a
+        // Generation I table straight into Gold would leave it holding a
+        // Pokemon Gold cannot describe, which is the corruption this app
+        // exists to avoid.
+        val fromRed = storage.deposit(
+            SaveFixtures.pokemon(),
+            com.logie.gen1storage.storage.Provenance(
+                gameVersion = "red",
+                saveId = "red/quiet-forest-dawn",
+                savePath = "save.lua",
+                slotId = "slot1",
+                trainerName = "ASH",
+                trainerId = 12345,
+                playthroughId = "quiet-forest-dawn",
+                sourceKind = com.logie.gen1storage.storage.Provenance.KIND_PARTY,
+                sourceIndex = 1,
+                depositedAtEpochMillis = 1_700_000_000_000,
+            ),
+            generation = 1,
+        )!!
+        val refused = engine.withdraw(loaded, fromRed.uid, WithdrawTarget.Party)
+        assertTrue(refused is TransferResult.Refused)
+        assertTrue(
+            (refused as TransferResult.Refused).reason.contains("TIME CAPSULE"),
+            )
+        assertEquals("and the save is untouched", blob, server.blobOf("gold", "quiet-forest-dawn"))
+
+        // The other way is refused as well, and there is no way back at all.
+        val fromGold = storage.deposit(
+            SaveFixtures.pokemon(),
+            fromRed.provenance.copy(gameVersion = "gold"),
+            generation = 2,
+        )!!
+        val redRemote = (api.state() as SyncResult.Ok).value.saves.single { it.version.id == "red" }
+        val red = (saves.load(redRemote) as SyncResult.Ok).value
+        val back = engine.withdraw(red, fromGold.uid, WithdrawTarget.Party)
+        assertTrue(back is TransferResult.Refused)
+        assertTrue((back as TransferResult.Refused).reason.contains("CANNOT GO BACK"))
+    }
+
+    @Test
+    fun `taking one out of a Gold save leaves it a Gold save`() = runTest {
         val blob = goldSave()
         server.put("gold", "quiet-forest-dawn", blob)
         val api = SyncApi(transport = server, credentials = { "acct-1" to "tok-1" })
@@ -135,40 +204,60 @@ class Gen2ReadOnlyTest {
         val remote = (api.state() as SyncResult.Ok).value.saves.single { it.version.id == "gold" }
         val loaded = (saves.load(remote) as SyncResult.Ok).value
 
-        // Readable, and not writable: both halves matter.
-        assertTrue(loaded.isUsable)
-        assertFalse(loaded.isWritable)
-        assertFalse(GameVersion.GOLD.isWritable)
+        // The party holds one, so it cannot be the one that leaves.
+        val last = engine.deposit(loaded, com.logie.gen1storage.transfer.SaveLocation.Party(1), 1)
+        assertTrue(last is TransferResult.Refused)
+        assertEquals(blob, server.blobOf("gold", "quiet-forest-dawn"))
+    }
 
-        // Taking one out of it.
-        val deposit = engine.deposit(loaded, com.logie.gen1storage.transfer.SaveLocation.Party(1), 1)
-        assertTrue(deposit is TransferResult.Refused)
+    @Test
+    fun `a Gold save keeps fourteen boxes and Red keeps twelve`() {
+        val gold = SaveClassifier.classify(goldSave()).save!!
+        assertEquals(Gen1RecompSave.BOX_COUNT_GEN2, gold.stockBoxes)
+        assertEquals(14, gold.boxes.size)
 
-        // Putting one into it.
-        val stored = storage.deposit(
-            SaveFixtures.pokemon(),
-            com.logie.gen1storage.storage.Provenance(
-                gameVersion = "red",
-                saveId = "red/quiet-forest-dawn",
-                savePath = "save.lua",
-                slotId = "slot1",
-                trainerName = "ASH",
-                trainerId = 12345,
-                playthroughId = "quiet-forest-dawn",
-                sourceKind = com.logie.gen1storage.storage.Provenance.KIND_PARTY,
-                sourceIndex = 1,
-                depositedAtEpochMillis = 1_700_000_000_000,
-            ),
-        )!!
-        val withdraw = engine.withdraw(loaded, stored.uid, WithdrawTarget.Party)
-        assertTrue(withdraw is TransferResult.Refused)
+        val red = SaveClassifier.classify(LuaWriter.encode(SaveFixtures.save())).save!!
+        assertEquals(Gen1RecompSave.BOX_COUNT, red.stockBoxes)
+        assertEquals(12, red.boxes.size)
+    }
 
-        // And the one place every write in the app goes through, asked
-        // directly rather than through an engine that might be bypassed.
-        val outcome = saves.commit(loaded, Gen1RecompSave(loaded.save!!.root.deepCopy()).root)
+    @Test
+    fun `a write that would change a save's generation is refused`() = runTest {
+        val blob = goldSave()
+        server.put("gold", "quiet-forest-dawn", blob)
+        val api = SyncApi(transport = server, credentials = { "acct-1" to "tok-1" })
+        val backups = SaveBackups(temporaryFolder.newFolder("backups-${System.nanoTime()}"))
+        val saves = SaveRepository(api, backups)
+        val remote = (api.state() as SyncResult.Ok).value.saves.single { it.version.id == "gold" }
+        val loaded = (saves.load(remote) as SyncResult.Ok).value
+
+        // The one place every write in the app goes through, asked directly
+        // rather than through an engine that might be bypassed.
+        val root = loaded.save!!.root.deepCopy()
+        root.remove(com.logie.gen1storage.lua.LuaKey.Name("generation"))
+        root["version"] = luaStr("red")
+        val outcome = saves.commit(loaded, root)
         assertTrue(outcome is CommitOutcome.Refused)
+        assertEquals(blob, server.blobOf("gold", "quiet-forest-dawn"))
+    }
 
-        // The save on the server is untouched, byte for byte.
+    @Test
+    fun `items do not cross between the generations yet`() = runTest {
+        val blob = goldSave()
+        server.put("gold", "quiet-forest-dawn", blob)
+        val api = SyncApi(transport = server, credentials = { "acct-1" to "tok-1" })
+        val backups = SaveBackups(temporaryFolder.newFolder("backups-${System.nanoTime()}"))
+        val saves = SaveRepository(api, backups)
+        val storageDir = temporaryFolder.newFolder("items-${System.nanoTime()}")
+        val engine = com.logie.gen1storage.transfer.ItemTransferEngine(
+            saves,
+            com.logie.gen1storage.storage.ItemRepository(storageDir),
+        )
+        val remote = (api.state() as SyncResult.Ok).value.saves.single { it.version.id == "gold" }
+        val loaded = (saves.load(remote) as SyncResult.Ok).value
+
+        val outcome = engine.deposit(loaded, "POTION", 1)
+        assertTrue(outcome is TransferResult.Refused)
         assertEquals(blob, server.blobOf("gold", "quiet-forest-dawn"))
     }
 }

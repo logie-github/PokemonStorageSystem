@@ -80,7 +80,7 @@ class Gen1Pokemon(
     val stats: Map<Gen1Stat, Int> get() = statMap(raw["stats"].asTable())
 
     val maxHp: Int? get() = stats[Gen1Stat.HP]
-    val hasStats: Boolean get() = Gen1Stats.hasCompleteStats(raw)
+    val hasStats: Boolean get() = Gen1Stats.hasCompleteStats(raw, generation)
     val isShiny: Boolean get() = Gen1Stats.isShiny(dvs)
 
     val moves: List<MoveSlot>

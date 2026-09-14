@@ -28,7 +28,7 @@ class SaveClassifierTest {
      * is what the transfer engine requires before it will change anything.
      */
     @Test
-    fun `a Gen II save is read, and never mistaken for one this app may write`() {
+    fun `a Gen II save is judged by Generation II's rules`() {
         val gold = LuaValue.Table().apply {
             this["version"] = luaStr("gold")
             this["generation"] = luaNum(2)
@@ -36,11 +36,14 @@ class SaveClassifierTest {
             this["party"] = LuaValue.Table()
         }
         val classification = SaveClassifier.classify(LuaWriter.encode(gold))
-        assertTrue(classification is SaveClassification.ReadOnlyGeneration)
+        assertTrue(classification is SaveClassification.Valid)
         assertNotNull(classification.save)
         assertEquals("KRIS", classification.save?.trainerName)
-        assertFalse(classification is SaveClassification.Valid)
-        assertFalse(GameVersion.GOLD.isWritable)
+        assertTrue(classification.save!!.isGen2)
+        assertTrue(GameVersion.GOLD.isWritable)
+        // Fourteen boxes, not twelve: what it is written back as is what the
+        // game it belongs to ships with.
+        assertEquals(14, classification.save!!.stockBoxes)
     }
 
     @Test

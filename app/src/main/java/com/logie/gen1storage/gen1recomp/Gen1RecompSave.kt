@@ -35,8 +35,15 @@ enum class GameVersion(
     SILVER("silver", "SILVER", "_silver", generation = 2),
     CRYSTAL("crystal", "CRYSTAL", "_crystal", generation = 2);
 
-    /** Whether this app may write a save of this game. Reading is always on. */
-    val isWritable: Boolean get() = generation == 1
+    /**
+     * Whether this app may write a save of this game.
+     *
+     * All six, now that the Generation II tables are here and the Time
+     * Capsule is the only way between them. What a save may be handed is a
+     * separate question and a stricter one: a Pokémon only ever goes into a
+     * cartridge of its own generation — see [TransferEngine].
+     */
+    val isWritable: Boolean get() = true
 
     companion object {
         fun fromId(id: String?): GameVersion? = entries.firstOrNull { it.id == id?.lowercase() }
@@ -304,10 +311,10 @@ class Gen1RecompSave(val root: LuaValue.Table) {
      */
     val boxCount: Int
         get() {
-            val boxesTable = root["boxes"].asTable() ?: return BOX_COUNT
+            val boxesTable = root["boxes"].asTable() ?: return stockBoxes
             var found = 0
             while (boxesTable[found + 1].asTable() != null) found++
-            return maxOf(found, BOX_COUNT)
+            return maxOf(found, stockBoxes)
         }
 
     /**
@@ -315,6 +322,13 @@ class Gen1RecompSave(val root: LuaValue.Table) {
      * box the save has, with a pre-12-box save's single `box` list showing as
      * box 1. Reading never mutates the save; see [ensureBoxes].
      */
+    /**
+     * How many boxes this game ships with: twelve in Generation I, fourteen
+     * in Generation II. A save with more than its game's is a modded save and
+     * keeps every one of them; see [boxCount].
+     */
+    val stockBoxes: Int get() = if (isGen2) BOX_COUNT_GEN2 else BOX_COUNT
+
     val boxes: List<List<Gen1Pokemon>>
         get() {
             val boxesTable = root["boxes"].asTable()
@@ -326,7 +340,7 @@ class Gen1RecompSave(val root: LuaValue.Table) {
             }
             val legacy = root["box"].asTable()?.array().orEmpty()
                 .mapNotNull { it.asTable()?.let(::readMon) }
-            return (1..BOX_COUNT).map { if (it == 1) legacy else emptyList() }
+            return (1..stockBoxes).map { if (it == 1) legacy else emptyList() }
         }
 
     val storedCount: Int get() = boxes.sumOf { it.size }
@@ -359,7 +373,7 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         var boxesTable = root["boxes"].asTable()
         if (boxesTable == null) {
             boxesTable = LuaValue.Table()
-            for (i in 1..BOX_COUNT) boxesTable[i] = LuaValue.Table()
+            for (i in 1..stockBoxes) boxesTable[i] = LuaValue.Table()
             root["boxes"] = boxesTable
             root["currentBox"] = luaNum(1)
             val legacy = root["box"].asTable()
@@ -394,7 +408,7 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         if (list.size >= PARTY_MAX) return false
         // add_mon.asm _MoveMon's tail, as upstream BoxMenu.withdraw does: a
         // Pokémon with no stat block gets one before it joins a party.
-        Gen1Stats.ensureStats(mon)
+        Gen1Stats.ensureStats(mon, if (isGen2) 2 else 1)
         list.add(mon)
         table.setArray(list)
         return true
@@ -448,7 +462,11 @@ class Gen1RecompSave(val root: LuaValue.Table) {
          * it has none; it is a floor, not a limit. What a particular save has
          * is [boxCount].
          */
+        /** Boxes as Red, Blue and Yellow ship: twelve. */
         const val BOX_COUNT = 12
+
+        /** Boxes as Gold, Silver and Crystal ship: fourteen. */
+        const val BOX_COUNT_GEN2 = 14
         const val BOX_CAPACITY = 20
 
         /** Gym order from `src/inventory/Badges.lua`. */

@@ -11,6 +11,7 @@ import com.logie.gen1storage.lua.asTable
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.lua.luaStr
 import com.logie.gen1storage.pokemon.Gen1TradeEvolution
+import com.logie.gen1storage.pokemon.TimeCapsule
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.UUID
@@ -295,6 +296,38 @@ class StorageRepository(private val directory: File) {
         }
         null
     }
+
+    /**
+     * Carries a stored Pokémon forward into Generation II.
+     *
+     * Returns what it was on the way in, or null when it was not here or had
+     * no business making the trip. The Pokémon keeps its spot and its handle:
+     * it is the same Pokémon, in a later game. What the conversion spends —
+     * the catch rate, and the single Special stat — is written down beside it
+     * rather than lost, which is [TimeCapsule.Record].
+     *
+     * One way only, and only when asked. Nothing in this app moves a Pokémon
+     * between generations on its own.
+     */
+    fun carryForward(uid: String, at: Long = System.currentTimeMillis()): TimeCapsule.Record? =
+        synchronized(lock) {
+            ensureLoaded()
+            for (box in boxes) {
+                val position = box.indexOfFirst { it?.uid == uid }
+                if (position < 0) continue
+                val stored = box[position] ?: return null
+                if (stored.inFlight || stored.generation != 1) return null
+                val carried = TimeCapsule.carry(stored.data, at) ?: return null
+                box[position] = stored.copy(
+                    data = carried.data,
+                    generation = 2,
+                    timeCapsule = carried.record,
+                )
+                persist()
+                return carried.record
+            }
+            null
+        }
 
     fun renameBox(index: Int, name: String): Boolean = synchronized(lock) {
         ensureLoaded()

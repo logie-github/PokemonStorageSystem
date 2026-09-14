@@ -6,6 +6,7 @@ import com.logie.gen1storage.lua.asString
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.lua.luaStr
 import com.logie.gen1storage.pokemon.Gen1Pokemon
+import com.logie.gen1storage.pokemon.TimeCapsule
 
 /**
  * Where a stored Pokémon came from.
@@ -79,8 +80,21 @@ data class StoredPokemon(
      * player can act on, and [Mailbox] is what clears it.
      */
     val noteId: String? = null,
+    /**
+     * Which generation's tables describe this one.
+     *
+     * A fact about the Pokémon rather than about the save it came from, and
+     * kept beside the raw table rather than inside it: a Pokémon withdrawn
+     * back into a cartridge carries exactly the fields it arrived with, and
+     * this is the app's bookkeeping. It changes in one place and one place
+     * only — [TimeCapsule.carry] — because moving a Pokémon forward is
+     * something a player does on purpose.
+     */
+    val generation: Int = 1,
+    /** What it was before it went through the Time Capsule, if it has. */
+    val timeCapsule: TimeCapsule.Record? = null,
 ) {
-    val pokemon: Gen1Pokemon get() = Gen1Pokemon(data)
+    val pokemon: Gen1Pokemon get() = Gen1Pokemon(data, generation)
 
     /** Whether this one is mid-move and cannot be sent anywhere else. */
     val inFlight: Boolean get() = noteId != null
@@ -93,6 +107,8 @@ data class StoredPokemon(
         this["mon"] = data
         this["provenance"] = provenance.toLua()
         noteId?.let { this["note"] = luaStr(it) }
+        if (generation != 1) this["generation"] = luaNum(generation)
+        timeCapsule?.let { this["timeCapsule"] = it.toLua() }
     }
 
     companion object {
@@ -101,7 +117,18 @@ data class StoredPokemon(
             val mon = table["mon"] as? LuaValue.Table ?: return null
             val provenance = (table["provenance"] as? LuaValue.Table)?.let(Provenance::fromLua)
                 ?: return null
-            return StoredPokemon(uid, mon, provenance, table["note"].asString())
+            return StoredPokemon(
+                uid = uid,
+                data = mon,
+                provenance = provenance,
+                noteId = table["note"].asString(),
+                // Written down since the Time Capsule existed; before that
+                // everything in this PC came out of a Generation I cartridge,
+                // which is what the default says.
+                generation = table["generation"].asInt() ?: 1,
+                timeCapsule = (table["timeCapsule"] as? LuaValue.Table)
+                    ?.let(TimeCapsule.Record::fromLua),
+            )
         }
     }
 }

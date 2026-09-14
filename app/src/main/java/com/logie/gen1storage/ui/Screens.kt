@@ -371,6 +371,12 @@ fun StorageSystemScreen(
         onView = { model.pcMode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onTrade = if (state.tradeEvolution) ({ model.open(Screen.Trade) }) else null,
+        // Offered only when there is something to send: a row that always
+        // answers "nothing is waiting" is a row that never did anything.
+        onTimeCapsule =
+            if (model.timeCapsuleCandidates().isNotEmpty()) {
+                { model.open(Screen.TimeCapsule) }
+            } else null,
         onDex = { model.open(Screen.Dex) },
         onOptions = onOptions,
         caption = when {

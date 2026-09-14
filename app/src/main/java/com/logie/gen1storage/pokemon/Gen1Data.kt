@@ -34,14 +34,16 @@ data class Gen1Species(
 
 /** One move as pokered stores it; [id] is the `move_constants.asm` name. */
 data class Gen1Move(
-    val id: String,
-    val internalIndex: Int,
-    val displayName: String,
-    val type: String,
-    val power: Int,
-    val accuracy: Int,
-    val basePp: Int,
-)
+    override val id: String,
+    override val internalIndex: Int,
+    override val displayName: String,
+    override val type: String,
+    override val power: Int,
+    override val accuracy: Int,
+    override val basePp: Int,
+) : MoveInfo {
+    override val generation: Int get() = 1
+}
 
 /**
  * One species' Pokédex entry, as the cartridge prints it.

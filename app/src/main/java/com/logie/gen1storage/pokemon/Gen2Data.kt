@@ -27,6 +27,40 @@ interface SpeciesInfo {
 }
 
 /**
+ * What every generation's move table can answer.
+ *
+ * Generation II did not only add moves: it rewrote seventeen of Generation
+ * I's. KARATE CHOP became FIGHTING, GUST became FLYING, BITE became DARK,
+ * EXPLOSION went from 170 to 250, and BLIZZARD lost twenty points of
+ * accuracy. A move is therefore read against the generation of the Pokémon
+ * that knows it — the same rule the species tables follow, and for the same
+ * reason: the id is identical and the numbers are not.
+ */
+interface MoveInfo {
+    val id: String
+    val internalIndex: Int
+    val displayName: String
+    val type: String
+    val power: Int
+    val accuracy: Int
+    val basePp: Int
+    val generation: Int
+}
+
+/** One move as pokecrystal stores it; [id] is the `move_constants.asm` name. */
+data class Gen2Move(
+    override val id: String,
+    override val internalIndex: Int,
+    override val displayName: String,
+    override val type: String,
+    override val power: Int,
+    override val accuracy: Int,
+    override val basePp: Int,
+) : MoveInfo {
+    override val generation: Int get() = 2
+}
+
+/**
  * A Pokédex page as the screens show one, whichever generation wrote it.
  *
  * The two tables are shaped differently — Generation I holds one entry with
@@ -192,11 +226,15 @@ object Gen2Data {
 
     val species: List<Gen2Species> = GEN2_SPECIES_TABLE
 
+    /** Generated from pret/pokecrystal by `tools/generate_gen2_moves.py`. */
+    val moves: List<Gen2Move> = GEN2_MOVE_TABLE
+
     /** Generated from pret/pokegold and pret/pokecrystal by `tools/generate_gen2_dex.py`. */
     val dex: List<Gen2DexEntry> = GEN2_DEX_TABLE
 
     private val speciesById: Map<String, Gen2Species> = species.associateBy { it.id }
     private val dexById: Map<String, Gen2DexEntry> = dex.associateBy { it.speciesId }
+    private val movesById: Map<String, Gen2Move> = moves.associateBy { it.id }
 
     fun species(id: String?): Gen2Species? = id?.let { speciesById[it] }
 
@@ -204,6 +242,10 @@ object Gen2Data {
     fun dexEntry(id: String?): Gen2DexEntry? = id?.let { dexById[it] }
 
     fun speciesName(id: String?): String = species(id)?.displayName ?: id.orEmpty()
+
+    fun move(id: String?): Gen2Move? = id?.let { movesById[it] }
+
+    fun moveName(id: String?): String = move(id)?.displayName ?: id.orEmpty()
 
     /** Every species id Generation II knows, in Pokédex order. */
     val speciesIds: List<String> = species.map { it.id }

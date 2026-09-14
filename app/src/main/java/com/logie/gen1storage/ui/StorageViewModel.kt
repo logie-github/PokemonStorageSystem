@@ -20,6 +20,7 @@ import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.pokemon.Gen2Data
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1TradeEvolution
+import com.logie.gen1storage.pokemon.TimeCapsule
 import com.logie.gen1storage.storage.StoredPokemon
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -122,6 +123,7 @@ sealed interface Screen {
     data object Options : Screen
     /** The four that only evolve by being traded, and the machine to do it. */
     data object Trade : Screen
+    data object TimeCapsule : Screen
     /** One Pokédex over every cartridge at once, and over the PC. */
     data object Dex : Screen
     /** One species' Pokédex page, as the cartridge prints it. */
@@ -1015,6 +1017,46 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /** Everything in the PC that a trade would evolve. */
+    /**
+     * The Generation I Pokémon in this PC that could go forward.
+     *
+     * Everything the app is holding that has not made the trip and that
+     * Generation II has a row for. One mid-transfer is left out: a Pokémon
+     * promised to a cartridge is not one to change underneath it.
+     */
+    fun timeCapsuleCandidates(): List<StoredPokemon> =
+        mutable.value.storage.boxes.flatMap { it.contents }
+            .filter { !it.inFlight && it.generation == 1 && TimeCapsule.canCarry(it.pokemon) }
+
+    /**
+     * Sends one forward, with what it was written down beside it.
+     *
+     * Every change the conversion makes is pret/pokecrystal's — see
+     * [TimeCapsule]. Nothing leaves the PC and no save is written: this app
+     * is holding the Pokémon on both sides of the cable, which is the only
+     * reason it can be offered at all.
+     */
+    fun carryForward(uid: String) = viewModelScope.launch {
+        val stored = storage.get(uid)
+        if (stored == null) {
+            message("THAT POKéMON IS NOT IN THE PC.")
+            return@launch
+        }
+        val name = stored.pokemon.displayName.uppercase()
+        mutable.update { it.copy(busy = true, prompt = null) }
+        val record = storage.carryForward(uid)
+        mutable.update { it.copy(busy = false, storage = storage.state()) }
+        if (record == null) {
+            message("$name COULD NOT GO ON.")
+            return@launch
+        }
+        val lines = buildList {
+            add("$name came through to GOLD.")
+            record.heldItem?.let { add("It is holding ${itemLabel(it)}.") }
+        }
+        mutable.update { it.copy(prompt = Prompt.Message(lines)) }
+    }
+
     fun tradeCandidates(): List<StoredPokemon> =
         mutable.value.storage.boxes.flatMap { it.contents }
             .filter { Gen1TradeEvolution.evolves(it.pokemon.speciesId) }

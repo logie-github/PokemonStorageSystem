@@ -87,7 +87,7 @@ class Gen1Pokemon(
         get() = raw["moves"].asTable()?.array().orEmpty().mapNotNull { entry ->
             val table = entry.asTable() ?: return@mapNotNull null
             val id = table["id"].asString() ?: return@mapNotNull null
-            MoveSlot(id, table["pp"].asInt() ?: 0, table["ppUps"].asInt())
+            MoveSlot(id, table["pp"].asInt() ?: 0, table["ppUps"].asInt(), generation)
         }
 
     /**
@@ -134,9 +134,17 @@ class Gen1Pokemon(
     /** One stat as it is shown: what it is called, and what it is. */
     data class StatLine(val label: String, val value: Int?)
 
-    data class MoveSlot(val id: String, val pp: Int, val ppUps: Int?) {
-        val move: Gen1Move? get() = Gen1Data.move(id)
-        val displayName: String get() = Gen1Data.moveName(id)
+    data class MoveSlot(
+        val id: String,
+        val pp: Int,
+        val ppUps: Int?,
+        /** The generation of the Pokémon that knows it; see [MoveInfo]. */
+        val generation: Int = 1,
+    ) {
+        val move: MoveInfo? get() =
+            if (generation >= 2) Gen2Data.move(id) else Gen1Data.move(id)
+
+        val displayName: String get() = move?.displayName ?: id
 
         /** `AddBonusPP`: each PP Up adds a fifth of the base PP. */
         val maxPp: Int?

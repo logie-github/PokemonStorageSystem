@@ -135,6 +135,8 @@ fun StorageSystemScreen(
      * take is a question the menu does not need to raise.
      */
     onTrade: (() -> Unit)? = null,
+    /** Sending a Generation I Pokémon on to Generation II. */
+    onTimeCapsule: (() -> Unit)? = null,
     /** One Pokédex over every cartridge, which no cartridge could offer. */
     onDex: (() -> Unit)? = null,
     onOptions: (() -> Unit)? = null,
@@ -190,6 +192,11 @@ fun StorageSystemScreen(
         // answers "put a card in first" is a row that never did anything.
         if (hasCard) add(Triple("$inLabel PKMN", onDeposit, SoundEffect.SELECT))
         if (onTrade != null) add(Triple("TRADE", onTrade, SoundEffect.SELECT))
+        // Beside the trade machine, because it is the same idea one game
+        // later: this app is both ends of the cable.
+        if (onTimeCapsule != null) {
+            add(Triple("TIME CAPSULE", onTimeCapsule, SoundEffect.SELECT))
+        }
         if (onDex != null) add(Triple("POKéDEX", onDex, SoundEffect.SELECT))
         // Everything the cartridge's PC does not have lives behind this row.
         if (onOptions != null) add(Triple("OPTIONS", onOptions, SoundEffect.OPTIONS))

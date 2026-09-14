@@ -58,6 +58,7 @@ import com.logie.gen1storage.ui.Gen1EvolutionScene
 import com.logie.gen1storage.ui.DexEntryScreen
 import com.logie.gen1storage.ui.DexStatsScreen
 import com.logie.gen1storage.ui.DexScreen
+import com.logie.gen1storage.ui.TimeCapsuleScreen
 import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PromptWindow
@@ -371,6 +372,7 @@ private fun ScreenContent(
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
         is Screen.TrainerCard -> TrainerCardScreen(state, model, screen.key)
         Screen.Trade -> TradeScreen(state, model)
+        Screen.TimeCapsule -> TimeCapsuleScreen(state, model)
         Screen.Dex -> DexScreen(state, model)
         is Screen.DexEntry -> DexEntryScreen(state, model, screen.speciesId)
         Screen.DexStats -> DexStatsScreen(state, model)

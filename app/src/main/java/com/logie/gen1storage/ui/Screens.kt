@@ -1261,6 +1261,15 @@ private fun OptionsDrawerContent(
                 } else {
                     add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
                 }
+                // Android's own backup, which is where the phone already
+                // keeps a copy of every app that allows it. Off unless asked
+                // for: a copy of someone's Pokémon leaving their phone is not
+                // a thing to start doing quietly.
+                add(
+                    OptionRow("BACKUP TO GOOGLE", if (state.cloudBackup) "ON" else "OFF") {
+                        model.setCloudBackup(!state.cloudBackup)
+                    }
+                )
             }
 
             OptionsDrawer.ABOUT -> {

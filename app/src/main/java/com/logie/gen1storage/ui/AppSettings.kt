@@ -33,6 +33,43 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_SHOW_ALL_ITEMS, value).apply()
 
     /**
+     * Let Android copy this app into the player's Google account, the way it
+     * backs up any app that allows it.
+     *
+     * Off, and nothing leaves the device. On, the boxes and the settings go
+     * into the account's backup and come back when the app is installed again
+     * — see `StorageBackupAgent`, which is what reads this, and [restoredUids]
+     * for what happens to a Pokémon that comes back from one.
+     *
+     * Off by default. A copy of someone's Pokémon leaving their phone is not
+     * something to start doing without being asked.
+     */
+    var cloudBackup: Boolean
+        get() = prefs.getBoolean(KEY_CLOUD_BACKUP, false)
+        set(value) = prefs.edit().putBoolean(KEY_CLOUD_BACKUP, value).apply()
+
+    /**
+     * Pokémon that came back from a backup and have not been checked yet.
+     *
+     * A backup is the boxes as they were at one moment, and the cartridges
+     * have moved on since. One that was transferred into a save after the
+     * backup was taken is in that save now *and* in the copy being restored,
+     * which is the one thing this app is built never to allow.
+     *
+     * So every Pokémon a restore brings back is listed here, and each one is
+     * dropped from the list the first time a save is read that does not hold
+     * it. A Pokémon found in a save is taken out of the PC instead: the
+     * cartridge owns it, and the PC's copy is a picture of one that has
+     * already left.
+     */
+    var restoredUids: Set<String>
+        get() = prefs.getStringSet(KEY_RESTORED_UIDS, emptySet()).orEmpty()
+        set(value) = prefs.edit().apply {
+            if (value.isEmpty()) remove(KEY_RESTORED_UIDS)
+            else putStringSet(KEY_RESTORED_UIDS, value)
+        }.apply()
+
+    /**
      * The colour palette everything is drawn through, by [GbPalette] id.
      * Defaults to the untinted look.
      */
@@ -211,6 +248,8 @@ class AppSettings(private val prefs: SharedPreferences) {
 
     private companion object {
         const val KEY_TEXT_SPEED = "text-speed"
+        const val KEY_CLOUD_BACKUP = "cloud-backup"
+        const val KEY_RESTORED_UIDS = "restored-uids"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"
         const val KEY_PALETTE = "palette"

@@ -1,6 +1,7 @@
 package com.logie.gen1storage.ui
 
 import android.app.Application
+import android.app.backup.BackupManager
 import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
@@ -293,6 +294,8 @@ data class UiState(
     val soundsOn: Set<String> = emptySet(),
     /** Nothing moves, and which kinds of movement are on under that. */
     val reduceMotion: Boolean = false,
+    /** Whether Android may copy this app into the player's Google account. */
+    val cloudBackup: Boolean = false,
     /** Swipes drive the cursor, and lists do not scroll under a finger. */
     val swipeControls: Boolean = false,
     val motionsOn: Set<String> = emptySet(),
@@ -408,6 +411,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             .take(40)
 
     init {
+        noticeRestore()
         applySpriteTint(GbPalette.fromId(settings.paletteId))
         mutable.update {
             it.copy(
@@ -423,6 +427,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
+                cloudBackup = settings.cloudBackup,
                 swipeControls = settings.swipeControls,
                 motionsOn = enabledMotions(),
                 haptics = settings.haptics,
@@ -1752,6 +1757,89 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { state ->
             state.copy(loaded = state.loaded + saves.associateBy { it.key })
         }
+        checkRestored(saves)
+    }
+
+    // ------- coming back from a backup
+
+    /**
+     * Whether the boxes on this device arrived with the app or came back from
+     * Android's backup.
+     *
+     * The marker is a file this app writes once and never lets into a backup.
+     * A fresh install has neither it nor any boxes; a restore has boxes and no
+     * marker, because the boxes came from the account and the marker could
+     * not. That is the whole of the test, and it needs nothing from the
+     * backup system itself.
+     *
+     * Everything a restore brought back is written down as unchecked. See
+     * [AppSettings.restoredUids]: a backup is the boxes at one moment and the
+     * cartridges have moved on since, so until each one has been held up
+     * against the saves it is a Pokémon this app is not sure it still owns.
+     */
+    private fun noticeRestore() {
+        val marker = File(getApplication<Application>().filesDir, "install.marker")
+        if (marker.exists()) return
+        val held = runCatching { storage.all() }.getOrDefault(emptyList())
+        if (held.isNotEmpty()) settings.restoredUids = held.map { it.uid }.toSet()
+        runCatching { marker.writeText(System.currentTimeMillis().toString()) }
+    }
+
+    /**
+     * Holds what a restore brought back up against a cartridge that has just
+     * been read.
+     *
+     * A Pokémon the save already holds left this app before the backup was
+     * taken, so the copy in the PC is a picture of one that is gone: the
+     * cartridge is where it lives now and the copy goes. One the save does not
+     * hold is the app's own, and it stops being asked about.
+     *
+     * Only ever removes from the PC, and only when a cartridge is holding the
+     * same Pokémon — the app never ends up with nothing where there was
+     * something, which is the half of the promise a backup could break.
+     */
+    private fun checkRestored(saves: Collection<LoadedSave>) {
+        val unchecked = settings.restoredUids
+        if (unchecked.isEmpty()) return
+        val contents = saves.mapNotNull { it.save }
+        if (contents.isEmpty()) return
+        var left = unchecked
+        var removed = 0
+        for (uid in unchecked) {
+            val stored = storage.get(uid)
+            if (stored == null) {
+                left = left - uid
+                continue
+            }
+            val fingerprint = stored.pokemon.fingerprint
+            val inASave = contents.any { save ->
+                save.party.any { it.fingerprint == fingerprint } ||
+                    save.boxes.any { box -> box.any { it.fingerprint == fingerprint } }
+            }
+            if (inASave) {
+                storage.withdraw(uid)
+                removed++
+            }
+            left = left - uid
+        }
+        settings.restoredUids = left
+        if (removed > 0) {
+            mutable.update { it.copy(storage = storage.state()) }
+            message(
+                if (removed == 1) "A RESTORED POKéMON WAS ALREADY IN A SAVE."
+                else "$removed RESTORED POKéMON WERE ALREADY IN SAVES.",
+                "THE CARTRIDGE KEPT THEM.",
+            )
+        }
+    }
+
+    /** Whether this app's data goes into the account's backup. */
+    fun setCloudBackup(on: Boolean) {
+        settings.cloudBackup = on
+        mutable.update { it.copy(cloudBackup = on) }
+        // Tells the platform there is something new to take. Without it the
+        // first backup waits for whenever the system next feels like one.
+        runCatching { BackupManager(getApplication()).dataChanged() }
     }
 
     /** Re-reads a save from the account, so a transfer is aimed at its current revision. */

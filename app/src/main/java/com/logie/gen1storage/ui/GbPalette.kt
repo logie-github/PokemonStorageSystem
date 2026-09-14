@@ -213,13 +213,17 @@ data class GbPalette(
 
         val SUICUNE = GbPalette(
             id = "suicune", label = "SUICUNE",
-            // The purple at the foot of the screen, with the blue it started
-            // at moved up into its place.
+            // The one of the six that reads as a ramp: the pale blue at the
+            // top of the screen, the deeper blue at the foot of it, and the
+            // purple above both as the bar and the ink. The ground is drawn
+            // from the three lighter shades downwards, so it was the pale one
+            // sitting in the bottom slot that had the screen washing out as
+            // it fell.
             darkest = Color(0xFF9676B5),
-            dark = Color(0xFFC7EAF6),
-            light = Color(0xFF72B3E2),
-            lightest = Color(0xFF73B8C7),
-            surround = Color(0xFFA293C5),
+            dark = Color(0xFF72B3E2),
+            light = Color(0xFF73B8C7),
+            lightest = Color(0xFFC7EAF6),
+            surround = Color(0xFF8D85C0),
             tintsSprites = true,
         )
 

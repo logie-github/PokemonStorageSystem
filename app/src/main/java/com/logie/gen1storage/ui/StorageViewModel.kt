@@ -55,6 +55,7 @@ import com.logie.gen1storage.transfer.TransferJournal
 import com.logie.gen1storage.transfer.TransferResult
 import com.logie.gen1storage.transfer.WithdrawTarget
 import com.logie.gen1storage.download.DownloadService
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -378,12 +379,79 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * A foreground service keeps the process alive alongside it; this keeps
      * the work from being cancelled the moment the activity goes.
      */
-    private val downloads = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * Where every download runs, and the net under all of them.
+     *
+     * A scope without a handler sends anything a `launch` throws to the
+     * process's uncaught handler, which is the app closing. Each set of art
+     * added here brought a few more lines that could throw outside the
+     * `runCatching` around the fetching itself — a count off the disk, a
+     * notification, a state update — and every one of them was a new way for
+     * DOWNLOAD ALL to take the app down. This is the backstop: nothing that
+     * happens under a download ends the process, whatever is added next.
+     * [downloadStage] is the near net, this is the far one.
+     */
+    private val downloads = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, error -> noteDownloadFailure(null, error) }
+    )
+
+    /**
+     * Runs one stage of the download with nothing able to escape it.
+     *
+     * Everything the stage does goes inside, the bookkeeping afterwards
+     * included, because a count taken off the disk and a state update are as
+     * able to throw as a socket is and used not to be covered. A stage that
+     * fails says so on the screen it belongs to and in the report; it never
+     * closes the app and never stops the stages after it.
+     */
+    private fun downloadStage(label: String, body: suspend () -> Unit): Job =
+        downloads.launch {
+            runCatching { body() }.onFailure { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                noteDownloadFailure(label, error)
+            }
+        }
+
+    /**
+     * What went wrong, where a player can hand it over.
+     *
+     * Onto whichever bar is in flight, so the screen says STOPPED rather than
+     * sitting at some percentage forever, and into a file the report under
+     * ABOUT carries — the stack of something that did not crash the app is
+     * otherwise lost entirely.
+     */
+    private fun noteDownloadFailure(label: String?, error: Throwable) {
+        val said = "${label ?: "DOWNLOAD"}: ${error.javaClass.simpleName}" +
+            (error.message?.let { ": $it" } ?: "")
+        runCatching {
+            val file = java.io.File(getApplication<Application>().filesDir, DOWNLOAD_FAILURE_FILE)
+            val trace = java.io.StringWriter()
+                .also { error.printStackTrace(java.io.PrintWriter(it)) }
+                .toString().take(2000)
+            file.writeText("${java.time.Instant.now()}\n$said\n$trace")
+        }
+        mutable.update { state ->
+            fun stop(progress: DownloadProgress?) =
+                progress?.takeIf { !it.finished }
+                    ?.copy(finished = true, error = said) ?: progress
+            state.copy(
+                spriteProgress = stop(state.spriteProgress),
+                cryProgress = stop(state.cryProgress),
+                followerProgress = stop(state.followerProgress),
+                trainerProgress = stop(state.trainerProgress),
+            )
+        }
+    }
 
     /** The last figure the notification was told, so it is not told it again. */
     private var shownPercent = -1
 
     /** Tells the service what to say, or takes it down when nothing is left. */
+    /** Set while DOWNLOAD ALL is running all four stages as one download. */
+    @Volatile
+    private var holdingDownloadService = false
+
     private fun showDownload(label: String, progress: DownloadProgress?) {
         val app = getApplication<Application>()
         // Three hundred files report three hundred times and the bar has a
@@ -396,7 +464,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 listOfNotNull(it.spriteProgress, it.cryProgress, it.followerProgress, it.trainerProgress)
                     .any { p -> !p.finished }
             }
-            if (!stillGoing) DownloadService.hide(app)
+            // DOWNLOAD ALL holds it up across all four stages. Between one
+            // stage finishing and the next reporting there is a moment when
+            // nothing is running, and taking the service down in it meant the
+            // next stage had to start it again — from a process that by then
+            // is very often not the app on screen, which is a start the system
+            // refuses and a clock it can crash the app over. Four stages, four
+            // of those. One download, one service.
+            if (!stillGoing && !holdingDownloadService) DownloadService.hide(app)
         } else {
             DownloadService.show(app, label, progress.percent)
         }
@@ -1167,7 +1242,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun downloadSprites() {
         if (spriteJob?.isActive == true) return
-        spriteJob = downloads.launch {
+        spriteJob = downloadStage("SPRITES") {
             mutable.update { it.copy(prompt = null, spriteProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
                 spriteDownloader.download(SpriteSet.downloadable) { progress ->
@@ -1228,7 +1303,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun downloadCries() {
         if (cryJob?.isActive == true) return
-        cryJob = downloads.launch {
+        cryJob = downloadStage("CRIES") {
             mutable.update { it.copy(prompt = null, cryProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
                 cries.downloadAll { progress ->
@@ -1267,7 +1342,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     /** Downloads the overworld follower sheets the box grid draws. */
     fun downloadFollowers() {
         if (followerJob?.isActive == true) return
-        followerJob = downloads.launch {
+        followerJob = downloadStage("FOLLOWERS") {
             mutable.update { it.copy(prompt = null, followerProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
                 followers.downloadAll { progress ->
@@ -1315,7 +1390,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     /** Downloads the trainer battle sprites a trainer card's portrait uses. */
     fun downloadTrainers() {
         if (trainerJob?.isActive == true) return
-        trainerJob = downloads.launch {
+        trainerJob = downloadStage("TRAINERS") {
             mutable.update { it.copy(prompt = null, trainerProgress = DownloadProgress(0, 1)) }
             val result = runCatching {
                 trainers.downloadAll { progress ->
@@ -1401,15 +1476,25 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * line. In order, each one's bar means what it says.
      */
     fun downloadEverything() {
-        downloads.launch {
-            downloadSprites()
-            spriteJob?.join()
-            downloadCries()
-            cryJob?.join()
-            downloadFollowers()
-            followerJob?.join()
-            downloadTrainers()
-            trainerJob?.join()
+        // Each stage in turn, and every one of them attempted: a set that
+        // fails is a gap in the art, not a reason to leave the three after it
+        // unfetched. Nothing here can throw — [downloadStage] sees to that —
+        // so the sequence always reaches the end.
+        downloadStage("DOWNLOAD ALL") {
+            holdingDownloadService = true
+            try {
+                downloadSprites()
+                spriteJob?.join()
+                downloadCries()
+                cryJob?.join()
+                downloadFollowers()
+                followerJob?.join()
+                downloadTrainers()
+                trainerJob?.join()
+            } finally {
+                holdingDownloadService = false
+                runCatching { DownloadService.hide(getApplication()) }
+            }
         }
     }
 
@@ -2206,6 +2291,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun localBackups(): List<SaveBackups.Entry> = backups.all()
 
+    /**
+     * What the last download stage failed with, if one did.
+     *
+     * A failure that no longer closes the app is a failure with nothing left
+     * behind it, so it is written down where the report can carry it — the
+     * whole point of catching it was to keep the app alive, not to keep the
+     * reason a secret.
+     */
+    private fun lastDownloadFailure(): String? =
+        java.io.File(getApplication<Application>().filesDir, DOWNLOAD_FAILURE_FILE)
+            .takeIf { it.isFile }
+            ?.runCatching { readText() }?.getOrNull()?.takeIf { it.isNotBlank() }
+
     fun debugReport(): String {
         val current = mutable.value
         val app = getApplication<Application>()
@@ -2231,6 +2329,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 appendLine("### Recovery")
                 current.recoveryNotes.forEach { appendLine("- $it") }
             }
+            lastDownloadFailure()?.let { failure ->
+                appendLine()
+                appendLine("### Last download failure")
+                appendLine("```")
+                appendLine(failure.trim())
+                appendLine("```")
+            }
             com.logie.gen1storage.StorageApp.lastCrash(getApplication())?.let { crash ->
                 appendLine()
                 appendLine("### Last crash")
@@ -2244,6 +2349,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }.take(12000)
     }
 }
+
+/** Where the last download failure is kept, for the report under ABOUT. */
+private const val DOWNLOAD_FAILURE_FILE = "last-download-failure.txt"
 
 /**
  * Every file the download fetches, counted once.

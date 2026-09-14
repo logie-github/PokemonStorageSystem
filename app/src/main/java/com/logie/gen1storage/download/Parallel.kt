@@ -1,11 +1,9 @@
 package com.logie.gen1storage.download
 
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 
@@ -18,14 +16,25 @@ import kotlin.coroutines.coroutineContext
  * asking a phone to hold more sockets than it comfortably can, and without
  * looking to the far end like something worth rate limiting.
  */
-private const val AT_ONCE = 6
+const val AT_ONCE = 6
 
 /**
  * Runs [fetch] over [items], a few at a time, reporting after each one.
  *
- * Returns how many failed. Progress is counted atomically because the
- * reports arrive from several threads at once; the count only ever goes up,
- * so the bar never jumps backwards.
+ * Returns how many failed.
+ *
+ * **A fixed handful of workers pulling from the list, rather than one
+ * coroutine per file.** The two look alike at a hundred and fifty files and
+ * do not at fifteen hundred: launching one per item builds the whole run in
+ * memory before a byte is fetched, and that list grows every time a set of
+ * art is added. Six workers taking the next item until there are none is the
+ * same download with a cost that does not move.
+ *
+ * Nothing a worker does can end the run. A file that fails is counted and the
+ * next one starts; a report that throws — a notification the system refused,
+ * a screen that has gone — is dropped. Cancellation is the one thing that
+ * does stop it, and it stops it promptly rather than being counted as fifteen
+ * hundred failures.
  */
 suspend fun <T> fetchInParallel(
     items: Iterable<T>,
@@ -35,23 +44,41 @@ suspend fun <T> fetchInParallel(
 ): Int {
     val done = AtomicInteger()
     val failed = AtomicInteger()
-    val gate = Semaphore(AT_ONCE)
+    // One cursor over the items, shared by the workers. Synchronized rather
+    // than a channel: the whole of the contention is one `next()` per file.
+    val source = items.iterator()
+    val lock = Any()
+    fun next(): T? = synchronized(lock) { if (source.hasNext()) source.next() else null }
+
     coroutineScope {
-        items.map { item ->
-            async {
-                gate.withPermit {
+        repeat(AT_ONCE) {
+            launch {
+                while (true) {
                     coroutineContext.ensureActive()
-                    if (runCatching { fetch(item) }.getOrNull() == null) failed.incrementAndGet()
+                    val item = next() ?: return@launch
+                    try {
+                        if (fetch(item) == null) failed.incrementAndGet()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        // One file is one file. Whatever it was — a socket, a
+                        // proxy's error page, a decoder — the other fourteen
+                        // hundred are still worth having.
+                        failed.incrementAndGet()
+                    }
                     // Reporting is not the work. Whatever the caller does with
-                    // a progress figure — a notification the system may refuse,
-                    // a screen that has since gone — must not be able to stop
-                    // the download or bring the app down with it.
-                    runCatching {
-                        onProgress(DownloadProgress(done.incrementAndGet(), total, failed.get()))
+                    // a progress figure must not be able to stop the download
+                    // or bring the app down with it.
+                    val at = done.incrementAndGet()
+                    try {
+                        onProgress(DownloadProgress(at, total, failed.get()))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (ignored: Throwable) {
                     }
                 }
             }
-        }.awaitAll()
+        }
     }
     return failed.get()
 }

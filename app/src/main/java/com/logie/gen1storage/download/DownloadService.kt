@@ -60,6 +60,11 @@ class DownloadService : Service() {
         }.isSuccess
         if (!started) {
             running = false
+            // The system said no to this one; it will say no to the next four
+            // hundred as well, and each of those is a clock it can crash the
+            // app over. The download carries on regardless — it is the
+            // notification that is lost, not the files.
+            refused = true
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -100,26 +105,55 @@ class DownloadService : Service() {
                 }
                 return
             }
+            // Asked once and refused, asked no more.
+            //
+            // A start the system will not allow — which is every start made
+            // while the app is not on screen, and a long download is exactly
+            // what a player walks away from — leaves `running` false, so the
+            // next report tried again, and the one after that. A stage is a
+            // hundred reports and a run is four stages: four hundred start
+            // intents, each of them a five second clock the system will crash
+            // the app over if the service does not answer in time. One
+            // refusal now stands for the rest of the run, and the bar carries
+            // on as a plain notification instead.
+            if (refused) {
+                runCatching {
+                    context.getSystemService(NotificationManager::class.java)
+                        ?.notify(NOTIFICATION_ID, build(context, label, percent))
+                }
+                return
+            }
             val intent = Intent(context, DownloadService::class.java)
                 .putExtra(EXTRA_LABEL, label)
                 .putExtra(EXTRA_PERCENT, percent)
-            runCatching {
+            val asked = runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)
                 }
             }
+            if (asked.isFailure) refused = true
         }
 
         fun hide(context: Context) {
             running = false
+            refused = false
             runCatching { context.stopService(Intent(context, DownloadService::class.java)) }
         }
 
         /** Whether the service is up, so an update is an update rather than a start. */
         @Volatile
         private var running = false
+
+        /**
+         * Whether the system has already turned a start down this run.
+         *
+         * Cleared by [hide], which is the end of a download — the next one is
+         * a fresh question, and by then the app may well be on screen again.
+         */
+        @Volatile
+        private var refused = false
 
         /** The notification itself, buildable without a service instance. */
         fun build(context: Context, label: String, percent: Int): Notification {

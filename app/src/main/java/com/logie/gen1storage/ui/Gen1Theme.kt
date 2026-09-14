@@ -86,11 +86,12 @@ object Gen1Palette {
     /**
      * Whether the windows follow the palette as well as the screen behind them.
      *
-     * Off by default, because the cartridge draws its text boxes black on white
-     * whatever the screen is tinted, and that is the more readable of the two.
-     * Turning it on lets the boxes take the palette too.
+     * On by default: a palette that stopped at the edge of every box left the
+     * app looking like two designs at once. BLACK ON WHITE BOXES turns it
+     * off, which is the cartridge's own look — it drew its text boxes black
+     * on white whatever the screen was tinted.
      */
-    var windowsFollowPalette by mutableStateOf(false)
+    var windowsFollowPalette by mutableStateOf(true)
 
     /** The four-shade ramp, lightest to darkest. Always the chosen palette. */
     val Lightest: Color get() = palette.lightest

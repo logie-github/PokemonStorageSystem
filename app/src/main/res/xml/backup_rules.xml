@@ -23,4 +23,5 @@
     <exclude domain="file" path="cries/" />
     <exclude domain="file" path="followers/" />
     <exclude domain="file" path="install.marker" />
+    <exclude domain="file" path="last-crash.txt" />
 </full-backup-content>

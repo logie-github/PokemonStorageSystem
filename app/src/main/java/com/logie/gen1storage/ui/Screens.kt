@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -1032,6 +1033,19 @@ fun OptionsScreen(state: UiState, model: StorageViewModel, onShareReport: () -> 
     OptionsList(state, model) { drawer = it }
 }
 
+/**
+ * How tall a drawer's rows may get before they scroll.
+ *
+ * Measured off the screen rather than fixed: enough of it that a short drawer
+ * never scrolls at all, and little enough that the longest one still shows
+ * the heading above it and leaves the ground visible underneath.
+ */
+@Composable
+private fun drawerRowsHeight(): androidx.compose.ui.unit.Dp {
+    val screen = LocalConfiguration.current.screenHeightDp
+    return (screen * 0.68f).dp
+}
+
 /** The drawers, in the order they are offered. */
 enum class OptionsDrawer(val label: String) {
     VISUAL("VISUAL"),
@@ -1370,7 +1384,21 @@ private fun OptionsDrawerContent(
 
         item {
             Gen1Frame(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                rows.forEachIndexed { index, row ->
+                // A window of rows that is taller than the screen scrolls
+                // inside itself, and follows the cursor while it does. The
+                // rows used to be laid out one after another inside the
+                // frame, which is one lazy item however many of them there
+                // are: a drawer with fourteen palettes in it simply ran off
+                // the bottom of the phone and the last of them could not be
+                // reached at all.
+                val scroll = rememberLazyListState()
+                LaunchedEffect(cursor) { scroll.scrollToRow(cursor) }
+                LazyColumn(
+                    Modifier.heightIn(max = drawerRowsHeight()),
+                    state = scroll,
+                    userScrollEnabled = !LocalGen1Swipe.current,
+                ) {
+                itemsIndexed(rows) { index, row ->
                     if (row.swatch != null) {
                         Row(
                             Modifier.fillMaxWidth().gen1Clickable { row.action() },
@@ -1396,6 +1424,7 @@ private fun OptionsDrawerContent(
                             enabled = row.enabled,
                         )
                     }
+                }
                 }
             }
         }

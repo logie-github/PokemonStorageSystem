@@ -113,6 +113,17 @@ object Gen2Sprites {
      */
     class Store(private val directory: File) {
 
+        /**
+         * Every read of these goes through [lock].
+         *
+         * They are read by six download workers at once and by whatever is
+         * drawing a sprite, and a plain map shared like that does not merely
+         * risk a wrong answer: a HashMap resized from two threads at once can
+         * spin forever, which is an app that has stopped rather than an app
+         * that has thrown. Loading a table is a handful of lines of text, so
+         * holding a lock across it costs nothing worth measuring.
+         */
+        private val lock = Any()
         private val normal = mutableMapOf<String, MutableMap<String, IntArray>>()
         private var shiny: MutableMap<String, IntArray>? = null
 
@@ -122,19 +133,24 @@ object Gen2Sprites {
 
         /** A species' own four colours in that set, lightest entry first. */
         fun normalOf(set: SpriteSet, speciesId: String): IntArray? =
-            table(set)[spriteFileName(speciesId)]
+            synchronized(lock) { table(set)[spriteFileName(speciesId)] }
 
         /** Its shiny light and dark, which every Generation II set shares. */
-        fun shinyOf(speciesId: String): IntArray? {
+        fun shinyOf(speciesId: String): IntArray? = synchronized(lock) {
             val loaded = shiny ?: read(shinyFile()).also { shiny = it }
-            return loaded[spriteFileName(speciesId)]
+            loaded[spriteFileName(speciesId)]
         }
 
-        fun write(set: SpriteSet, colours: Map<String, IntArray>) =
-            write(normalFile(set), colours).also { normal.remove(set.id) }
+        fun write(set: SpriteSet, colours: Map<String, IntArray>) = synchronized(lock) {
+            write(normalFile(set), colours)
+            normal.remove(set.id)
+            Unit
+        }
 
-        fun writeShiny(colours: Map<String, IntArray>) =
-            write(shinyFile(), colours).also { shiny = null }
+        fun writeShiny(colours: Map<String, IntArray>) = synchronized(lock) {
+            write(shinyFile(), colours)
+            shiny = null
+        }
 
         private fun table(set: SpriteSet): Map<String, IntArray> =
             normal.getOrPut(set.id) { read(normalFile(set)) }

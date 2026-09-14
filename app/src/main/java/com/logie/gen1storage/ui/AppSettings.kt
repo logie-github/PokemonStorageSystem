@@ -78,11 +78,15 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putString(KEY_PALETTE, value).apply()
 
     /**
-     * Whether the windows take the palette too. Off keeps every box black on
-     * white, the way the cartridge draws them whatever the screen is tinted.
+     * Whether the windows take the palette too.
+     *
+     * On, which makes a chosen palette the whole screen rather than the
+     * ground behind boxes that stayed black on white. Turning it off is the
+     * BLACK ON WHITE BOXES row, and that is the cartridge's own look: it drew
+     * its text boxes black on white whatever the screen was tinted.
      */
     var windowsFollowPalette: Boolean
-        get() = prefs.getBoolean(KEY_WINDOW_PALETTE, false)
+        get() = prefs.getBoolean(KEY_WINDOW_PALETTE, true)
         set(value) = prefs.edit().putBoolean(KEY_WINDOW_PALETTE, value).apply()
 
     /**

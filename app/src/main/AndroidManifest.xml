@@ -29,6 +29,7 @@
     </queries>
 
     <application
+        android:name=".StorageApp"
         android:allowBackup="true"
         android:backupAgent=".backup.StorageBackupAgent"
         android:fullBackupOnly="true"

@@ -2225,6 +2225,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 appendLine("### Recovery")
                 current.recoveryNotes.forEach { appendLine("- $it") }
             }
+            com.logie.gen1storage.StorageApp.lastCrash(getApplication())?.let { crash ->
+                appendLine()
+                appendLine("### Last crash")
+                appendLine("```")
+                appendLine(crash.trim())
+                appendLine("```")
+            }
             appendLine()
             appendLine("No sync codes, account id, device token, Pokemon data,")
             appendLine("trainer names or save contents are included.")

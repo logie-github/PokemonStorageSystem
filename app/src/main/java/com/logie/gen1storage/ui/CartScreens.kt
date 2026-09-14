@@ -87,9 +87,12 @@ fun ChooseCartScreen(
     // screen that asks which game did nothing at all and the three cards could
     // only be tapped.
     val pickingGame = saves.isEmpty()
+    // Six across with the room for it, two rows of three without: a card is
+    // a picture worth seeing, and a sixth of a folded phone is a thumbnail.
+    val across = if (isUnfolded()) shelf.size else 3
     val cursor = rememberCursorLayer(
         count = if (pickingGame) shelf.size else saves.size,
-        columns = if (pickingGame) shelf.size else columns,
+        columns = if (pickingGame) across else columns,
     ) { index ->
         if (pickingGame) shelf.getOrNull(index)?.let(choose)
         else saves.getOrNull(index)?.let(chooseSave)
@@ -101,32 +104,39 @@ fun ChooseCartScreen(
             .gen1Ground()
             .padding(gen1Dp(4)),
     ) {
-        // All six in one row, the three that can be picked and the three that
-        // are only there to be looked at. Six across whatever the screen is:
-        // the shelf is the shelf, and a card that moved to a second row on a
-        // folded phone would be a card a player has to go looking for.
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
-        ) {
-            shelf.forEachIndexed { index, _ ->
-                Box(Modifier.weight(1f)) { CardCursor(pickingGame && cursor == index) }
+        // The whole shelf, in rows of [across]: the three that can be picked
+        // and the three that are only there to be looked at, each with the
+        // cursor's mark over it.
+        shelf.chunked(across).forEachIndexed { rowIndex, row ->
+            val first = rowIndex * across
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
+            ) {
+                row.forEachIndexed { index, _ ->
+                    Box(Modifier.weight(1f)) {
+                        CardCursor(pickingGame && cursor == first + index)
+                    }
+                }
+                repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
             }
-        }
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
-        ) {
-            shelf.forEach { card ->
-                TitleCard(
-                    label = card.label,
-                    art = card.art,
-                    palette = card.palette,
-                    chosen = game == card.version.id,
-                    modifier = Modifier.weight(1f),
-                    onClick = { choose(card) },
-                )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
+            ) {
+                row.forEach { card ->
+                    TitleCard(
+                        label = card.label,
+                        art = card.art,
+                        palette = card.palette,
+                        chosen = game == card.version.id,
+                        modifier = Modifier.weight(1f),
+                        onClick = { choose(card) },
+                    )
+                }
+                repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
             }
+            if (rowIndex < shelf.lastIndex / across) Spacer(Modifier.height(gen1Dp(2)))
         }
 
         Spacer(Modifier.height(gen1Dp(3)))

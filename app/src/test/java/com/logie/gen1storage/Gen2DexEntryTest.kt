@@ -1,8 +1,10 @@
 package com.logie.gen1storage
 
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen2Data
+import com.logie.gen1storage.pokemon.dexPageOf
 import com.logie.gen1storage.sound.CryStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -127,6 +129,40 @@ class Gen2DexEntryTest {
         assertNull(Gen1Pokemon(chikorita, generation = 1).dexPage("red"))
         assertNotNull(Gen1Pokemon(chikorita, generation = 2).dexPage("gold"))
         assertNull(Gen1Data.dexEntry("CHIKORITA"))
+    }
+
+    @Test
+    fun `one id reaches both Pokedexes, under each one's spelling`() {
+        // The entry screen holds a single species id and asks all six
+        // cartridges the same question, so the lookup has to translate.
+        assertEquals("MR__MIME", Gen2Data.idOf("MR_MIME"))
+        assertEquals("FARFETCH_D", Gen2Data.idOf("FARFETCHD"))
+        assertEquals("PIDGEY", Gen2Data.idOf("PIDGEY"))
+
+        listOf("MR_MIME", "MR__MIME").forEach { id ->
+            assertNotNull(id, dexPageOf(id, generation = 1, gameVersionId = "red"))
+            assertNotNull(id, dexPageOf(id, generation = 2, gameVersionId = "gold"))
+        }
+        assertEquals(
+            Gen2Data.dexEntry("MR__MIME")!!.silver.flowing,
+            dexPageOf("MR_MIME", generation = 2, gameVersionId = "silver")!!.flowing,
+        )
+        assertEquals(
+            Gen1Data.dexEntry("FARFETCHD")!!.flowing("yellow"),
+            dexPageOf("FARFETCH_D", generation = 1, gameVersionId = "yellow")!!.flowing,
+        )
+    }
+
+    @Test
+    fun `each cartridge answers for itself`() {
+        // What the lettered squares on the entry screen are picking between.
+        val texts = GameVersion.entries.map { version ->
+            dexPageOf("PIKACHU", version.generation, version.id)!!.flowing
+        }
+        assertEquals(GameVersion.entries.size, texts.size)
+        // RED and BLUE share their entry; the other four are their own.
+        assertEquals(texts[0], texts[1])
+        assertEquals(5, texts.toSet().size)
     }
 
     @Test

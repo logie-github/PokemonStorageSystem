@@ -210,4 +210,52 @@ object Gen2Data {
 
     /** How many there are, which is the number everyone knows this table by. */
     const val SPECIES_COUNT = 251
+
+    /**
+     * The same Pokémon under Generation II's spelling of its name.
+     *
+     * pokered writes MR_MIME and FARFETCHD where pokecrystal writes MR__MIME
+     * and FARFETCH_D, so a Generation II save's Pokédex is keyed differently
+     * from a Generation I one's for exactly two species. Anything else is
+     * spelled the same in both.
+     */
+    fun idOf(speciesId: String): String = when (speciesId.uppercase()) {
+        "MR_MIME" -> "MR__MIME"
+        "FARFETCHD" -> "FARFETCH_D"
+        else -> speciesId
+    }
+}
+
+/** The same, back the other way: Generation I's spelling of a name. */
+fun gen1SpeciesId(speciesId: String): String = when (speciesId.uppercase()) {
+    "MR__MIME" -> "MR_MIME"
+    "FARFETCH_D" -> "FARFETCHD"
+    else -> speciesId
+}
+
+/**
+ * A species' Pokédex page as one cartridge prints it, whichever generation
+ * that cartridge belongs to.
+ *
+ * Takes the species under either generation's spelling and answers under the
+ * one the asking game uses, so a screen holding a single id can ask all six
+ * cartridges the same question.
+ */
+fun dexPageOf(speciesId: String?, generation: Int, gameVersionId: String?): DexPage? {
+    if (speciesId == null) return null
+    return if (generation >= 2) {
+        Gen2Data.dexEntry(Gen2Data.idOf(speciesId))?.forGame(gameVersionId)?.let {
+            DexPage(it.category, it.heightText, it.weightText, it.lines, it.flowing)
+        }
+    } else {
+        Gen1Data.dexEntry(gen1SpeciesId(speciesId))?.let {
+            DexPage(
+                it.category,
+                it.heightText,
+                it.weightText,
+                it.lines(gameVersionId),
+                it.flowing(gameVersionId),
+            )
+        }
+    }
 }

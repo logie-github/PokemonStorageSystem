@@ -27,8 +27,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Species
+import com.logie.gen1storage.pokemon.Gen2Data
+import com.logie.gen1storage.pokemon.dexPageOf
 import com.logie.gen1storage.sprites.TrainerStore
 import com.logie.gen1storage.sound.LocalGen1Audio
 
@@ -327,33 +333,81 @@ fun DexStatsScreen(state: UiState, model: StorageViewModel) {
  * places it broke them are not, those being where its fourteen-character
  * window ran out of room rather than where the sentence wanted a break.
  *
- * Which game's words are used follows the Pokémon rather than the species: one
- * in this PC is read in the words of the cartridge it came out of, and failing
- * that whichever loaded cartridge knows it. Red and Blue share their entries,
- * Yellow rewrote nearly all of them.
+ * All six cartridges wrote their own entry, and a machine that holds several
+ * playthroughs can have caught the same species on more than one of them. So
+ * where more than one has, each gets a lettered square along the top — R B Y
+ * G S C, in the games' own order, and only for the ones that actually caught
+ * it — and taking a letter turns the page to that cartridge's words. Caught on
+ * one, that one's words and no squares; caught on none, whatever has at least
+ * seen one.
  */
 @Composable
 fun DexEntryScreen(state: UiState, model: StorageViewModel, speciesId: String) {
-    val species = Gen1Data.species(speciesId)
-    val entry = Gen1Data.dexEntry(speciesId)
+    val species = Gen1Data.species(speciesId) ?: Gen2Data.species(Gen2Data.idOf(speciesId))
+
+    // Which cartridges have caught one. Read under each game's own spelling,
+    // since a Generation II Pokédex is keyed MR__MIME where Generation I's is
+    // keyed MR_MIME.
+    val caught = remember(speciesId, state.loaded, state.saves) {
+        GameVersion.entries.filter { version ->
+            val id = if (version.generation >= 2) Gen2Data.idOf(speciesId) else speciesId
+            state.saves.any { remote ->
+                remote.version == version && state.save(remote.key)?.save?.dexOwned?.contains(id) == true
+            }
+        }
+    }
 
     // A copy in the PC knows exactly which cartridge it came from; otherwise
     // the first cartridge on the account that has met one at all.
-    val gameVersionId = remember(speciesId, state.storage.revision, state.loaded) {
+    val fallbackVersionId = remember(speciesId, state.storage.revision, state.loaded) {
         state.storage.boxes.asSequence().flatMap { it.contents.asSequence() }
             .firstOrNull { it.pokemon.speciesId == speciesId }
             ?.provenance?.gameVersion
             ?: state.saves.firstOrNull { remote ->
                 state.save(remote.key)?.save?.let {
-                    speciesId in it.dexSeen || speciesId in it.dexOwned
+                    val id = if (remote.version.generation >= 2) Gen2Data.idOf(speciesId) else speciesId
+                    id in it.dexSeen || id in it.dexOwned
                 } == true
             }?.version?.id
     }
 
+    // The first that caught it, until a letter is taken. Reset when the screen
+    // is opened on a different species.
+    var chosen by remember(speciesId) { mutableStateOf(caught.firstOrNull()) }
+    val showing = chosen?.takeIf { it in caught } ?: caught.firstOrNull()
+    val gameVersionId = showing?.id ?: fallbackVersionId
+    val generation = showing?.generation
+        ?: GameVersion.fromId(fallbackVersionId)?.generation
+        ?: 1
+    val entry = dexPageOf(speciesId, generation, gameVersionId)
+
     val cries = LocalGen1Audio.current
     LaunchedEffect(speciesId) { cries?.cry(species?.dexNumber) }
 
-    val cursor = rememberCursorLayer(1) { model.back() }
+    // One row for the letters where there is a choice, then BACK. Left and
+    // right walk the letters, so a swipe reaches them the way it reaches a
+    // count that winds.
+    val letters = if (caught.size > 1) caught else emptyList()
+    val cursor = rememberCursorLayer(
+        count = if (letters.isEmpty()) 1 else 2,
+        onSide = { index, button ->
+            if (letters.isEmpty() || index != 0) false
+            else {
+                val at = letters.indexOf(showing).coerceAtLeast(0)
+                val step = if (button == GbButton.RIGHT) 1 else -1
+                chosen = letters[(at + step + letters.size) % letters.size]
+                true
+            }
+        },
+    ) { index ->
+        if (letters.isNotEmpty() && index == 0) {
+            val at = letters.indexOf(showing).coerceAtLeast(0)
+            chosen = letters[(at + 1) % letters.size]
+        } else {
+            model.back()
+        }
+    }
+    val backRow = if (letters.isEmpty()) 0 else 1
 
     Gen1Page {
         Row(Modifier.fillMaxWidth()) {
@@ -398,11 +452,21 @@ fun DexEntryScreen(state: UiState, model: StorageViewModel, speciesId: String) {
             }
         }
 
+        if (letters.isNotEmpty()) {
+            Spacer(Modifier.height(gen1Dp(3)))
+            DexGamePicker(
+                games = letters,
+                showing = showing,
+                selected = cursor == 0,
+                onChoose = { chosen = it },
+            )
+        }
+
         Spacer(Modifier.height(gen1Dp(4)))
         val style = Gen1TextSmall.copy(color = Gen1Palette.Ink)
         // The cartridge's own line breaks are dropped and the words wrap to
         // this window instead: see [Gen1DexEntry.flowing].
-        val text = entry?.flowing(gameVersionId)
+        val text = entry?.flowing
         if (text == null) {
             GbText("NO DATA ON THIS POKéMON.", style = style, maxLines = 1)
         } else {
@@ -410,9 +474,71 @@ fun DexEntryScreen(state: UiState, model: StorageViewModel, speciesId: String) {
         }
 
         Spacer(Modifier.weight(1f))
-        Gen1MenuRow("BACK", selected = cursor == 0, onSelect = {}, onConfirm = { model.back() })
+        Gen1MenuRow(
+            "BACK",
+            selected = cursor == backRow,
+            onSelect = {},
+            onConfirm = { model.back() },
+        )
     }
 }
+
+/**
+ * The cartridges that caught this species, one lettered square each.
+ *
+ * A square with the game's initial in it: R B Y G S C, in the order the games
+ * came out, and only the ones that caught one. The square being read is filled
+ * in, the way the games mark a chosen option by inverting it.
+ */
+@Composable
+private fun DexGamePicker(
+    games: List<GameVersion>,
+    showing: GameVersion?,
+    selected: Boolean,
+    onChoose: (GameVersion) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // The cursor's own mark, so the row reads as a row the cursor is on
+        // rather than as six independent buttons.
+        Box(Modifier.width(gen1Dp(CURSOR_PIXELS))) {
+            if (selected) GbText("▶", maxLines = 1)
+        }
+        games.forEach { game ->
+            DexGameSquare(
+                letter = game.label.first().toString(),
+                on = game == showing,
+                onClick = { onChoose(game) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DexGameSquare(letter: String, on: Boolean, onClick: () -> Unit) {
+    val side = gen1Dp(SQUARE_PIXELS)
+    Box(
+        Modifier
+            .size(side)
+            .background(if (on) Gen1Palette.Ink else Gen1Palette.Panel)
+            .border(gen1Dp(1), Gen1Palette.Ink)
+            .gen1Clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        GbText(
+            letter,
+            style = Gen1Text.copy(color = if (on) Gen1Palette.Panel else Gen1Palette.Ink),
+            maxLines = 1,
+        )
+    }
+}
+
+/** The lettered square's side, and the width the cursor's mark is given. */
+private const val SQUARE_PIXELS = 14
+private const val CURSOR_PIXELS = 10
 
 /**
  * A screen that is one window rather than a column of them.

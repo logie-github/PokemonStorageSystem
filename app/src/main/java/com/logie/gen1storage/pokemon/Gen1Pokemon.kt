@@ -113,21 +113,7 @@ class Gen1Pokemon(
      * does. [gameVersionId] is which of them is doing the printing.
      */
     fun dexPage(gameVersionId: String?): DexPage? =
-        if (generation >= 2) {
-            Gen2Data.dexEntry(speciesId)?.forGame(gameVersionId)?.let {
-                DexPage(it.category, it.heightText, it.weightText, it.lines, it.flowing)
-            }
-        } else {
-            Gen1Data.dexEntry(speciesId)?.let {
-                DexPage(
-                    it.category,
-                    it.heightText,
-                    it.weightText,
-                    it.lines(gameVersionId),
-                    it.flowing(gameVersionId),
-                )
-            }
-        }
+        dexPageOf(speciesId, generation, gameVersionId)
 
     /**
      * The stats the status screen prints under HP: four in Generation I and

@@ -141,7 +141,10 @@ fun ChooseCartScreen(
                 }
                 repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
             }
-            if (rowIndex < shelf.lastIndex / across) Spacer(Modifier.height(gen1Dp(1)))
+            // Nothing between the rows: the mark's own strip above the next
+            // row is the gap, and two gaps stacked is what left a band of
+            // empty screen across the middle of the shelf.
+
         }
 
         Spacer(Modifier.height(gen1Dp(3)))
@@ -312,12 +315,21 @@ private fun TitleCard(
 /** The cursor's mark above a card, which has no room for one inside it. */
 @Composable
 private fun CardCursor(on: Boolean) {
-    // The small face, so the mark over a row of cards is a mark rather than a
-    // line of air between the rows.
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    // The small face in a strip shorter than the line it would otherwise
+    // claim: a text line brings its leading with it, and at this size that
+    // was most of the space between the two rows of cards. The glyph is
+    // centred and free to reach a little past the strip, which is exactly
+    // where there is nothing to collide with.
+    Box(
+        Modifier.fillMaxWidth().height(gen1Dp(CURSOR_STRIP_PIXELS)),
+        contentAlignment = Alignment.Center,
+    ) {
         GbText(if (on) "▼" else " ", style = Gen1TextSmall, maxLines = 1)
     }
 }
+
+/** How tall the mark's strip above a row of cards is. */
+private const val CURSOR_STRIP_PIXELS = 6
 
 /**
  * One playthrough on the shelf, as its trainer card.

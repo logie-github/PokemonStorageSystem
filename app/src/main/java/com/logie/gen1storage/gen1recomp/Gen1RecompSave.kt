@@ -75,6 +75,15 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         get() = root["generation"].asInt() == 2 ||
             root["version"].asString()?.lowercase() in GameVersion.GEN2_IDS
 
+    /**
+     * Every Pokémon this save hands out, stamped with the generation it came
+     * from — which is the save's, and the only thing that knows it. A PIDGEY
+     * in a Gold save is read against Generation II's numbers and one in a Red
+     * save against Generation I's; see [Gen1Pokemon.generation].
+     */
+    private fun readMon(table: LuaValue.Table): Gen1Pokemon =
+        Gen1Pokemon(table, if (isGen2) 2 else 1)
+
     private val player: LuaValue.Table? get() = root["player"].asTable()
 
     val trainerName: String get() = player?.get("name").asString()?.let(LuaText::displayText) ?: "?"
@@ -274,7 +283,7 @@ class Gen1RecompSave(val root: LuaValue.Table) {
     private val partyTable: LuaValue.Table? get() = root["party"].asTable()
 
     val party: List<Gen1Pokemon>
-        get() = partyTable?.array().orEmpty().mapNotNull { it.asTable()?.let(::Gen1Pokemon) }
+        get() = partyTable?.array().orEmpty().mapNotNull { it.asTable()?.let(::readMon) }
 
     val partyCount: Int get() = party.size
 
@@ -312,11 +321,11 @@ class Gen1RecompSave(val root: LuaValue.Table) {
             if (boxesTable != null) {
                 return (1..boxCount).map { index ->
                     boxesTable[index].asTable()?.array().orEmpty()
-                        .mapNotNull { it.asTable()?.let(::Gen1Pokemon) }
+                        .mapNotNull { it.asTable()?.let(::readMon) }
                 }
             }
             val legacy = root["box"].asTable()?.array().orEmpty()
-                .mapNotNull { it.asTable()?.let(::Gen1Pokemon) }
+                .mapNotNull { it.asTable()?.let(::readMon) }
             return (1..BOX_COUNT).map { if (it == 1) legacy else emptyList() }
         }
 

@@ -121,7 +121,8 @@ object PokemonCardImage {
             )
         }
 
-        val species = Gen1Data.speciesName(pokemon.speciesId).uppercase()
+        // Out of the Pokémon's own generation's table; see [Gen1Pokemon.species].
+        val species = (pokemon.species?.displayName ?: pokemon.speciesId.orEmpty()).uppercase()
         val entry = Gen1Data.dexEntry(pokemon.speciesId)
         write(72, 22, pokemon.displayName.uppercase())
         write(72, 34, ":L${pokemon.level}")

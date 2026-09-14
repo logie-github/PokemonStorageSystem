@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import com.logie.gen1storage.download.DownloadProgress
 import com.logie.gen1storage.download.fetchInParallel
 import com.logie.gen1storage.pokemon.Gen1Data
+import com.logie.gen1storage.pokemon.Gen2Data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -42,21 +43,27 @@ class SpriteDownloader(private val store: SpriteStore) {
         sets: List<SpriteSet> = SpriteSet.downloadable,
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadProgress = withContext(Dispatchers.IO) {
-        val species = Gen1Data.species.map { it.id }
+        // Each set is fetched for the species its own generation has: the
+        // Generation I sets for the original 151, Gold, Silver and Crystal for
+        // all 251. Johto had no art in the Generation I sets to ask for, and
+        // asking anyway is a hundred round trips that can only 404.
+        val gen1Species = Gen1Data.species.map { it.id }
+        val gen2Species = Gen2Data.speciesIds
+        fun speciesFor(set: SpriteSet) = if (set.generation == 2) gen2Species else gen1Species
         // Every file in the run, across every set, as one flat list. Going set
         // by set would have each set's tail waiting on its own last few files
         // while the line sat idle.
         val wanted: List<Job> = buildList {
-            sets.forEach { set -> species.forEach { add(Job.Sprite(set, it)) } }
+            sets.forEach { set -> speciesFor(set).forEach { add(Job.Sprite(set, it)) } }
             // One shiny palette per species, whichever Generation II sets are
             // being fetched: pokegold and pokecrystal hold the same file, so
             // all three sets read the one copy.
-            if (sets.any { it.generation == 2 }) species.forEach { add(Job.Shiny(it)) }
+            if (sets.any { it.generation == 2 }) gen2Species.forEach { add(Job.Shiny(it)) }
         }
         val total = wanted.size
 
         onProgress(DownloadProgress(0, total))
-        sets.forEach { set -> File(store.fileFor(set, species.first()).parent!!).mkdirs() }
+        sets.forEach { set -> File(store.fileFor(set, speciesFor(set).first()).parent!!).mkdirs() }
 
         // The colours read out of each file as it lands. Written once at the
         // end rather than per sprite: a hundred and fifty workers appending to

@@ -236,15 +236,16 @@ private fun StatusPageOne(pokemon: Gen1Pokemon) {
             Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2)),
         ) {
-            listOf(Gen1Stat.ATTACK, Gen1Stat.DEFENSE, Gen1Stat.SPEED, Gen1Stat.SPECIAL)
-                .forEach { stat ->
-                    GbText(stat.label)
-                    GbText(
-                        pokemon.stats[stat]?.toString() ?: "---",
-                        modifier = Modifier.fillMaxWidth(),
-                        style = Gen1Text.copy(textAlign = TextAlign.End),
-                    )
-                }
+            // Four rows out of a Generation I save and five out of a
+            // Generation II one, where Special is two stats.
+            pokemon.battleStats.forEach { stat ->
+                GbText(stat.label)
+                GbText(
+                    stat.value?.toString() ?: "---",
+                    modifier = Modifier.fillMaxWidth(),
+                    style = Gen1Text.copy(textAlign = TextAlign.End),
+                )
+            }
         }
         Spacer(Modifier.width(gen1Dp(4)))
         Column(Modifier.weight(1f)) {

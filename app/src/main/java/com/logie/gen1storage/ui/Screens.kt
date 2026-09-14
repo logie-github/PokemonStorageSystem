@@ -1767,7 +1767,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 val stored = state.storage.find(prompt.uid)?.second
                 NamePrompt(
                     heading = stored?.pokemon?.let {
-                        Gen1Data.speciesName(it.speciesId).uppercase()
+                        (it.species?.displayName ?: it.speciesId.orEmpty()).uppercase()
                     } ?: "POKéMON",
                     initial = stored?.pokemon?.nickname.orEmpty(),
                     maxLength = StorageRepository.MAX_NICKNAME,

@@ -31,12 +31,24 @@ import java.io.File
  */
 object Gen2Sprites {
 
-    /** Where a set's sprite for one species lives upstream. */
+    /**
+     * Where a set's sprite for one species lives upstream.
+     *
+     * UNOWN is the exception both repositories make: its twenty-six forms are
+     * twenty-six folders, `unown_a` through `unown_z`, and the plain `unown`
+     * folder holds only the palettes they share. Which letter a Pokémon is
+     * comes out of its DVs, which is a thing to read properly rather than
+     * guess at, so for now every UNOWN is drawn as A — one sprite instead of
+     * none. Neither repository gives it a per-version drawing either, so the
+     * file is `front.png` in all three sets.
+     */
     fun url(set: SpriteSet, speciesId: String): String? {
         val repo = set.repo ?: return null
         val file = set.frontFile ?: return null
+        val unown = speciesId.uppercase() == "UNOWN"
+        val folder = if (unown) "unown_a" else gen2SpriteFolder(speciesId)
         return "https://raw.githubusercontent.com/$repo/master/gfx/pokemon/" +
-            "${gen2SpriteFolder(speciesId)}/$file"
+            "$folder/${if (unown) "front.png" else file}"
     }
 
     /** The two middle colours of a species' shiny palette, from pokecrystal. */

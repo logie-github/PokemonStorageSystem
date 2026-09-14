@@ -17,6 +17,7 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
+import com.logie.gen1storage.pokemon.Gen2Data
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1TradeEvolution
 import com.logie.gen1storage.storage.StoredPokemon
@@ -2251,9 +2252,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
  * the trainers with the sheets that come down beside them.
  */
 private val DOWNLOAD_TOTAL: Int =
-    // Every set's 151 sprites, and — once — the shiny colours the three
-    // Generation II sets share.
-    SpriteSet.downloadable.size * 151 +
-        (if (SpriteSet.downloadable.any { it.generation == 2 }) 151 else 0) +
-        151 + 251 +
-        (TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size + TrainerStore.GEN2_ART.size)
+    // Each set over the species its own generation has — 151 for the
+    // Generation I sets, 251 for Gold, Silver and Crystal — and, once, the
+    // shiny colours the three Generation II sets share.
+    SpriteSet.downloadable.sumOf { if (it.generation == 2) Gen2Data.SPECIES_COUNT else 151 } +
+        (if (SpriteSet.downloadable.any { it.generation == 2 }) Gen2Data.SPECIES_COUNT else 0) +
+        151 + FollowerStore.LAST_SHEET +
+        TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size + TrainerStore.GEN2_ART.size +
+        TrainerStore.GEN2_TRAINER_IDS.size

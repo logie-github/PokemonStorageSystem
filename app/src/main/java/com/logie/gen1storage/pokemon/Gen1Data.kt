@@ -5,21 +5,24 @@ package com.logie.gen1storage.pokemon
  * name, which is the key Gen1Recomp writes into `save.lua` (`mon.species`).
  */
 data class Gen1Species(
-    val id: String,
+    override val id: String,
     val internalIndex: Int,
-    val dexNumber: Int,
-    val displayName: String,
+    override val dexNumber: Int,
+    override val displayName: String,
     val baseHp: Int,
     val baseAttack: Int,
     val baseDefense: Int,
     val baseSpeed: Int,
     val baseSpecial: Int,
-    val catchRate: Int,
-    val baseExp: Int,
-    val primaryType: String,
-    val secondaryType: String?,
-    val growthRate: String,
-) {
+    override val catchRate: Int,
+    override val baseExp: Int,
+    override val primaryType: String,
+    override val secondaryType: String?,
+    override val growthRate: String,
+) : SpeciesInfo {
+
+    override val generation: Int get() = 1
+
     fun baseStat(stat: Gen1Stat): Int = when (stat) {
         Gen1Stat.HP -> baseHp
         Gen1Stat.ATTACK -> baseAttack
@@ -27,8 +30,6 @@ data class Gen1Species(
         Gen1Stat.SPEED -> baseSpeed
         Gen1Stat.SPECIAL -> baseSpecial
     }
-
-    val types: List<String> get() = listOfNotNull(primaryType, secondaryType)
 }
 
 /** One move as pokered stores it; [id] is the `move_constants.asm` name. */
@@ -98,7 +99,10 @@ data class Gen1DexEntry(
 
 /**
  * The five Generation I stats, in `src/pokemon/Stats.lua`'s ORDER. Special is a
- * single stat in Gen I — the split arrives in Gen II, which is out of scope.
+ * single stat in Gen I; the split arrives in Gen II and lives in [Gen2Stat],
+ * which is a separate enum rather than two more entries here — a Generation I
+ * Pokémon has five stats, and giving it a sixth that is always absent would be
+ * a worse answer than not asking.
  */
 enum class Gen1Stat(val key: String, val label: String) {
     HP("hp", "HP"),

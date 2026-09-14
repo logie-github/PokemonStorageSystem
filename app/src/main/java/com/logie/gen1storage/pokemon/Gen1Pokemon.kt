@@ -18,10 +18,33 @@ import java.security.MessageDigest
  * `typeBytes`, a future upstream addition — survives a deposit and withdraw
  * completely intact.
  */
-class Gen1Pokemon(val raw: LuaValue.Table) {
+class Gen1Pokemon(
+    val raw: LuaValue.Table,
+    /**
+     * Which generation's tables describe this Pokémon.
+     *
+     * Generation II rebalanced a number of the original 151, so PIDGEY out of
+     * a Gold save and PIDGEY out of a Red save are not the same row: each is
+     * read with the numbers of the game it came from, and the save it was read
+     * out of is what says which. It is held here rather than in [raw] because
+     * the raw table is the cartridge's and this app does not write fields into
+     * one to keep track of its own business.
+     *
+     * Defaulted to 1, which is what every Pokémon in this app's own PC is:
+     * Generation II saves are read and never written, so nothing from one can
+     * be deposited yet. When a Pokémon can be carried forward deliberately —
+     * the Time Capsule's job, not a side effect of a table lookup — this is
+     * the field that would change, and it would have to be stored alongside a
+     * deposited Pokémon to survive the trip.
+     */
+    val generation: Int = 1,
+) {
 
     val speciesId: String? get() = speciesId(raw)
-    val species: Gen1Species? get() = Gen1Data.species(speciesId)
+
+    /** This Pokémon's row, out of its own generation's table. */
+    val species: SpeciesInfo? get() =
+        if (generation >= 2) Gen2Data.species(speciesId) else Gen1Data.species(speciesId)
 
     /**
      * Gen1Recomp spells "not nicknamed" as `nickname == nil` and every display
@@ -29,7 +52,7 @@ class Gen1Pokemon(val raw: LuaValue.Table) {
      * `src/save_convert/GenSave.lua` around `importedNickname`).
      */
     val nickname: String? get() = raw["nickname"].asString()?.let(LuaText::displayText)
-    val displayName: String get() = nickname ?: Gen1Data.speciesName(speciesId)
+    val displayName: String get() = nickname ?: species?.displayName ?: speciesId.orEmpty()
 
     val level: Int get() = raw["level"].asInt() ?: 1
     val exp: Int get() = raw["exp"].asInt() ?: 0
@@ -80,7 +103,24 @@ class Gen1Pokemon(val raw: LuaValue.Table) {
             .joinToString("") { "%02x".format(it) }
     }
 
-    fun copy(): Gen1Pokemon = Gen1Pokemon(raw.deepCopy())
+    /**
+     * The stats the status screen prints under HP: four in Generation I and
+     * five in Generation II, where Special is two stats and the save stores
+     * them under their own keys.
+     */
+    val battleStats: List<StatLine>
+        get() = if (generation >= 2) {
+            val table = raw["stats"].asTable()
+            Gen2Stat.BATTLE.map { StatLine(it.label, table?.get(it.key).asInt()) }
+        } else {
+            val here = stats
+            GEN1_BATTLE_STATS.map { StatLine(it.label, here[it]) }
+        }
+
+    fun copy(): Gen1Pokemon = Gen1Pokemon(raw.deepCopy(), generation)
+
+    /** One stat as it is shown: what it is called, and what it is. */
+    data class StatLine(val label: String, val value: Int?)
 
     data class MoveSlot(val id: String, val pp: Int, val ppUps: Int?) {
         val move: Gen1Move? get() = Gen1Data.move(id)
@@ -92,6 +132,9 @@ class Gen1Pokemon(val raw: LuaValue.Table) {
     }
 
     companion object {
+        private val GEN1_BATTLE_STATS =
+            listOf(Gen1Stat.ATTACK, Gen1Stat.DEFENSE, Gen1Stat.SPEED, Gen1Stat.SPECIAL)
+
         fun speciesId(mon: LuaValue.Table): String? = mon["species"].asString()
 
         fun statMap(table: LuaValue.Table?): Map<Gen1Stat, Int> {

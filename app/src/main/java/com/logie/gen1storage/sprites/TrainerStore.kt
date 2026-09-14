@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.logie.gen1storage.download.DownloadProgress
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.download.fetchInParallel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,6 +46,14 @@ class TrainerStore(private val directory: File) {
     private var tintRamp: IntArray? = null
 
     /** Points the trainers at a palette, as [SpriteStore.setTint] does. */
+    /** Whether Generation II art takes the palette. See [SpriteStore]. */
+    var gbcFollowsPalette: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            memory.clear()
+        }
+
     fun setTint(id: String, ramp: IntArray?) {
         if (id == tintId) return
         tintId = id
@@ -57,8 +66,8 @@ class TrainerStore(private val directory: File) {
     fun has(id: String): Boolean = file(id).let { it.isFile && it.length() > 0 }
 
     /** The trainers, plus the sheets the badges and the trade are cut from. */
-    fun count(): Int = ALL.count { has(it.id) } +
-        EXTRA_ART.keys.count { has(it) } + GEN2_ART.keys.count { has(it) }
+    fun count(): Int = ALL.count { has(it.id) } + EXTRA_ART.keys.count { has(it) } +
+        GEN2_ART.keys.count { has(it) } + GEN2_TRAINER_IDS.count { has(it) }
 
     /**
      * One of the extra sheets whole, recoloured onto the palette in force.
@@ -166,8 +175,10 @@ class TrainerStore(private val directory: File) {
     fun load(id: String, cutout: Boolean = false): ImageBitmap? {
         // The player is not one of the trainer classes and is still a picture
         // a card can wear, so the extras are askable for by name too.
-        if (ALL.none { it.id == id } && id !in EXTRA_ART && id !in GEN2_ART) return null
-        val key = "$tintId/${if (cutout) "cut/" else ""}$id"
+        if (ALL.none { it.id == id } && id !in EXTRA_ART && id !in GEN2_ART &&
+            !isGen2Trainer(id)
+        ) return null
+        val key = "$tintId/${if (gbcFollowsPalette) "pal/" else ""}${if (cutout) "cut/" else ""}$id"
         memory[key]?.let { return it }
 
         val source = file(id).takeIf { it.isFile } ?: return null
@@ -178,7 +189,10 @@ class TrainerStore(private val directory: File) {
             })
         }.getOrNull() ?: return null
 
-        val ramp = tintRamp
+        // Generation II's pictures arrive in the colours the Game Boy Color
+        // gave them, the same as its Pokémon do, so they are left alone
+        // unless GBC SPRITES has been set to follow the palette.
+        val ramp = tintRamp.takeIf { !isGen2Trainer(id) || gbcFollowsPalette }
         val finished = runCatching {
             when {
                 ramp != null -> recolourToRamp(decoded, ramp, cutout)
@@ -213,12 +227,19 @@ class TrainerStore(private val directory: File) {
     /** Fetches one if it is not here yet. */
     fun fetch(id: String): File? {
         val extra = EXTRA_ART[id] ?: GEN2_ART[id]
-        if (extra == null && ALL.none { it.id == id }) return null
+        if (extra == null && ALL.none { it.id == id } && !isGen2Trainer(id)) return null
         val target = file(id)
         if (target.isFile && target.length() > 0) return target
 
+        val gen2 = gen2TrainerUrl(id)
         val root = GEN2_ROOT_URL.takeIf { id in GEN2_ART } ?: ROOT_URL
-        val url = URL(if (extra != null) "$root/$extra" else "$root/gfx/trainers/$id.png")
+        val url = URL(
+            when {
+                gen2 != null -> gen2
+                extra != null -> "$root/$extra"
+                else -> "$root/gfx/trainers/$id.png"
+            }
+        )
         val connection = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 20_000
@@ -253,7 +274,7 @@ class TrainerStore(private val directory: File) {
             // The sheets go with them: the badges are the other half of what a
             // trainer card is drawn from, and the trade art is the rest of what
             // pokered has that is not a Pokémon.
-            val wanted = ALL.map { it.id } + EXTRA_ART.keys + GEN2_ART.keys
+            val wanted = ALL.map { it.id } + EXTRA_ART.keys + GEN2_ART.keys + GEN2_TRAINER_IDS
             val total = wanted.size
             onProgress(DownloadProgress(0, total))
             val failed = fetchInParallel(wanted, total, onProgress) { fetch(it) }
@@ -399,6 +420,125 @@ class TrainerStore(private val directory: File) {
          * odd one.
          */
         const val BADGE_TILES = BADGES * 2
+
+        /**
+         * Generation II's trainer classes, by the name their picture is filed
+         * under, alphabetically as the folder holds them.
+         *
+         * Two games' worth of art from one list: Gold and Silver share
+         * pokegold's drawing of a class and Crystal has its own in
+         * pokecrystal, so an id here is a prefix and a name — see
+         * [gen2Trainers]. Eusine is the one Crystal added and pokegold does
+         * not have (he is filed as `mysticalman`), so a Gold or Silver card
+         * is not offered him.
+         */
+        val GEN2_TRAINER_NAMES: List<TrainerSprite> = listOf(
+            TrainerSprite("beauty", "BEAUTY"),
+            TrainerSprite("biker", "BIKER"),
+            TrainerSprite("bird_keeper", "BIRD KEEPER"),
+            TrainerSprite("blackbelt_t", "BLACKBELT"),
+            TrainerSprite("blaine", "BLAINE"),
+            TrainerSprite("blue", "BLUE"),
+            TrainerSprite("boarder", "BOARDER"),
+            TrainerSprite("brock", "BROCK"),
+            TrainerSprite("bruno", "BRUNO"),
+            TrainerSprite("bug_catcher", "BUG CATCHER"),
+            TrainerSprite("bugsy", "BUGSY"),
+            TrainerSprite("burglar", "BURGLAR"),
+            TrainerSprite("cal", "CAL"),
+            TrainerSprite("camper", "CAMPER"),
+            TrainerSprite("champion", "CHAMPION"),
+            TrainerSprite("chuck", "CHUCK"),
+            TrainerSprite("clair", "CLAIR"),
+            TrainerSprite("cooltrainer_f", "COOLTRAINER♀"),
+            TrainerSprite("cooltrainer_m", "COOLTRAINER♂"),
+            TrainerSprite("erika", "ERIKA"),
+            TrainerSprite("executive_f", "EXECUTIVE♀"),
+            TrainerSprite("executive_m", "EXECUTIVE♂"),
+            TrainerSprite("falkner", "FALKNER"),
+            TrainerSprite("firebreather", "FIREBREATHER"),
+            TrainerSprite("fisher", "FISHER"),
+            TrainerSprite("gentleman", "GENTLEMAN"),
+            TrainerSprite("grunt_f", "GRUNT♀"),
+            TrainerSprite("grunt_m", "GRUNT♂"),
+            TrainerSprite("guitarist", "GUITARIST"),
+            TrainerSprite("hiker", "HIKER"),
+            TrainerSprite("janine", "JANINE"),
+            TrainerSprite("jasmine", "JASMINE"),
+            TrainerSprite("juggler", "JUGGLER"),
+            TrainerSprite("karen", "KAREN"),
+            TrainerSprite("kimono_girl", "KIMONO GIRL"),
+            TrainerSprite("koga", "KOGA"),
+            TrainerSprite("lass", "LASS"),
+            TrainerSprite("lt_surge", "LT.SURGE"),
+            TrainerSprite("medium", "MEDIUM"),
+            TrainerSprite("misty", "MISTY"),
+            TrainerSprite("morty", "MORTY"),
+            TrainerSprite("mysticalman", "EUSINE"),
+            TrainerSprite("oak", "OAK"),
+            TrainerSprite("officer", "OFFICER"),
+            TrainerSprite("picnicker", "PICNICKER"),
+            TrainerSprite("pokefan_f", "POKéFAN♀"),
+            TrainerSprite("pokefan_m", "POKéFAN♂"),
+            TrainerSprite("pokemaniac", "POKéMANIAC"),
+            TrainerSprite("pryce", "PRYCE"),
+            TrainerSprite("psychic_t", "PSYCHIC"),
+            TrainerSprite("red", "RED"),
+            TrainerSprite("rival1", "RIVAL"),
+            TrainerSprite("rival2", "RIVAL 2"),
+            TrainerSprite("sabrina", "SABRINA"),
+            TrainerSprite("sage", "SAGE"),
+            TrainerSprite("sailor", "SAILOR"),
+            TrainerSprite("schoolboy", "SCHOOLBOY"),
+            TrainerSprite("scientist", "SCIENTIST"),
+            TrainerSprite("skier", "SKIER"),
+            TrainerSprite("super_nerd", "SUPER NERD"),
+            TrainerSprite("swimmer_f", "SWIMMER♀"),
+            TrainerSprite("swimmer_m", "SWIMMER♂"),
+            TrainerSprite("teacher", "TEACHER"),
+            TrainerSprite("twins", "TWINS"),
+            TrainerSprite("whitney", "WHITNEY"),
+            TrainerSprite("will", "WILL"),
+            TrainerSprite("youngster", "YOUNGSTER"),
+        )
+
+        /** Gold and Silver's art, from pokegold. */
+        const val GS_PREFIX = "gs_"
+
+        /** Crystal's own, from pokecrystal. */
+        const val CRYSTAL_PREFIX = "c_"
+
+        /** The one class pokegold has no picture of. */
+        private const val CRYSTAL_ONLY = "mysticalman"
+
+        /** Which trainers a card of this game may wear, ids and all. */
+        fun gen2Trainers(version: GameVersion): List<TrainerSprite> {
+            val crystal = version == GameVersion.CRYSTAL
+            val prefix = if (crystal) CRYSTAL_PREFIX else GS_PREFIX
+            return GEN2_TRAINER_NAMES
+                .filter { crystal || it.id != CRYSTAL_ONLY }
+                .map { TrainerSprite(prefix + it.id, it.label) }
+        }
+
+        /** Every Generation II trainer id, for the download to walk. */
+        val GEN2_TRAINER_IDS: List<String> =
+            gen2Trainers(GameVersion.GOLD).map { it.id } +
+                gen2Trainers(GameVersion.CRYSTAL).map { it.id }
+
+        /** Whether an id names one of them, and where its picture comes from. */
+        fun gen2TrainerUrl(id: String): String? = when {
+            id.startsWith(GS_PREFIX) ->
+                "https://raw.githubusercontent.com/pret/pokegold/master/gfx/trainers/" +
+                    "${id.removePrefix(GS_PREFIX)}.png"
+
+            id.startsWith(CRYSTAL_PREFIX) ->
+                "https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/trainers/" +
+                    "${id.removePrefix(CRYSTAL_PREFIX)}.png"
+
+            else -> null
+        }
+
+        fun isGen2Trainer(id: String): Boolean = gen2TrainerUrl(id) != null
 
         /**
          * Every trainer pic the game has, in the order `gfx/pics.asm` lists

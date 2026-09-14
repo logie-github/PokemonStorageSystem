@@ -422,10 +422,25 @@ fun TrainerSpritePicker(
     chosen: String?,
     store: TrainerStore,
     revision: Int,
+    /** Which game's card this is, which decides whose trainers are offered. */
+    version: GameVersion?,
+    /** Whether the player is the girl, for the row that puts the card back. */
+    female: Boolean = false,
     onChoose: (String?) -> Unit,
     onCancel: () -> Unit,
 ) {
-    val rows = TrainerStore.ALL
+    // A Generation II card wears Generation II's classes. Its own game's, at
+    // that: Gold and Silver share pokegold's drawing of a class and Crystal
+    // redrew them, so a Crystal card is offered Crystal's.
+    val rows = when {
+        version != null && version.generation == 2 -> TrainerStore.gen2Trainers(version)
+        else -> TrainerStore.ALL
+    }
+    val player = when {
+        version?.generation != 2 -> TrainerStore.PLAYER
+        female -> TrainerStore.GEN2_PLAYER_FEMALE
+        else -> TrainerStore.GEN2_PLAYER_MALE
+    }
     // The player, then every trainer, then the way out.
     val count = rows.size + 2
     val cursor = rememberCursorLayerHandle(count) { index ->
@@ -454,7 +469,7 @@ fun TrainerSpritePicker(
                 // an absence of anything: taking it puts the player back.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Gen1TrainerSprite(
-                        id = TrainerStore.PLAYER,
+                        id = player,
                         store = store,
                         revision = revision,
                         sizeInPixels = PICKER_SPRITE_PIXELS,

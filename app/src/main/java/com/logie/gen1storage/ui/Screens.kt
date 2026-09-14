@@ -1815,6 +1815,8 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 chosen = model.trainerSprite(prompt.key),
                 store = model.trainers,
                 revision = state.spriteRevision,
+                version = state.remote(prompt.key)?.version,
+                female = state.save(prompt.key)?.save?.isFemale == true,
                 onChoose = { model.setTrainerSprite(prompt.key, it) },
                 onCancel = model::dismissPrompt,
             )

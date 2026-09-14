@@ -136,7 +136,7 @@ fun ChooseCartScreen(
                 }
                 repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
             }
-            if (rowIndex < shelf.lastIndex / across) Spacer(Modifier.height(gen1Dp(2)))
+            if (rowIndex < shelf.lastIndex / across) Spacer(Modifier.height(gen1Dp(1)))
         }
 
         Spacer(Modifier.height(gen1Dp(3)))
@@ -167,9 +167,13 @@ fun ChooseCartScreen(
         val scroll = rememberLazyListState()
         LaunchedEffect(cursor, columns) { scroll.scrollToRow(cursor / columns) }
         LazyColumn(
+            // The one list in the app that scrolls by finger whatever SWIPE
+            // CONTROLS is set to: an account can hold a dozen cards and
+            // walking to the last of them a row at a time is not a way to
+            // pick one. A sideways swipe over it is still the D-pad.
+            Modifier.gen1ScrollRegion(),
             state = scroll,
             verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
-            userScrollEnabled = !LocalGen1Swipe.current,
         ) {
             items(saves.chunked(columns)) { row ->
                 Row(
@@ -293,8 +297,10 @@ private fun TitleCard(
 /** The cursor's mark above a card, which has no room for one inside it. */
 @Composable
 private fun CardCursor(on: Boolean) {
+    // The small face, so the mark over a row of cards is a mark rather than a
+    // line of air between the rows.
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        GbText(if (on) "▼" else " ", maxLines = 1)
+        GbText(if (on) "▼" else " ", style = Gen1TextSmall, maxLines = 1)
     }
 }
 

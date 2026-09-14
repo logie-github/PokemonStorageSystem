@@ -204,6 +204,28 @@ class Gen1WindowBounds {
      * would rename *and* navigate away from what it renamed.
      */
     fun isHoldClaimed(point: Offset): Boolean = holds.values.any { it.contains(point) }
+
+    /** Lists that scroll by finger even while swipes are driving the cursor. */
+    private val scrollers = mutableStateMapOf<Any, Rect>()
+
+    fun setScroller(owner: Any, rect: Rect) {
+        scrollers[owner] = rect
+    }
+
+    fun forgetScroller(owner: Any) {
+        scrollers.remove(owner)
+    }
+
+    /**
+     * Whether a drag starting here belongs to a list rather than the cursor.
+     *
+     * One exception to swipe controls, and a narrow one: a list long enough
+     * to need dragging is a list the cursor can only walk one row at a time,
+     * and thirty taps to reach the bottom of it is worse than losing the
+     * swipe over that one rectangle. Everything else on the screen still
+     * reads a swipe as the D-pad.
+     */
+    fun isScroller(point: Offset): Boolean = scrollers.values.any { it.contains(point) }
 }
 
 val LocalGen1WindowBounds = staticCompositionLocalOf { Gen1WindowBounds() }
@@ -218,6 +240,19 @@ fun Modifier.gen1HoldRegion(): Modifier {
     val owner = remember { Any() }
     DisposableEffect(registry, owner) { onDispose { registry.forget(owner) } }
     return onGloballyPositioned { registry.setHold(owner, it.boundsInRoot()) }
+}
+
+/**
+ * Marks this list as one that keeps its own drags: the gesture layer leaves
+ * vertical swipes that start inside it alone, so it scrolls by finger even
+ * with SWIPE CONTROLS on.
+ */
+@Composable
+fun Modifier.gen1ScrollRegion(): Modifier {
+    val registry = LocalGen1WindowBounds.current
+    val owner = remember { Any() }
+    DisposableEffect(registry, owner) { onDispose { registry.forgetScroller(owner) } }
+    return onGloballyPositioned { registry.setScroller(owner, it.boundsInRoot()) }
 }
 
 /**

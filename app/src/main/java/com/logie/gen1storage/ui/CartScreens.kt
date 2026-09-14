@@ -69,7 +69,6 @@ fun ChooseCartScreen(
     // an app that cannot read a Gold save yet can honestly offer.
     val shelf = TITLE_CARDS
 
-    val saves = if (game == null) emptyList() else state.saves.filter { it.version.id == game }
     // Two columns once there is room for two, one otherwise. A save is a
     // window like every other window here, so it is capped the same way and
     // never runs the width of an opened screen.
@@ -86,17 +85,23 @@ fun ChooseCartScreen(
     // cursor used to be registered only in the second case, so a swipe on the
     // screen that asks which game did nothing at all and the three cards could
     // only be tapped.
-    val pickingGame = saves.isEmpty()
+    val pickingGame = game == null || state.saves.none { it.version.id == game }
     // Six across with the room for it, two rows of three without: a card is
     // a picture worth seeing, and a sixth of a folded phone is a thumbnail.
     val across = if (isUnfolded()) shelf.size else 3
     val cursor = rememberCursorLayer(
-        count = if (pickingGame) shelf.size else saves.size,
+        count = if (pickingGame) shelf.size else saves(state, game).size,
         columns = if (pickingGame) across else columns,
     ) { index ->
         if (pickingGame) shelf.getOrNull(index)?.let(choose)
-        else saves.getOrNull(index)?.let(chooseSave)
+        else saves(state, game).getOrNull(index)?.let(chooseSave)
     }
+    // The cards under the shelf follow the cursor rather than waiting for it
+    // to be pressed: running along the shelf shows each game's trainer cards
+    // as it is reached, which is what the row of games is for. Once a game is
+    // taken the cursor drops into that game's list and the shelf holds still.
+    val showing = if (pickingGame) shelf.getOrNull(cursor)?.version?.id else game
+    val saves = saves(state, showing)
 
     Column(
         Modifier
@@ -141,20 +146,24 @@ fun ChooseCartScreen(
 
         Spacer(Modifier.height(gen1Dp(3)))
 
-        if (game == null) {
-            Notice(if (sending) "Send to whose card?" else "INSERT YOUR TRAINER CARD")
-            return@Column
-        }
-
         if (saves.isEmpty()) {
-            Notice("NO TRAINER CARDS FOUND.")
+            // An account with nothing in it anywhere is asked for a card; one
+            // that simply has none of *this* game is told so, because the
+            // cursor is standing on the game it is talking about.
+            Notice(
+                when {
+                    state.saves.isEmpty() -> "INSERT YOUR TRAINER CARD"
+                    sending -> "Send to whose card?"
+                    else -> "NO TRAINER CARDS FOUND."
+                }
+            )
             return@Column
         }
 
         // Said once, above the cards themselves: a Generation II card can be
         // read — its trainer, its badges, its boxes — and nothing in this app
         // will change one.
-        if (GameVersion.fromId(game)?.isWritable == false) {
+        if (GameVersion.fromId(showing)?.isWritable == false) {
             Notice("READ ONLY. NOTHING IS WRITTEN TO THESE.")
             Spacer(Modifier.height(gen1Dp(3)))
         }
@@ -165,7 +174,9 @@ fun ChooseCartScreen(
         }
 
         val scroll = rememberLazyListState()
-        LaunchedEffect(cursor, columns) { scroll.scrollToRow(cursor / columns) }
+        LaunchedEffect(cursor, columns, pickingGame) {
+            if (!pickingGame) scroll.scrollToRow(cursor / columns) else scroll.scrollToRow(0)
+        }
         LazyColumn(
             // The one list in the app that scrolls by finger whatever SWIPE
             // CONTROLS is set to: an account can hold a dozen cards and
@@ -187,7 +198,7 @@ fun ChooseCartScreen(
                             slot = index + 1,
                             state = state,
                             model = model,
-                            cursor = cursor == index,
+                            cursor = !pickingGame && cursor == index,
                             loaded = !sending && state.activeSaveKey == remote.key,
                             onChoose = { chooseSave(remote) },
                             modifier = Modifier.weight(1f),
@@ -199,6 +210,10 @@ fun ChooseCartScreen(
         }
     }
 }
+
+/** The account's cards for one game, in the order the account lists them. */
+private fun saves(state: UiState, game: String?): List<RemoteSave> =
+    if (game == null) emptyList() else state.saves.filter { it.version.id == game }
 
 /** Each game shown in its own colours, whatever the app's palette is set to. */
 internal fun paletteFor(gameId: String?): GbPalette = when (gameId) {

@@ -11,11 +11,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -42,8 +46,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import com.logie.gen1storage.ui.DownloadProgressBar
 import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
+import com.logie.gen1storage.ui.Gen1Frame
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
@@ -207,6 +213,18 @@ private fun StorageApp(model: StorageViewModel) {
         model.checkForUpdate(BuildConfig.VERSION_NAME)
     }
 
+    // Nothing drawn a box is opened to is a reason to send someone hunting
+    // through OPTIONS for a DOWNLOAD button first. A device with none of the
+    // sprites on it yet — the very first run, or one where they were cleared
+    // — fetches them itself, and the ordinary menu waits behind a small
+    // "connecting" message until they land. A set that fails to arrive is
+    // still a gap in the art rather than a reason to hold the door shut
+    // forever, exactly as OPTIONS' own download never blocks on a failure.
+    val needsFirstRunConnect = state.spritesInstalled == 0 && state.spriteProgress?.finished != true
+    LaunchedEffect(Unit) {
+        if (state.spritesInstalled == 0) model.downloadSprites()
+    }
+
     // A transfer that went through, heard once.
     LaunchedEffect(state.transfers) {
         if (state.transfers > 0) audio.play(SoundEffect.TRANSFER)
@@ -259,7 +277,7 @@ private fun StorageApp(model: StorageViewModel) {
                         cursor.confirm()
                     }
                     GbButton.START ->
-                        if (state.screen != Screen.Options) {
+                        if (state.screen != Screen.Options && !needsFirstRunConnect) {
                             audio.play(SoundEffect.OPTIONS)
                             model.open(Screen.Options)
                         }
@@ -274,30 +292,35 @@ private fun StorageApp(model: StorageViewModel) {
         Column(Modifier.fillMaxSize()) {
             TopBar()
             Box(Modifier.weight(1f)) {
-                // Opened up, the status pages take the left half — so the
-                // screen they were opened from stays live on the right rather
-                // than disappearing behind them. Drawn first, in the half the
-                // pages do not cover, so the app is still usable while reading
-                // a Pokémon.
-                val beneath = state.stack.getOrNull(state.stack.size - 2)
-                if (isUnfolded() && state.screen is Screen.Status && beneath != null) {
-                    Row(Modifier.fillMaxSize()) {
-                        Spacer(Modifier.weight(1f))
-                        Box(Modifier.weight(1f)) {
-                            // Half a window is not an unfolded one. Without
-                            // this the screen in here splits its own half in
-                            // two again — a box that lays its preview beside
-                            // itself put the status pages in a quarter of the
-                            // screen, breaking a word to a letter a line, and
-                            // drew a second copy of what is already on the
-                            // left. See [LocalGen1Narrow].
-                            CompositionLocalProvider(LocalGen1Narrow provides true) {
-                                ScreenContent(beneath, state, model, context)
+                if (needsFirstRunConnect) {
+                    ConnectingScreen(state.spriteProgress?.percent ?: 0)
+                } else {
+                    // Opened up, the status pages take the left half — so the
+                    // screen they were opened from stays live on the right
+                    // rather than disappearing behind them. Drawn first, in
+                    // the half the pages do not cover, so the app is still
+                    // usable while reading a Pokémon.
+                    val beneath = state.stack.getOrNull(state.stack.size - 2)
+                    if (isUnfolded() && state.screen is Screen.Status && beneath != null) {
+                        Row(Modifier.fillMaxSize()) {
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.weight(1f)) {
+                                // Half a window is not an unfolded one.
+                                // Without this the screen in here splits its
+                                // own half in two again — a box that lays its
+                                // preview beside itself put the status pages
+                                // in a quarter of the screen, breaking a word
+                                // to a letter a line, and drew a second copy
+                                // of what is already on the left. See
+                                // [LocalGen1Narrow].
+                                CompositionLocalProvider(LocalGen1Narrow provides true) {
+                                    ScreenContent(beneath, state, model, context)
+                                }
                             }
                         }
                     }
+                    ScreenContent(state.screen, state, model, context)
                 }
-                ScreenContent(state.screen, state, model, context)
             }
         }
         // The pane that makes the lock real for tapping: everything below it
@@ -400,6 +423,26 @@ private fun TopBar() {
             style = Gen1Text.copy(color = Gen1Palette.Lightest),
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * The very first thing a fresh install sees instead of the main menu: the
+ * sprite sheets are being fetched, unasked, because a Pokémon with no art at
+ * all is a worse first impression than a short wait naming what it is for.
+ */
+@Composable
+private fun ConnectingScreen(percent: Int) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Gen1Frame(
+            Modifier.wrapContentWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+        ) {
+            GbText("CONNECTING TO THE")
+            GbText("POKéMON STORAGE SYSTEM...")
+            Spacer(Modifier.height(12.dp))
+            DownloadProgressBar(percent, Modifier.width(200.dp))
+        }
     }
 }
 

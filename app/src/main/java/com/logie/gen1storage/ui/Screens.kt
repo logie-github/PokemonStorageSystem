@@ -1600,7 +1600,7 @@ fun CreditsScreen() {
                 item {
                     Credit(
                         "BILL",
-                        "SPRITE BY SYLPHIE",
+                        "SPRITE BY SYLVIE",
                         "USED WITH PERMISSION",
                         "github.com/Rangi42/",
                         "polishedcrystal",

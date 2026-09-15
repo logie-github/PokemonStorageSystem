@@ -133,6 +133,7 @@ fun Gen1TransferScene(
                             store = store,
                             revision = revision,
                             sizeInPixels = SPRITE_PIXELS,
+                            cutout = true,
                         )
                     }
                 } else {

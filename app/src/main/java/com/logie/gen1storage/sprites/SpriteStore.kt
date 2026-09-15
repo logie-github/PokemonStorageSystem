@@ -200,6 +200,7 @@ class SpriteStore(
         when (gameVersionId?.lowercase()) {
             "red" -> com.logie.gen1storage.rom.RomVersion.RED
             "blue" -> com.logie.gen1storage.rom.RomVersion.BLUE
+            "yellow" -> com.logie.gen1storage.rom.RomVersion.YELLOW
             else -> null
         }
 

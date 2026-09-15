@@ -117,4 +117,115 @@ class Gen1RomLocatorTest {
 
         assertNull(Gen1RomLocator.frontSprite(rom, located, "CHIKORITA"))
     }
+
+    /**
+     * Yellow's own table, per pret/pokeyellow: Mew sits at its ordinary
+     * Pokédex position (152nd... no, 151st, the table's own last entry)
+     * rather than in a standalone record, and nothing redirects its bank —
+     * `UncompressMonSprite` has no `cp MEW` branch there at all.
+     */
+    private fun buildFakeYellowRom(tableOffset: Int, spritesBySpeciesId: Map<String, ByteArray> = emptyMap()): ByteArray {
+        val rom = ByteArray(0x40000) { (it * 37 + 11).toByte() }
+        val bySpecies = Gen1Data.species.sortedBy { it.dexNumber }
+        bySpecies.forEachIndexed { index, species ->
+            val recordStart = tableOffset + index * 28
+            val type1 = typeBytes.getValue(species.primaryType)
+            val type2 = species.secondaryType?.let { typeBytes.getValue(it) } ?: type1
+            rom[recordStart] = species.dexNumber.toByte()
+            rom[recordStart + 1] = species.baseHp.toByte()
+            rom[recordStart + 2] = species.baseAttack.toByte()
+            rom[recordStart + 3] = species.baseDefense.toByte()
+            rom[recordStart + 4] = species.baseSpeed.toByte()
+            rom[recordStart + 5] = species.baseSpecial.toByte()
+            rom[recordStart + 6] = type1.toByte()
+            rom[recordStart + 7] = type2.toByte()
+            // Yellow's own two catch-rate rewrites — see Gen1RomLocator's
+            // signatureOf doc.
+            val catchRate = when (species.id) {
+                "DRAGONAIR" -> 27
+                "DRAGONITE" -> 9
+                else -> species.catchRate
+            }
+            rom[recordStart + 8] = catchRate.toByte()
+            rom[recordStart + 9] = species.baseExp.toByte()
+
+            val sprite = spritesBySpeciesId[species.id] ?: return@forEachIndexed
+            // No Mew exception: every species, Mew included, banks purely off
+            // the ordinary internal-index thresholds.
+            val bank = when {
+                species.internalIndex <= 30 -> 0x9
+                species.internalIndex <= 73 -> 0xA
+                species.internalIndex <= 115 -> 0xB
+                species.internalIndex <= 152 -> 0xC
+                else -> 0xD
+            }
+            val spriteAt = bank * 0x4000 + 0x100 + (species.internalIndex * 64)
+            sprite.copyInto(rom, spriteAt)
+            val pointer = 0x4000 + (spriteAt - bank * 0x4000)
+            rom[recordStart + 11] = (pointer and 0xFF).toByte()
+            rom[recordStart + 12] = ((pointer shr 8) and 0xFF).toByte()
+        }
+        return rom
+    }
+
+    @Test
+    fun `Yellow's table is found with Mew folded in rather than excepted`() {
+        val rom = buildFakeYellowRom(tableOffset = 0x1000)
+
+        val located = Gen1RomLocator.locate(rom, Gen1RomLocator.Gen1Game.YELLOW)
+
+        assertNotNull(located)
+        assertEquals(0x1000, located!!.tableOffset)
+        // Yellow never names a standalone Mew record.
+        assertNull(located.mewOffset)
+    }
+
+    @Test
+    fun `a Red-Blue-shaped table is not mistaken for Yellow's`() {
+        // A genuine Red/Blue table stops at Victreebel (dex 150): the next
+        // 28 bytes are whatever else the ROM keeps there, not Mew's record —
+        // unlike [buildFakeRom]'s own convenience layout, which (like the
+        // real locateMew search) happens to place Mew right after it anyway.
+        // Yellow's locator requires that 151st entry to genuinely be Mew, so
+        // it must refuse a table that stops short of it.
+        val rom = ByteArray(0x40000) { (it * 37 + 11).toByte() }
+        val bySpecies = Gen1Data.species.filter { it.id != "MEW" }.sortedBy { it.dexNumber }
+        val tableOffset = 0x1000
+        bySpecies.forEachIndexed { index, species ->
+            val recordStart = tableOffset + index * 28
+            val type1 = typeBytes.getValue(species.primaryType)
+            val type2 = species.secondaryType?.let { typeBytes.getValue(it) } ?: type1
+            rom[recordStart] = species.dexNumber.toByte()
+            rom[recordStart + 1] = species.baseHp.toByte()
+            rom[recordStart + 2] = species.baseAttack.toByte()
+            rom[recordStart + 3] = species.baseDefense.toByte()
+            rom[recordStart + 4] = species.baseSpeed.toByte()
+            rom[recordStart + 5] = species.baseSpecial.toByte()
+            rom[recordStart + 6] = type1.toByte()
+            rom[recordStart + 7] = type2.toByte()
+            rom[recordStart + 8] = species.catchRate.toByte()
+            rom[recordStart + 9] = species.baseExp.toByte()
+        }
+
+        assertNotNull("the Red/Blue reading still finds it", Gen1RomLocator.locate(rom))
+        assertNull("Yellow's reading does not", Gen1RomLocator.locate(rom, Gen1RomLocator.Gen1Game.YELLOW))
+    }
+
+    @Test
+    fun `Yellow decodes Mew through the ordinary formula, no bank override`() {
+        val species = listOf("RHYDON", "MEW", "STARMIE")
+        val rom = buildFakeYellowRom(
+            tableOffset = 0x2000,
+            spritesBySpeciesId = species.associateWith { allZeroTileSprite },
+        )
+        val located = Gen1RomLocator.locate(rom, Gen1RomLocator.Gen1Game.YELLOW)!!
+
+        species.forEach { id ->
+            val decoded = Gen1RomLocator.frontSprite(rom, located, id, Gen1RomLocator.Gen1Game.YELLOW)
+            assertNotNull(id, decoded)
+            assertEquals(id, 8, decoded!!.widthPx)
+            assertEquals(id, 8, decoded.heightPx)
+            assertArrayEquals(id, IntArray(64), decoded.pixels)
+        }
+    }
 }

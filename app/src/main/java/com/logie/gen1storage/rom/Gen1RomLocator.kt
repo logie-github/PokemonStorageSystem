@@ -34,30 +34,45 @@ import com.logie.gen1storage.pokemon.Gen1Species
  * tables are ordered differently, and BaseStats is ordered by Pokédex number,
  * one entry per original 151.
  *
- * Mew is the one species this does not hold: `GetMonHeader` checks for it
- * (`cp MEW`) *before* that conversion and copies its record from a standalone
- * `MewBaseStats` instead — confirmed against a real Red ROM, where the other
- * 150 records sit exactly 28 bytes apart as expected and Mew's is nowhere
- * near them. It is looked for on its own, by the same kind of signature, and
- * kept as its own answer rather than folded into [Located.tableOffset].
+ * Mew is the one species this does not hold in Red or Blue: `GetMonHeader`
+ * checks for it (`cp MEW`) *before* that conversion and copies its record
+ * from a standalone `MewBaseStats` instead — confirmed against a real Red
+ * ROM, where the other 150 records sit exactly 28 bytes apart as expected and
+ * Mew's is nowhere near them. It is looked for on its own, by the same kind
+ * of signature, and kept as its own answer rather than folded into
+ * [Located.tableOffset].
+ *
+ * Yellow dropped that exception: its own `GetMonHeader` and
+ * `UncompressMonSprite` have no `cp MEW` branch at all (confirmed against
+ * pret/pokeyellow, which also asserts its table is the full 151 rather than
+ * "NUM_POKEMON - 1"), so Mew sits in the main table at its ordinary Pokédex
+ * position and takes the ordinary bank thresholds like everything else. See
+ * [Gen1Game].
  */
 object Gen1RomLocator {
 
-    /** Where in the ROM file the base-stats table starts, and Mew's own separate record, once confirmed. */
+    /** Which Generation I engine this ROM's data follows — see the class doc. */
+    enum class Gen1Game { RED_BLUE, YELLOW }
+
+    /** Where in the ROM file the base-stats table starts, and Mew's own separate record, when [Gen1Game.RED_BLUE]. */
     data class Located(val tableOffset: Int, val mewOffset: Int?)
 
     /**
-     * Confirms this looks like a real Red or Blue ROM by finding its own
+     * Confirms this looks like a real ROM of [game] by finding its own
      * base-stats table, or returns null — never a location this app is not
-     * sure of. Mew's own record is found the same way but is allowed to be
-     * missing without failing the rest: a ROM this app can otherwise read
-     * fine is not refused over one species' sprite.
+     * sure of. In [Gen1Game.RED_BLUE], Mew's own record is found the same way
+     * but is allowed to be missing without failing the rest: a ROM this app
+     * can otherwise read fine is not refused over one species' sprite.
      */
-    fun locate(rom: ByteArray): Located? {
-        // Every species but Mew — see the class doc.
-        val bySpecies = Gen1Data.species.filter { it.id != "MEW" }.sortedBy { it.dexNumber }
+    fun locate(rom: ByteArray, game: Gen1Game = Gen1Game.RED_BLUE): Located? {
+        // Every species but Mew in Red/Blue — see the class doc. Yellow keeps
+        // Mew in the ordinary Pokédex-number order along with everyone else.
+        val bySpecies = when (game) {
+            Gen1Game.RED_BLUE -> Gen1Data.species.filter { it.id != "MEW" }
+            Gen1Game.YELLOW -> Gen1Data.species
+        }.sortedBy { it.dexNumber }
         if (bySpecies.isEmpty() || bySpecies.first().dexNumber != 1) return null
-        val signatures = bySpecies.map { signatureOf(it) }
+        val signatures = bySpecies.map { signatureOf(it, game) }
         val firstSignature = signatures.first()
 
         var at = 0
@@ -65,7 +80,8 @@ object Gen1RomLocator {
             val candidate = indexOf(rom, firstSignature, at)
             if (candidate < 0) return null
             if (matchesWholeTable(rom, candidate, signatures)) {
-                return Located(candidate, locateMew(rom))
+                val mewOffset = if (game == Gen1Game.RED_BLUE) locateMew(rom) else null
+                return Located(candidate, mewOffset)
             }
             at = candidate + 1
         }
@@ -74,7 +90,7 @@ object Gen1RomLocator {
     /** Mew's own standalone record, wherever it is — its five stats all being 100 makes it its own signature. */
     private fun locateMew(rom: ByteArray): Int? {
         val mew = Gen1Data.species("MEW") ?: return null
-        val at = indexOf(rom, signatureOf(mew), 0)
+        val at = indexOf(rom, signatureOf(mew, Gen1Game.RED_BLUE), 0)
         return at.takeIf { it >= 0 }
     }
 
@@ -83,37 +99,64 @@ object Gen1RomLocator {
      * not (or no longer) account for it, or the tables have never heard of
      * the species at all.
      */
-    fun frontSprite(rom: ByteArray, located: Located, speciesId: String): Gen1SpriteCodec.DecodedSprite? {
+    fun frontSprite(
+        rom: ByteArray,
+        located: Located,
+        speciesId: String,
+        game: Gen1Game = Gen1Game.RED_BLUE,
+    ): Gen1SpriteCodec.DecodedSprite? {
         val species = Gen1Data.species(speciesId) ?: return null
-        val recordStart = if (species.id == "MEW") located.mewOffset ?: return null
-            else located.tableOffset + (species.dexNumber - 1) * BASE_DATA_SIZE
+        val recordStart = if (game == Gen1Game.RED_BLUE && species.id == "MEW") {
+            located.mewOffset ?: return null
+        } else {
+            located.tableOffset + (species.dexNumber - 1) * BASE_DATA_SIZE
+        }
         val pointerAt = recordStart + BASE_FRONTPIC_OFFSET
         if (pointerAt + 1 !in rom.indices) return null
         val pointer = (rom[pointerAt].toInt() and 0xFF) or ((rom[pointerAt + 1].toInt() and 0xFF) shl 8)
         if (pointer !in 0x4000..0x7FFF) return null
-        val bank = bankFor(species.internalIndex)
+        val bank = bankFor(species.internalIndex, game)
         val fileOffset = bank * 0x4000 + (pointer - 0x4000)
         return runCatching { Gen1SpriteCodec.decompress(rom, fileOffset) }.getOrNull()
     }
 
     /**
-     * `UncompressMonSprite`'s bank table, by internal index — Mew and the
-     * Fossil Kabutops are named exceptions; nothing this app stores a
-     * Pokémon under is ever the fossil pic, so only Mew's is worth carrying.
+     * `UncompressMonSprite`'s bank table, by internal index. Red/Blue name
+     * Mew as an exception (bank $1, alongside its standalone base-stats
+     * record); Yellow has no such branch, so Mew's own low internal index
+     * ($15) simply lands in the first ordinary bracket like everyone else
+     * near it. The Fossil Kabutops is a second named exception in both, but
+     * nothing this app stores a Pokémon under is ever the fossil pic.
      */
-    private fun bankFor(internalIndex: Int): Int = when {
-        internalIndex == MEW_INDEX -> 0x1
-        internalIndex <= TANGELA_INDEX -> 0x9
-        internalIndex <= MOLTRES_INDEX -> 0xA
-        internalIndex <= BEEDRILL_INDEX + 1 -> 0xB
-        internalIndex <= STARMIE_INDEX -> 0xC
-        else -> 0xD
+    private fun bankFor(internalIndex: Int, game: Gen1Game): Int {
+        if (game == Gen1Game.RED_BLUE && internalIndex == MEW_INDEX) return 0x1
+        return when {
+            internalIndex <= TANGELA_INDEX -> 0x9
+            internalIndex <= MOLTRES_INDEX -> 0xA
+            internalIndex <= BEEDRILL_INDEX + 1 -> 0xB
+            internalIndex <= STARMIE_INDEX -> 0xC
+            else -> 0xD
+        }
     }
 
-    /** The ten struct bytes this app can already name for a species without reading a ROM. */
-    private fun signatureOf(species: Gen1Species): ByteArray {
+    /**
+     * The ten struct bytes this app can already name for a species without
+     * reading a ROM.
+     *
+     * Two of them move in Yellow: pret/pokeyellow's own data lowers
+     * Dragonair's catch rate from 45 to 27 and Dragonite's from 45 to 9 (an
+     * intentional balance change — Yellow is the one where the player's
+     * rival ends up with a Dragonite. confirmed against pret/pokeyellow's
+     * `data/pokemon/base_stats/dragonair.asm` and `dragonite.asm`, the only
+     * two files in the whole table whose stat bytes differ from Red/Blue's).
+     * Every other stat, both types, and base experience are unchanged.
+     */
+    private fun signatureOf(species: Gen1Species, game: Gen1Game): ByteArray {
         val type1 = TYPE_BYTES[species.primaryType] ?: error("unknown type ${species.primaryType}")
         val type2 = species.secondaryType?.let { TYPE_BYTES[it] ?: error("unknown type $it") } ?: type1
+        val catchRate = if (game == Gen1Game.YELLOW) {
+            YELLOW_CATCH_RATE[species.id] ?: species.catchRate
+        } else species.catchRate
         return byteArrayOf(
             species.dexNumber.toByte(),
             species.baseHp.toByte(),
@@ -123,7 +166,7 @@ object Gen1RomLocator {
             species.baseSpecial.toByte(),
             type1.toByte(),
             type2.toByte(),
-            species.catchRate.toByte(),
+            catchRate.toByte(),
             species.baseExp.toByte(),
         )
     }
@@ -139,6 +182,12 @@ object Gen1RomLocator {
         }
         return true
     }
+
+    /** Yellow's own catch rates for the two species it changed — see [signatureOf]. */
+    private val YELLOW_CATCH_RATE: Map<String, Int> = mapOf(
+        "DRAGONAIR" to 27,
+        "DRAGONITE" to 9,
+    )
 
     private fun indexOf(rom: ByteArray, needle: ByteArray, from: Int): Int {
         if (needle.isEmpty() || from < 0) return -1

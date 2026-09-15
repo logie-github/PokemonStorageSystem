@@ -36,7 +36,7 @@ class RomStore(private val directory: File) {
      * file this app cannot read is not one it should keep.
      */
     fun import(version: RomVersion, bytes: ByteArray): Gen1RomLocator.Located? = synchronized(lock) {
-        val found = Gen1RomLocator.locate(bytes) ?: return null
+        val found = Gen1RomLocator.locate(bytes, version.game) ?: return null
         directory.mkdirs()
         val staged = File(directory, "${version.id}.gbc.part")
         staged.writeBytes(bytes)
@@ -61,13 +61,14 @@ class RomStore(private val directory: File) {
      */
     fun frontSprite(version: RomVersion, speciesId: String): Gen1SpriteCodec.DecodedSprite? = synchronized(lock) {
         val bytes = file(version).takeIf(File::isFile)?.readBytes() ?: return null
-        val found = located.getOrPut(version.id) { Gen1RomLocator.locate(bytes) } ?: return null
-        Gen1RomLocator.frontSprite(bytes, found, speciesId)
+        val found = located.getOrPut(version.id) { Gen1RomLocator.locate(bytes, version.game) } ?: return null
+        Gen1RomLocator.frontSprite(bytes, found, speciesId, version.game)
     }
 }
 
-/** The Generation I ROMs this app knows how to read a sprite out of. Yellow is not one of them yet. */
-enum class RomVersion(val id: String, val label: String) {
-    RED("red", "RED"),
-    BLUE("blue", "BLUE"),
+/** The Generation I ROMs this app knows how to read a sprite out of. */
+enum class RomVersion(val id: String, val label: String, val game: Gen1RomLocator.Gen1Game) {
+    RED("red", "RED", Gen1RomLocator.Gen1Game.RED_BLUE),
+    BLUE("blue", "BLUE", Gen1RomLocator.Gen1Game.RED_BLUE),
+    YELLOW("yellow", "YELLOW", Gen1RomLocator.Gen1Game.YELLOW),
 }

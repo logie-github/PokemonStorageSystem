@@ -94,4 +94,25 @@ class Gen2SpriteCodecTest {
         assertEquals(40, sprite.widthPx)
         assertEquals(40, sprite.heightPx)
     }
+
+    // 25 tiles, all zero but the row-major top-right one (row 0, col 4),
+    // stored the way `tools/pokemon_animation_graphics.c`'s own
+    // `transpose_tiles` leaves an animated pic's resting frame -- column-
+    // major, i.e. this fixture's *storage* position 20 (col 4, row 0) is the
+    // marked tile, not row-major position 4. Compressed literally (no
+    // matching) so it is legible as bytes, then confirmed against
+    // lzcompress's own -u decompressor.
+    private val cornerTileCompressed = bytesOf(-19, 63, 47, -1, 127, 127, -1)
+
+    @Test
+    fun `an animated frontpic's resting frame is put back in row-major order`() {
+        val sprite = Gen2SpriteCodec.decompressAnimatedFrontpic(cornerTileCompressed, 0, 5)
+        assertEquals(40, sprite.widthPx)
+        for (row in 0 until 40) {
+            for (col in 0 until 40) {
+                val expected = if (row < 8 && col in 32 until 40) 3 else 0
+                assertEquals("row=$row col=$col", expected, sprite.pixels[row * 40 + col])
+            }
+        }
+    }
 }

@@ -203,6 +203,7 @@ class SpriteStore(
             "yellow" -> com.logie.gen1storage.rom.RomVersion.YELLOW
             "gold" -> com.logie.gen1storage.rom.RomVersion.GOLD
             "silver" -> com.logie.gen1storage.rom.RomVersion.SILVER
+            "crystal" -> com.logie.gen1storage.rom.RomVersion.CRYSTAL
             else -> null
         }
 

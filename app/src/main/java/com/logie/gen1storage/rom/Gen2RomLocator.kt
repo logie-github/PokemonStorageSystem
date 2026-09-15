@@ -28,10 +28,15 @@ import com.logie.gen1storage.pokemon.Gen2Species
  * sequential "Pics N" banks; Gold and Silver's is the raw byte unchanged
  * except three specific values history left behind, `engine/gfx/
  * load_pics.asm`'s own `.FixPicBankTable`) — and the strongest shape of all,
- * that what it points to decompresses ([Gen2SpriteCodec]) into exactly the
- * square picture [Located.tableOffset]'s own `BASE_PIC_SIZE` byte already
- * said it would be. A candidate table only stands once every species this
- * app can check agrees with the table it is already sure of.
+ * that what it points to decompresses into exactly the square picture
+ * [Located.tableOffset]'s own `BASE_PIC_SIZE` byte already said it would be —
+ * plainly for Gold and Silver ([Gen2SpriteCodec.decompress]), as the
+ * *resting frame of an animated pic* for Crystal
+ * ([Gen2SpriteCodec.decompressAnimatedFrontpic] — Crystal was the series'
+ * first game to animate them, and its own `PokemonPicPointers` entries point
+ * at that format even for a species whose animation is nothing more than
+ * one frame's own tiles again). A candidate table only stands once every
+ * species this app can check agrees with the table it is already sure of.
  *
  * Unown is the one species this cannot hold: real Gold, Silver, and Crystal
  * ROMs give it no entry at all in `PokemonPicPointers` (six bytes of `$FF`,
@@ -81,8 +86,11 @@ object Gen2RomLocator {
     fun frontSprite(rom: ByteArray, located: Located, speciesId: String, game: Gen2Game): Gen1SpriteCodec.DecodedSprite? {
         val species = Gen2Data.species(speciesId) ?: return null
         if (species.dexNumber == UNOWN_DEX) return null
+        val picSizeAt = located.tableOffset + (species.dexNumber - 1) * BASE_DATA_SIZE + PIC_SIZE_OFFSET
+        if (picSizeAt !in rom.indices) return null
+        val tileDimension = rom[picSizeAt].toInt() and 0xF
         val entryAt = located.picPointersOffset + (species.dexNumber - 1) * PIC_POINTER_ENTRY_SIZE
-        return runCatching { readSprite(rom, entryAt, game) }.getOrNull()
+        return runCatching { readSprite(rom, entryAt, game, tileDimension) }.getOrNull()
     }
 
     /**
@@ -106,7 +114,7 @@ object Gen2RomLocator {
                 if (species.dexNumber == UNOWN_DEX) continue
                 val entryAt = t + (species.dexNumber - 1) * PIC_POINTER_ENTRY_SIZE
                 val expectedSideTiles = expectedTilesByDex.getValue(species.dexNumber)
-                val sprite = runCatching { readSprite(rom, entryAt, game) }.getOrNull()
+                val sprite = runCatching { readSprite(rom, entryAt, game, expectedSideTiles) }.getOrNull()
                 if (sprite == null || sprite.widthPx != expectedSideTiles * 8) continue@candidates
             }
             return t
@@ -114,8 +122,14 @@ object Gen2RomLocator {
         return null
     }
 
-    /** Reads one `PokemonPicPointers` entry's front half and decompresses whatever it points to. */
-    private fun readSprite(rom: ByteArray, entryAt: Int, game: Gen2Game): Gen1SpriteCodec.DecodedSprite? {
+    /**
+     * Reads one `PokemonPicPointers` entry's front half and decompresses
+     * whatever it points to — the plain way for Gold/Silver, the animated
+     * way (see [Gen2SpriteCodec.decompressAnimatedFrontpic]) for Crystal,
+     * which is why [tileDimension] — already read off the base-stats table
+     * this species' own record lives in — has to come along either way.
+     */
+    private fun readSprite(rom: ByteArray, entryAt: Int, game: Gen2Game, tileDimension: Int): Gen1SpriteCodec.DecodedSprite? {
         if (entryAt + 2 !in rom.indices) return null
         val bankRaw = rom[entryAt].toInt() and 0xFF
         val addr = (rom[entryAt + 1].toInt() and 0xFF) or ((rom[entryAt + 2].toInt() and 0xFF) shl 8)
@@ -123,7 +137,10 @@ object Gen2RomLocator {
         val bank = fixPicBank(bankRaw, game) ?: return null
         val fileOffset = bank * 0x4000 + (addr - 0x4000)
         if (fileOffset !in rom.indices) return null
-        return Gen2SpriteCodec.decompress(rom, fileOffset)
+        return when (game) {
+            Gen2Game.CRYSTAL -> Gen2SpriteCodec.decompressAnimatedFrontpic(rom, fileOffset, tileDimension)
+            Gen2Game.GOLD_SILVER -> Gen2SpriteCodec.decompress(rom, fileOffset)
+        }
     }
 
     /**

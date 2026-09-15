@@ -84,10 +84,7 @@ private sealed interface RomLocation {
     data class Gen2(val located: Gen2RomLocator.Located) : RomLocation
 }
 
-/**
- * The ROMs this app knows how to read a sprite out of directly, without a
- * download — Crystal is not one of them yet; see [Gen2RomLocator]'s own doc.
- */
+/** The ROMs this app knows how to read a sprite out of directly, without a download. */
 enum class RomVersion(
     val id: String,
     val label: String,
@@ -100,4 +97,5 @@ enum class RomVersion(
     YELLOW("yellow", "YELLOW", 1, gen1Game = Gen1RomLocator.Gen1Game.YELLOW),
     GOLD("gold", "GOLD", 2, gen2Game = Gen2RomLocator.Gen2Game.GOLD_SILVER),
     SILVER("silver", "SILVER", 2, gen2Game = Gen2RomLocator.Gen2Game.GOLD_SILVER),
+    CRYSTAL("crystal", "CRYSTAL", 2, gen2Game = Gen2RomLocator.Gen2Game.CRYSTAL),
 }

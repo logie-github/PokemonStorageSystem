@@ -386,7 +386,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     TutorialBeat(
         listOf(
             "BILL: This is your trainer card. Insert it and the PC opens that " +
-                "save - your party, your boxes, your items."
+                "save. Your party, your boxes, your items."
         ),
         stage = { model, revision -> TutorialTrainerCardScreen(model, revision) },
         sound = SoundEffect.SAVE,
@@ -403,13 +403,16 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         soundAfterMillis = 1_400L,
     ),
     TutorialBeat(
-        listOf("BILL: And these are your boxes. Six hundred spaces. Tap one to hear it."),
+        listOf(
+            "BILL: And these are your boxes. Six hundred spaces, and everything " +
+                "you send lands here. Go on, give one a tap."
+        ),
         stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
         sound = SoundEffect.SELECT,
         handsOver = true,
     ),
     TutorialBeat(
-        listOf("BILL: That's everything. Have a look around - I'll leave you to it."),
+        listOf("BILL: That's everything. Have a look around. I'll leave you to it."),
         sound = SoundEffect.LOG_OFF,
     ),
 )

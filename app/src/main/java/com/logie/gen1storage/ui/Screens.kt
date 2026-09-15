@@ -1133,21 +1133,12 @@ private fun OptionsDrawerContent(
     onBack: () -> Unit,
 ) {
     val audio = LocalGen1Audio.current
-    val context = LocalContext.current
-    fun pickRom(version: com.logie.gen1storage.rom.RomVersion, uri: android.net.Uri?) {
-        if (uri == null) return
-        val bytes = runCatching {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        }.getOrNull() ?: return
-        model.importRom(version, bytes)
-    }
-    // One launcher rather than one per version: a picker is asked for by
-    // name at the moment it is opened, and the callback (which fires later,
-    // long after this composition) reads that same name back.
-    var romBeingPicked by remember { mutableStateOf<com.logie.gen1storage.rom.RomVersion?>(null) }
-    val pickAnyRom = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        romBeingPicked?.let { pickRom(it, uri) }
-        romBeingPicked = null
+    // One trip into a folder rather than one file at a time: every ROM the
+    // player has, in whatever folder they keep their dumps in, identified
+    // and imported by content in one pass rather than asked for six times
+    // over. See RomFolderImporter.
+    val pickRomsFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) model.importRomsFolder(uri)
     }
     val rows = buildList {
         when (drawer) {
@@ -1189,10 +1180,20 @@ private fun OptionsDrawerContent(
 
             OptionsDrawer.PALETTES -> {
                 GbPalette.ALL.forEach { palette ->
+                    // A palette drawn from a game's own colours (or from a
+                    // legendary that game's own box art carried) is that
+                    // game's own cartridge proven, not a free extra —
+                    // dumping one is the only way in.
+                    val locked = palette.requiredRom != null && !model.roms.has(palette.requiredRom)
                     add(
                         OptionRow(
                             palette.label,
-                            trailing = if (state.paletteId == palette.id) "ON" else null,
+                            trailing = when {
+                                locked -> "NEEDS ${palette.requiredRom!!.label}"
+                                state.paletteId == palette.id -> "ON"
+                                else -> null
+                            },
+                            enabled = !locked,
                             swatch = palette,
                         ) { model.setPalette(palette.id) }
                     )
@@ -1329,28 +1330,29 @@ private fun OptionsDrawerContent(
                 // Sprites read straight out of the player's own ROM instead
                 // of a downloaded archive — a copy of a game only its owner
                 // could have dumped, kept only on this device and never sent
-                // anywhere by this app. One row per game this app knows how
-                // to read a sprite out of.
+                // anywhere by this app. One folder, once, rather than picking
+                // each of the six out one at a time: whichever of them are in
+                // it are found by their own bytes, never by what the file is
+                // named, and imported together. See RomFolderImporter.
+                add(
+                    OptionRow("IMPORT ROMS FOLDER") { pickRomsFolder.launch(null) }
+                )
                 com.logie.gen1storage.rom.RomVersion.entries.forEach { version ->
                     val here = model.roms.has(version)
                     add(
                         OptionRow(
                             version.label,
                             trailing = if (here) "${model.roms.sizeOf(version) / (1024 * 1024)} MB" else "NOT HERE",
+                            enabled = here,
                         ) {
-                            if (here) {
-                                model.prompt(
-                                    Prompt.Confirm(
-                                        lines = listOf("REMOVE THE ${version.label} ROM?"),
-                                        confirmLabel = "YES",
-                                        cancelLabel = "NO",
-                                        onConfirm = { model.deleteRom(version) },
-                                    )
+                            model.prompt(
+                                Prompt.Confirm(
+                                    lines = listOf("REMOVE THE ${version.label} ROM?"),
+                                    confirmLabel = "YES",
+                                    cancelLabel = "NO",
+                                    onConfirm = { model.deleteRom(version) },
                                 )
-                            } else {
-                                romBeingPicked = version
-                                pickAnyRom.launch(arrayOf("*/*"))
-                            }
+                            )
                         }
                     )
                 }

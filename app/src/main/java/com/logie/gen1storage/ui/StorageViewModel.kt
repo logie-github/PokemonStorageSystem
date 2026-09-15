@@ -922,6 +922,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun setPalette(id: String) {
         val palette = GbPalette.fromId(id)
+        // The row this came from is already greyed out and unreachable by a
+        // cursor without the ROM its palette belongs to; this is the same
+        // rule enforced again in case anything else ever calls this.
+        val requiredRom = palette.requiredRom
+        if (requiredRom != null && !roms.has(requiredRom)) return
         settings.paletteId = palette.id
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
@@ -1649,6 +1654,27 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun deleteRom(version: RomVersion) {
         roms.delete(version)
         mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+    }
+
+    /**
+     * Imports every ROM [RomFolderImporter] can find and name under
+     * [treeUri], a folder the player picked with the system's own chooser
+     * rather than one file at a time.
+     */
+    fun importRomsFolder(treeUri: Uri) {
+        mutable.update { it.copy(busy = true) }
+        downloadStage("ROMS") {
+            val outcomes = com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)
+            mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+            val have = outcomes.filter { it.imported }.map { it.version.label }
+            val stillNeed = outcomes.filterNot { it.imported }.map { it.version.label }
+            message(
+                *listOfNotNull(
+                    have.takeIf { it.isNotEmpty() }?.let { "HAVE: ${it.joinToString(", ")}" },
+                    stillNeed.takeIf { it.isNotEmpty() }?.let { "STILL NEED: ${it.joinToString(", ")}" },
+                ).toTypedArray()
+            )
+        }
     }
 
     // ------- export and import

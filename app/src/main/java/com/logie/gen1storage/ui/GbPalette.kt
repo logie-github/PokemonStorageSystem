@@ -1,6 +1,7 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.ui.graphics.Color
+import com.logie.gen1storage.rom.RomVersion
 
 /**
  * A four-shade Game Boy palette.
@@ -24,6 +25,14 @@ data class GbPalette(
     val surround: Color,
     /** False for the untinted default, where sprites keep their own colours. */
     val tintsSprites: Boolean,
+    /**
+     * The ROM a player has to have imported before this palette is theirs to
+     * pick — null for the handful that are everyone's from the start. A
+     * palette drawn from a game's own colours, or from a legendary that
+     * game's own box art carried, is an incentive to go find the cartridge
+     * rather than a free extra.
+     */
+    val requiredRom: RomVersion? = null,
 ) {
     /** Lightest to darkest, for the sprite recolour. */
     val ramp: List<Color> get() = listOf(darkest, dark, light, lightest)
@@ -49,6 +58,7 @@ data class GbPalette(
             darkest = Color(0xFF200808),
             surround = Color(0xFF3C1010),
             tintsSprites = true,
+            requiredRom = RomVersion.RED,
         )
 
         val BLUE = GbPalette(
@@ -59,6 +69,7 @@ data class GbPalette(
             darkest = Color(0xFF080C20),
             surround = Color(0xFF141C3C),
             tintsSprites = true,
+            requiredRom = RomVersion.BLUE,
         )
 
         val GREEN = GbPalette(
@@ -79,6 +90,7 @@ data class GbPalette(
             darkest = Color(0xFF201804),
             surround = Color(0xFF3C300C),
             tintsSprites = true,
+            requiredRom = RomVersion.YELLOW,
         )
 
         /**
@@ -166,6 +178,7 @@ data class GbPalette(
             lightest = Color(0xFFFCFFE0),
             surround = Color(0xFFBE605C),
             tintsSprites = true,
+            requiredRom = RomVersion.GOLD,
         )
 
         val SILVER = GbPalette(
@@ -176,6 +189,7 @@ data class GbPalette(
             lightest = Color(0xFFAEC2D4),
             surround = Color(0xFF79357F),
             tintsSprites = true,
+            requiredRom = RomVersion.SILVER,
         )
 
         val CRYSTAL = GbPalette(
@@ -192,6 +206,7 @@ data class GbPalette(
             lightest = Color(0xFFEDF2F6),
             surround = Color(0xFF4789A3),
             tintsSprites = true,
+            requiredRom = RomVersion.CRYSTAL,
         )
 
         val HO_OH = GbPalette(
@@ -202,6 +217,7 @@ data class GbPalette(
             lightest = Color(0xFFFCFFE0),
             surround = Color(0xFFDE9140),
             tintsSprites = true,
+            requiredRom = RomVersion.GOLD,
         )
 
         val LUGIA = GbPalette(
@@ -212,6 +228,7 @@ data class GbPalette(
             lightest = Color(0xFFFEFEFE),
             surround = Color(0xFF5167AA),
             tintsSprites = true,
+            requiredRom = RomVersion.SILVER,
         )
 
         val SUICUNE = GbPalette(
@@ -228,6 +245,7 @@ data class GbPalette(
             lightest = Color(0xFFC7EAF6),
             surround = Color(0xFF8D85C0),
             tintsSprites = true,
+            requiredRom = RomVersion.CRYSTAL,
         )
 
         val ALL = listOf(

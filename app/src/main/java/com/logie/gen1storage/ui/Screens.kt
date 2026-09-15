@@ -1603,15 +1603,6 @@ fun CreditsScreen() {
                 }
                 item {
                     Credit(
-                        "BILL",
-                        "SPRITE BY SYLVIE",
-                        "USED WITH PERMISSION",
-                        "github.com/Rangi42/",
-                        "polishedcrystal",
-                    )
-                }
-                item {
-                    Credit(
                         "FONT",
                         "POKEMON-FONT BY SUPERPENCIL",
                         "SIL OPEN FONT LICENSE 1.1",

@@ -185,11 +185,10 @@ private fun ConnectingWindow(percent: Int) {
  * Bill, in a square.
  *
  * The art is a 128x128 bust — head, shoulders, lab tie and all — shown whole
- * rather than cropped, drawn by Sylvie for Rangi42/polishedcrystal and used
- * here with their permission (see CREDITS). Scaled by a whole number of
- * source pixels and drawn with no smoothing, the way every other piece of art
- * in this app is: a portrait blurred by bilinear filtering would be the one
- * soft thing on a screen made of hard pixels.
+ * rather than cropped. Scaled by a whole number of source pixels and drawn
+ * with no smoothing, the way every other piece of art in this app is: a
+ * portrait blurred by bilinear filtering would be the one soft thing on a
+ * screen made of hard pixels.
  */
 @Composable
 fun BillPortrait(speaking: Boolean, modifier: Modifier = Modifier) {

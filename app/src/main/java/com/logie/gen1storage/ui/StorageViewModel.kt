@@ -1579,6 +1579,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         downloadStage("FIRST RUN") {
             holdingDownloadService = true
             try {
+                fetchTheHandfulFirst()
                 downloadFollowers()
                 followerJob?.join()
                 downloadSprites()
@@ -1587,6 +1588,37 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 holdingDownloadService = false
                 runCatching { DownloadService.hide(getApplication()) }
             }
+        }
+    }
+
+    /**
+     * The dozen the introduction is about to put on screen, ahead of the rest.
+     *
+     * Two hundred and fifty followers and fifteen hundred sprites do not
+     * arrive in the twenty seconds it takes to be shown round the app, and
+     * the archive is fetched in whatever order the list happens to be in — so
+     * without this the trainer card, the transfer and the box all came up as
+     * bracketed question marks on the one run where a new player is looking
+     * hardest. Naming the handful first costs a couple of seconds and about
+     * thirty files, and every one of them is a file the full run would have
+     * fetched anyway: it skips what is already on disk, so nothing is
+     * downloaded twice.
+     *
+     * Quietly. It reports no progress and holds nothing up — a bar that
+     * filled, reset to nothing and filled again would say less than one that
+     * simply starts when the real run does.
+     */
+    private suspend fun fetchTheHandfulFirst() {
+        runCatching { followers.downloadAll(TutorialSamples.DEX_NUMBERS) {} }
+        runCatching {
+            spriteDownloader.download(SpriteSet.downloadable, TutorialSamples.SPECIES) {}
+        }
+        mutable.update {
+            it.copy(
+                followersInstalled = followers.count(),
+                spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
+                spriteRevision = it.spriteRevision + 1,
+            )
         }
     }
 

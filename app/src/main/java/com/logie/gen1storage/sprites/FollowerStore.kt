@@ -128,14 +128,25 @@ class FollowerStore(private val directory: File) {
         return target
     }
 
-    /** Fetches every sheet that is not already here, reporting after each. */
-    suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
-        withContext(Dispatchers.IO) {
-            onProgress(DownloadProgress(0, LAST_SHEET))
-            val failed = fetchInParallel(1..LAST_SHEET, LAST_SHEET, onProgress) { fetch(it) }
-            memory.clear()
-            DownloadProgress(LAST_SHEET, LAST_SHEET, failed, finished = true).also(onProgress)
-        }
+    /**
+     * Fetches sheets that are not already here, reporting after each.
+     *
+     * [sheets] is every one the pack has unless a caller names fewer — which
+     * the first launch does, for the dozen the introduction is about to draw,
+     * so that handful is on disk in seconds instead of behind two hundred and
+     * fifty others. See [com.logie.gen1storage.ui.StorageViewModel.downloadFirstRun].
+     */
+    suspend fun downloadAll(
+        sheets: Iterable<Int> = 1..LAST_SHEET,
+        onProgress: (DownloadProgress) -> Unit,
+    ): DownloadProgress = withContext(Dispatchers.IO) {
+        val wanted = sheets.filter { it in 1..LAST_SHEET }.distinct()
+        val total = wanted.size
+        onProgress(DownloadProgress(0, total))
+        val failed = fetchInParallel(wanted, total, onProgress) { fetch(it) }
+        memory.clear()
+        DownloadProgress(total, total, failed, finished = true).also(onProgress)
+    }
 
     companion object {
         /** One frame's side, in real pixels. */

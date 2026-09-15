@@ -5,6 +5,7 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.lua.luaStr
+import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.storage.Provenance
 import com.logie.gen1storage.storage.StorageBox
 import com.logie.gen1storage.storage.StorageLayout
@@ -38,29 +39,49 @@ object TutorialSamples {
      * A party as one looks partway through a playthrough: a starter that has
      * been carried the whole way, and the four picked up around it.
      */
-    private fun party(): List<LuaValue.Table> = listOf(
-        mon("CHARMELEON", 32, nickname = null),
-        mon("PIKACHU", 28),
-        mon("BUTTERFREE", 24),
-        mon("KADABRA", 27),
-        mon("PIDGEOTTO", 25),
+    private val PARTY = listOf(
+        "CHARMELEON" to 32,
+        "PIKACHU" to 28,
+        "BUTTERFREE" to 24,
+        "KADABRA" to 27,
+        "PIDGEOTTO" to 25,
     )
 
     /** What a box actually looks like: a handful, not a full grid. */
-    private fun boxed(): List<LuaValue.Table> = listOf(
-        mon("NIDORINO", 22),
-        mon("GEODUDE", 19),
-        mon("ODDISH", 14),
-        mon("MAGIKARP", 9),
-        mon("GROWLITHE", 26),
-        mon("ABRA", 12),
-        mon("DIGLETT", 17),
-        mon("PSYDUCK", 21),
-        mon("MACHOP", 20),
-        mon("ZUBAT", 11),
-        mon("VOLTORB", 23),
-        mon("TENTACOOL", 18),
+    private val BOXED = listOf(
+        "NIDORINO" to 22,
+        "GEODUDE" to 19,
+        "ODDISH" to 14,
+        "MAGIKARP" to 9,
+        "GROWLITHE" to 26,
+        "ABRA" to 12,
+        "DIGLETT" to 17,
+        "PSYDUCK" to 21,
+        "MACHOP" to 20,
+        "ZUBAT" to 11,
+        "VOLTORB" to 23,
+        "TENTACOOL" to 18,
     )
+
+    /**
+     * Every species the introduction draws, in the order it draws them.
+     *
+     * This is the list the first launch fetches before it starts on the other
+     * two hundred and fifty: a dozen files land in a couple of seconds, and
+     * by the time Bill has finished his opening line the screens he is about
+     * to show have their art. See [StorageViewModel.downloadFirstRun].
+     */
+    val SPECIES: List<String> = (PARTY + BOXED).map { it.first }.distinct()
+
+    /**
+     * The same list as the follower sheets are numbered, for the box grid —
+     * which is drawn out of dex numbers rather than names.
+     */
+    val DEX_NUMBERS: List<Int> = SPECIES.mapNotNull { Gen1Data.species(it)?.dexNumber }
+
+    private fun party(): List<LuaValue.Table> = PARTY.map { (species, level) -> mon(species, level) }
+
+    private fun boxed(): List<LuaValue.Table> = BOXED.map { (species, level) -> mon(species, level) }
 
     /**
      * One Pokémon, with only the fields the screens actually read.

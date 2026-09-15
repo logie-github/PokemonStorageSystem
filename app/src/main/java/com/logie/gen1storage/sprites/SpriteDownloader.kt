@@ -41,6 +41,16 @@ class SpriteDownloader(private val store: SpriteStore) {
 
     suspend fun download(
         sets: List<SpriteSet> = SpriteSet.downloadable,
+        /**
+         * Only these species, or every species the sets have when null.
+         *
+         * A handful named here is a run that finishes in seconds rather than
+         * minutes, which is what the first launch fetches before it starts on
+         * the whole archive: the dozen or so the introduction is about to put
+         * on screen, so the art is already there when it is wanted. See
+         * [com.logie.gen1storage.ui.StorageViewModel.downloadFirstRun].
+         */
+        species: Collection<String>? = null,
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadProgress = withContext(Dispatchers.IO) {
         // Each set is fetched for the species its own generation has: the
@@ -57,7 +67,11 @@ class SpriteDownloader(private val store: SpriteStore) {
             if (id.equals("UNOWN", ignoreCase = true)) listOf(id) + Gen2Sprites.UNOWN_FORM_IDS
             else listOf(id)
         }
-        fun speciesFor(set: SpriteSet) = if (set.generation == 2) gen2SpriteIds else gen1Species
+        val only = species?.map { it.uppercase() }?.toSet()
+        fun speciesFor(set: SpriteSet): List<String> {
+            val all = if (set.generation == 2) gen2SpriteIds else gen1Species
+            return if (only == null) all else all.filter { it.uppercase() in only }
+        }
         // Every file in the run, across every set, as one flat list. Going set
         // by set would have each set's tail waiting on its own last few files
         // while the line sat idle.
@@ -66,12 +80,21 @@ class SpriteDownloader(private val store: SpriteStore) {
             // One shiny palette per species, whichever Generation II sets are
             // being fetched: pokegold and pokecrystal hold the same file, so
             // all three sets read the one copy.
-            if (sets.any { it.generation == 2 }) gen2Species.forEach { add(Job.Shiny(it)) }
+            // Left out of a named run: a shiny palette is two lines of text
+            // for a colour nothing in a first launch is about to draw, and
+            // two hundred and fifty of them would be most of the run.
+            if (only == null && sets.any { it.generation == 2 }) {
+                gen2Species.forEach { add(Job.Shiny(it)) }
+            }
         }
         val total = wanted.size
 
         onProgress(DownloadProgress(0, total))
-        sets.forEach { set -> File(store.fileFor(set, speciesFor(set).first()).parent!!).mkdirs() }
+        // A named run can ask for species a set has none of, and a set with
+        // nothing to fetch has no folder to make.
+        sets.forEach { set ->
+            speciesFor(set).firstOrNull()?.let { File(store.fileFor(set, it).parent!!).mkdirs() }
+        }
 
         // The colours read out of each file as it lands. Written once at the
         // end rather than per sprite: a hundred and fifty workers appending to

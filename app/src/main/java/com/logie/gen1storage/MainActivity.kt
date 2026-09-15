@@ -231,7 +231,7 @@ private fun StorageApp(model: StorageViewModel) {
     // arrived draws as the bracketed mark it already draws when a download
     // has never been run at all.
     LaunchedEffect(Unit) {
-        if (state.spritesInstalled == 0) model.downloadSprites()
+        if (state.spritesInstalled == 0 && state.followersInstalled == 0) model.downloadFirstRun()
     }
 
 

@@ -1179,25 +1179,29 @@ private fun OptionsDrawerContent(
             }
 
             OptionsDrawer.PALETTES -> {
-                GbPalette.ALL.forEach { palette ->
-                    // A palette drawn from a game's own colours (or from a
-                    // legendary that game's own box art carried) is that
-                    // game's own cartridge proven, not a free extra —
-                    // dumping one is the only way in.
-                    val locked = palette.requiredRom != null && !model.roms.has(palette.requiredRom)
-                    add(
-                        OptionRow(
-                            palette.label,
-                            trailing = when {
-                                locked -> "NEEDS ${palette.requiredRom!!.label}"
-                                state.paletteId == palette.id -> "ON"
-                                else -> null
-                            },
-                            enabled = !locked,
-                            swatch = palette,
-                        ) { model.setPalette(palette.id) }
-                    )
-                }
+                // A palette drawn from a game's own colours (or from a
+                // legendary that game's own box art carried) is that game's
+                // own cartridge proven, not a free extra — dumping one is the
+                // only way in.
+                //
+                // Not in the list at all until then, rather than sat in it
+                // greyed out. Eight rows reading "NEEDS GOLD" over a swatch
+                // nobody can take is a worse list than a short one, and the
+                // names were losing a fight for the width with the reason
+                // they were unavailable — HO-OH came out as "HO-…". They
+                // arrive announced instead: importing the ROM says which
+                // palettes it just opened up. See [StorageViewModel.unlockedBy].
+                GbPalette.ALL
+                    .filter { it.requiredRom == null || model.roms.has(it.requiredRom) }
+                    .forEach { palette ->
+                        add(
+                            OptionRow(
+                                palette.label,
+                                trailing = if (state.paletteId == palette.id) "ON" else null,
+                                swatch = palette,
+                            ) { model.setPalette(palette.id) }
+                        )
+                    }
             }
 
             OptionsDrawer.AUDIO -> {

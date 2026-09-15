@@ -277,7 +277,7 @@ data class UiState(
     val windowsFollowPalette: Boolean = false,
     val windowsOnRight: Boolean = true,
     /** Whether this app's storage is called BILL'S PC instead of LOGIE'S PC. */
-    val billsPc: Boolean = false,
+    val billsPc: Boolean = true,
     /**
      * Whether the introduction has been sat through. False is what a fresh
      * install looks like, and it is the only thing that plays it.
@@ -1561,6 +1561,35 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * and each report a percentage that stalls while the others have the
      * line. In order, each one's bar means what it says.
      */
+    /**
+     * What a brand new install fetches for itself, unasked and in the
+     * background.
+     *
+     * Two of the four sets, not all of them. These are the two every screen
+     * is drawn out of — the box is made of followers and everything else is
+     * made of front sprites — so without them the app opens onto a grid of
+     * bracketed question marks. The cries and the trainer art are additions
+     * rather than the furniture, and stay in OPTIONS where someone can decide
+     * to spend the bytes on them.
+     *
+     * Followers first, because the box is the screen a player is most likely
+     * to be looking at while the rest of it lands.
+     */
+    fun downloadFirstRun() {
+        downloadStage("FIRST RUN") {
+            holdingDownloadService = true
+            try {
+                downloadFollowers()
+                followerJob?.join()
+                downloadSprites()
+                spriteJob?.join()
+            } finally {
+                holdingDownloadService = false
+                runCatching { DownloadService.hide(getApplication()) }
+            }
+        }
+    }
+
     fun downloadEverything() {
         // Each stage in turn, and every one of them attempted: a set that
         // fails is a gap in the art, not a reason to leave the three after it
@@ -1672,16 +1701,38 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * a reason to blame the player's copy.
      */
     fun importRom(version: RomVersion, bytes: ByteArray): Boolean {
+        val wasHere = roms.has(version)
         val accepted = roms.import(version, bytes)
         // A ROM changes what a sprite decodes to, the same as a download
         // finishing does, so it rides the same cache-busting revision.
         mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+        val unlocked = if (accepted && !wasHere) unlockedBy(listOf(version)) else emptyList()
         message(
-            if (accepted) "${version.label} IS IN."
-            else "THAT DOES NOT LOOK LIKE A ${version.label} ROM."
+            *(
+                listOf(
+                    if (accepted) "${version.label} IS IN."
+                    else "THAT DOES NOT LOOK LIKE A ${version.label} ROM."
+                ) + unlocked
+                ).toTypedArray()
         )
         return accepted
     }
+
+    /**
+     * What arriving with these cartridges just opened up.
+     *
+     * The palettes drawn from a game's own colours are hidden until that
+     * game's ROM is on the device — hidden rather than greyed out, because a
+     * row that cannot be taken is still a row to read past, and a list of
+     * eight of them said "NEEDS GOLD" more often than it said anything else.
+     * Hidden, the only place a player learns those palettes exist at all is
+     * here, on the run that hands them one, which is what makes it worth
+     * saying out loud.
+     */
+    private fun unlockedBy(versions: List<RomVersion>): List<String> =
+        GbPalette.ALL
+            .filter { it.requiredRom != null && it.requiredRom in versions }
+            .map { "YOU UNLOCKED THE ${it.label} PALETTE!" }
 
     fun deleteRom(version: RomVersion) {
         roms.delete(version)
@@ -1698,13 +1749,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         downloadStage("ROMS") {
             val outcomes = com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)
             mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
-            val have = outcomes.filter { it.imported }.map { it.version.label }
+            val imported = outcomes.filter { it.imported }
+            val have = imported.map { it.version.label }
             val stillNeed = outcomes.filterNot { it.imported }.map { it.version.label }
             message(
-                *listOfNotNull(
-                    have.takeIf { it.isNotEmpty() }?.let { "HAVE: ${it.joinToString(", ")}" },
-                    stillNeed.takeIf { it.isNotEmpty() }?.let { "STILL NEED: ${it.joinToString(", ")}" },
-                ).toTypedArray()
+                *(
+                    listOfNotNull(
+                        have.takeIf { it.isNotEmpty() }?.let { "HAVE: ${it.joinToString(", ")}" },
+                        stillNeed.takeIf { it.isNotEmpty() }?.let { "STILL NEED: ${it.joinToString(", ")}" },
+                    ) + unlockedBy(imported.map { it.version })
+                    ).toTypedArray()
             )
         }
     }

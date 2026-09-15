@@ -1,5 +1,8 @@
 package com.logie.gen1storage.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -7,11 +10,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.gen1recomp.GameVersion
+import kotlinx.coroutines.delay
 
 /**
  * The introduction's own copies of the screens it talks about.
@@ -33,6 +44,15 @@ import com.logie.gen1storage.gen1recomp.GameVersion
 fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
     val remote = remember { TutorialSamples.remote() }
     val save = remember { TutorialSamples.save() }
+    // Dealt onto the table rather than simply being there: the card slides up
+    // from under the foot of the stage once, which is the difference between
+    // a screenshot and something happening.
+    val dealt = remember { Animatable(1f) }
+    LaunchedEffect(Unit) {
+        if (!Gen1Motion.moves(Motion.WINDOWS)) return@LaunchedEffect
+        dealt.snapTo(1f)
+        dealt.animateTo(0f, tween(DEAL_MILLIS, easing = LinearEasing))
+    }
     Gen1TrainerCard(
         remote = remote,
         save = save,
@@ -41,7 +61,9 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
         trainers = model.trainers,
         trainerSprite = null,
         spriteRevision = spriteRevision,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { translationY = dealt.value * size.height },
         inserted = true,
         full = true,
     )
@@ -63,13 +85,45 @@ fun TutorialTransferScreen(model: StorageViewModel, spriteRevision: Int) {
             motion = TransferMotion.IN,
         )
     }
-    Gen1TransferScene(scene, model.sprites, spriteRevision)
+    // Run again every few seconds for as long as the beat is up, because a
+    // scene that plays once and then stands still is a scene most people
+    // arrive too late to see. Keyed rather than re-remembered: the scene is a
+    // data class, so a fresh copy of it is equal to the old one and the
+    // animation inside would never notice. The key rebuilds the whole thing.
+    var run by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        if (!Gen1Motion.moves(Motion.TRANSFERS)) return@LaunchedEffect
+        while (true) {
+            delay(REPLAY_MILLIS)
+            run++
+        }
+    }
+    key(run) { Gen1TransferScene(scene, model.sprites, spriteRevision) }
 }
 
 /** The box, as [Gen1BoxGrid] draws the real one. */
 @Composable
 fun TutorialViewBoxesScreen(model: StorageViewModel, spriteRevision: Int) {
     val box = remember { TutorialSamples.box() }
+    // The bracket walks the box on its own, which sets whichever Pokemon it
+    // is on walking on the spot — the grid animates the one under the cursor
+    // and holds the rest still. Nobody has to touch anything for the box to
+    // be visibly alive, and touching one still speaks: the grid plays its own
+    // cry on a tap, exactly as the real box does.
+    var at by remember { mutableIntStateOf(0) }
+    // Whether the player has taken it over. The bracket walks by itself until
+    // somebody touches the box, and then stops where they put it: a cursor
+    // that carried on strolling away from the Pokemon just picked would be
+    // the app disagreeing with the finger that moved it.
+    var taken by remember { mutableStateOf(false) }
+    val occupied = box.contents.size
+    LaunchedEffect(occupied, taken) {
+        if (taken || occupied == 0 || !Gen1Motion.moves(Motion.SCROLL)) return@LaunchedEffect
+        while (true) {
+            delay(STEP_MILLIS)
+            at = (at + 1) % occupied
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         Gen1Frame(
             Modifier.wrapContentWidth(),
@@ -82,10 +136,22 @@ fun TutorialViewBoxesScreen(model: StorageViewModel, spriteRevision: Int) {
                 box = box,
                 followers = model.followers,
                 revision = spriteRevision,
-                cursorSlot = 1,
-                onTap = {},
+                cursorSlot = at,
+                onTap = { slot ->
+                    taken = true
+                    if (box.slots.getOrNull(slot) != null) at = slot
+                },
                 onMove = { _, _ -> },
             )
         }
     }
 }
+
+/** How long the trainer card takes to slide into place. */
+private const val DEAL_MILLIS = 220
+
+/** How often the transfer runs itself again while that beat is up. */
+private const val REPLAY_MILLIS = 4_200L
+
+/** How long the bracket rests on each Pokemon as it walks the box. */
+private const val STEP_MILLIS = 620L

@@ -187,12 +187,14 @@ class AppSettings(private val prefs: SharedPreferences) {
     /**
      * Call this app's storage BILL'S PC rather than naming its author.
      *
-     * Off, because the machine is this app and it says so. On, it takes the
-     * name the cartridge's own storage system carries, for a player who would
-     * rather the whole thing read as the game it sits beside.
+     * On. The machine in the games is Bill's, the man himself is the one who
+     * shows a new install round it (see [Gen1Tutorial]), and a player who
+     * opens this app is opening the Pokémon Storage System rather than a
+     * piece of software by someone they have never heard of. Turning it off
+     * is the row in OPTIONS, and puts the author's name back.
      */
     var billsPc: Boolean
-        get() = prefs.getBoolean(KEY_BILLS_PC, false)
+        get() = prefs.getBoolean(KEY_BILLS_PC, true)
         set(value) = prefs.edit().putBoolean(KEY_BILLS_PC, value).apply()
 
     /**

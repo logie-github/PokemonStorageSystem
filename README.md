@@ -1,8 +1,32 @@
-Hello!
-
-Version 1.0 of Logie's Pokemon Storage System companion app for the Gen 1 Recomp app.
+## Pokemon Storage System for Gen 1 Recomp
 <img width="552" height="552" alt="324204" src="https://github.com/user-attachments/assets/05cf63f0-124d-46f2-b978-322e6e708d05" />
 
+Hello! Version 1.0 is of Logie's Pokemon Storage System companion app for the Gen 1 Recomp app is here! It's a shared Pokémon storage box that lives on your phone.
+
+Features:
+Move and Store Pokémon
+Move Pokémon between saves or stash them for another playthrough, with hundreds of extra storage slots.
+
+Trainer Cards
+Each playthrough gets a trainer card with the trainer name, badges, money, play time, and trainer sprite.
+
+Trade Evolutions
+Evolve Kadabra, Machoke, Graveler, and Haunter right in the app.
+
+Status Screens and Pokédex
+Check stats, moves, types, and Pokédex entries across all your saves.
+
+Pokemon Sprites
+Pokémon keep the sprite from the game they came from.
+
+Colour Palettes
+Use the classic green display or choose another palette.
+
+Phone Friendly
+Built for one-handed use, with foldable support, swipe controls, vibration settings, and reduced motion options.
+
+Customizable
+Don't like a feature like trade evolution or swipe controls? Toggle it off in settings. 
 
 First, go to the Gen 1 Recomp app and click the Save Sync button then choose Create Sync Account. Go to the PSS app and go to Options → Saves then enter the codes from the Gen 1 Recomp app into the appropriate boxes and hit Sync. It's as easy as that! 
 

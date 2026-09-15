@@ -71,10 +71,13 @@ class AppSettings(private val prefs: SharedPreferences) {
 
     /**
      * The colour palette everything is drawn through, by [GbPalette] id.
-     * Defaults to the untinted look.
+     * Defaults to the Game Boy Color's own pastel mix, free from the start
+     * the same as the tint-free look is — a new install reads as a Game Boy
+     * Color already turned on, not as a monochrome one waiting to be told to
+     * do something else.
      */
     var paletteId: String
-        get() = prefs.getString(KEY_PALETTE, null) ?: GbPalette.ORIGINAL.id
+        get() = prefs.getString(KEY_PALETTE, null) ?: GbPalette.GBC_PASTEL.id
         set(value) = prefs.edit().putString(KEY_PALETTE, value).apply()
 
     /**

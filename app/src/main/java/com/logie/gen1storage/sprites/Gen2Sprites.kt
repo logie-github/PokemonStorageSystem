@@ -45,15 +45,38 @@ object Gen2Sprites {
      * read for one. Neither repository gives Unown a per-version drawing
      * either, so the file is `front.png` in all three sets, for every letter.
      */
-    fun url(set: SpriteSet, speciesId: String): String? {
-        val repo = set.repo ?: return null
-        val file = set.frontFile ?: return null
+    fun url(set: SpriteSet, speciesId: String): String? = urls(set, speciesId).firstOrNull()
+
+    /**
+     * Every name that sprite might be under, best first.
+     *
+     * pokegold keeps Gold's and Silver's drawings side by side as
+     * `front_gold.png` and `front_silver.png`, because the two games drew
+     * most species separately. Not all of them: where one drawing served both
+     * games the repository holds a single `front.png` and neither versioned
+     * name exists at all. Eight species are like that, which was sixteen
+     * files a download reported as lost every time it ran and sixteen
+     * Pokemon with no Generation II art afterwards.
+     *
+     * So the versioned name is asked for first and the shared one is the
+     * fallback, rather than either being assumed. Crystal redrew the lot and
+     * names them all `front.png`, so it has only ever needed the one.
+     */
+    fun urls(set: SpriteSet, speciesId: String): List<String> {
+        val repo = set.repo ?: return emptyList()
+        val file = set.frontFile ?: return emptyList()
         val upper = speciesId.uppercase()
         val unown = upper == "UNOWN" || upper.startsWith("UNOWN_")
         val folder = if (upper == "UNOWN") "unown_a" else gen2SpriteFolder(speciesId)
-        return "https://raw.githubusercontent.com/$repo/master/gfx/pokemon/" +
-            "$folder/${if (unown) "front.png" else file}"
+        val root = "https://raw.githubusercontent.com/$repo/master/gfx/pokemon/$folder"
+        // Unown was never given a per-version drawing by either repository.
+        val names = if (unown || file == SHARED_FRONT) listOf(SHARED_FRONT)
+        else listOf(file, SHARED_FRONT)
+        return names.map { "$root/$it" }
     }
+
+    /** What a species drawn once for both games is filed under. */
+    private const val SHARED_FRONT = "front.png"
 
     /** Every one of Unown's 26 letter forms, as the synthetic id [unownFormId] builds. */
     val UNOWN_FORM_IDS: List<String> = ('A'..'Z').map { unownFormId(it) }

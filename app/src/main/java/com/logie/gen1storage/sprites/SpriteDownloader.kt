@@ -153,10 +153,13 @@ class SpriteDownloader(private val store: SpriteStore) {
         target: File,
         normals: MutableMap<String, ConcurrentHashMap<String, IntArray>>,
     ): Boolean {
-        val address =
-            if (set.generation == 2) Gen2Sprites.url(set, speciesId) ?: return false
-            else "$BASE_URL/${set.remotePath}/${spriteFileName(speciesId)}.png"
-        var bytes = read(address) ?: return false
+        val addresses =
+            if (set.generation == 2) Gen2Sprites.urls(set, speciesId).ifEmpty { return false }
+            else listOf("$BASE_URL/${set.remotePath}/${spriteFileName(speciesId)}.png")
+        // Each name in turn until one answers. Generation II has two for most
+        // species and one for the handful drawn once for both games; see
+        // [Gen2Sprites.urls].
+        var bytes = addresses.firstNotNullOfOrNull { read(it) } ?: return false
 
         if (set.generation == 2) {
             // The colours the cartridge showed are the file's own palette, in

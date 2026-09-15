@@ -131,6 +131,34 @@ class SpriteMappingTest {
     }
 
     @Test
+    fun `a Gold or Silver sprite falls back to the drawing the two games share`() {
+        // Most species were drawn twice and pokegold keeps both, so the
+        // versioned name is asked for first.
+        val pikachu = Gen2Sprites.urls(SpriteSet.GOLD, "PIKACHU")
+        assertEquals(2, pikachu.size)
+        assertTrue(pikachu[0].endsWith("/pikachu/front_gold.png"))
+        assertTrue(pikachu[1].endsWith("/pikachu/front.png"))
+
+        // Eight were drawn once for both games, and neither versioned name
+        // exists at all — which was sixteen files every download reported as
+        // lost. The fallback is what finds them.
+        val shared = Gen2Sprites.urls(SpriteSet.SILVER, "SUICUNE")
+        assertTrue(shared[0].endsWith("/suicune/front_silver.png"))
+        assertTrue(shared[1].endsWith("/suicune/front.png"))
+
+        // Crystal redrew every one of them and files them all the same way,
+        // so it has nothing to fall back to.
+        assertEquals(
+            listOf("https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/pokemon/suicune/front.png"),
+            Gen2Sprites.urls(SpriteSet.CRYSTAL, "SUICUNE"),
+        )
+
+        // Unown was never given a per-version drawing by either repository.
+        assertEquals(1, Gen2Sprites.urls(SpriteSet.GOLD, "UNOWN_F").size)
+        assertTrue(Gen2Sprites.urls(SpriteSet.GOLD, "UNOWN_F").single().endsWith("/unown_f/front.png"))
+    }
+
+    @Test
     fun `every Unown letter folds through the ordinary folder rule`() {
         Gen2Sprites.UNOWN_FORM_IDS.forEachIndexed { index, id ->
             val letter = ('A' + index)

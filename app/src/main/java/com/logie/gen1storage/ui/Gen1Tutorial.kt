@@ -91,7 +91,10 @@ fun Gen1Tutorial(
     // only job here is to take the next beat the same way a tap does. A beat
     // that asks something puts its own rows on top of this layer, and those
     // are then what A takes.
-    rememberCursorLayer(1) { if (current.ask == null) advance() }
+    // Not on the beat that hands the box over: with swipe controls on, the
+    // grid turns a tap into a confirm, and that confirm is meant for the
+    // Pokemon under the finger rather than for the tour.
+    rememberCursorLayer(1) { if (current.ask == null && !current.handsOver) advance() }
 
     // Android's own folder chooser, which is where the permission actually
     // comes from: picking a folder in it is what grants this app access to
@@ -120,16 +123,7 @@ fun Gen1Tutorial(
         audio?.play(effect)
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .gen1Ground()
-            .then(
-                if (current.ask != null) Modifier
-                else Modifier.pointerInput(beat) { detectTapGestures { advance() } }
-            )
-            .padding(gen1Dp(4)),
-    ) {
+    Box(Modifier.fillMaxSize().gen1Ground().padding(gen1Dp(4))) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val stage = current.stage
@@ -155,42 +149,62 @@ fun Gen1Tutorial(
                 // one. Advancing from that beat is the text box and the arrow
                 // under it, which is where a Game Boy always put it.
                 if (!current.handsOver && current.ask == null) {
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .pointerInput(beat) { detectTapGestures { advance() } }
-                    )
+                    Box(Modifier.matchParentSize().tapsTo(beat) { advance() })
                 }
             }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
-            ) {
-                BillPortrait(speaking)
-            }
-            Spacer(Modifier.height(gen1Dp(2)))
-            Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
-                Gen1TypedLines(current.lines, onFinished = { speaking = false })
-                // Only once he has finished saying it, the way the cartridge
-                // only offers a choice when the box has stopped printing.
-                if (!speaking) when (current.ask) {
-                    null -> Row(
+            Box {
+                Column {
+                    Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                    ) { Gen1BlinkingArrow() }
+                        horizontalArrangement =
+                            if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
+                    ) {
+                        BillPortrait(speaking)
+                    }
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
+                        Gen1TypedLines(current.lines, onFinished = { speaking = false })
+                        // Only once he has finished saying it, the way the
+                        // cartridge only offers a choice when the box has
+                        // stopped printing.
+                        if (!speaking) when (current.ask) {
+                            null -> Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) { Gen1BlinkingArrow() }
 
-                    TutorialAsk.ROMS -> Gen1ChoiceRows(
-                        listOf(
-                            "FIND THE FOLDER" to { pickRomsFolder.launch(null) },
-                            "NOT NOW" to { advance() },
-                        )
-                    )
+                            TutorialAsk.ROMS -> Gen1ChoiceRows(
+                                listOf(
+                                    "FIND THE FOLDER" to { pickRomsFolder.launch(null) },
+                                    "NOT NOW" to { advance() },
+                                )
+                            )
+                        }
+                    }
+                }
+                // Bill and his text box are the way on, and on the beat that
+                // hands the box over they are the only way on. Lifted for a
+                // beat that asks something, where the rows underneath are
+                // what a tap is for.
+                if (current.ask == null) {
+                    Box(Modifier.matchParentSize().tapsTo(beat) { advance() })
                 }
             }
         }
     }
 }
+
+/**
+ * A pane that swallows taps and does one thing with them.
+ *
+ * Swallows rather than passes on, and that is the point of it here. With
+ * SWIPE CONTROLS on, which is how the app comes, a tap on open ground is
+ * already the A button, so a tour that also watched for taps of its own
+ * would take two beats at once. Consuming the gesture leaves exactly one
+ * thing listening to it.
+ */
+private fun Modifier.tapsTo(key: Any?, action: () -> Unit): Modifier =
+    pointerInput(key) { detectTapGestures { action() } }
 
 /**
  * The sprite sheets landing, while Bill talks over them.

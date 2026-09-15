@@ -312,7 +312,7 @@ data class UiState(
     /** Whether Generation II art follows the palette instead of its own colours. */
     val gbcFollowsPalette: Boolean = false,
     /** Swipes drive the cursor, and lists do not scroll under a finger. */
-    val swipeControls: Boolean = false,
+    val swipeControls: Boolean = true,
     val motionsOn: Set<String> = emptySet(),
     /** The tick under the finger. */
     val haptics: Boolean = true,
@@ -1748,38 +1748,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * a reason to blame the player's copy.
      */
     fun importRom(version: RomVersion, bytes: ByteArray): Boolean {
-        val wasHere = roms.has(version)
         val accepted = roms.import(version, bytes)
         // A ROM changes what a sprite decodes to, the same as a download
         // finishing does, so it rides the same cache-busting revision.
         mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
-        val unlocked = if (accepted && !wasHere) unlockedBy(listOf(version)) else emptyList()
         message(
-            *(
-                listOf(
-                    if (accepted) "${version.label} IS IN."
-                    else "THAT DOES NOT LOOK LIKE A ${version.label} ROM."
-                ) + unlocked
-                ).toTypedArray()
+            if (accepted) "${version.label} IS IN."
+            else "THAT DOES NOT LOOK LIKE A ${version.label} ROM."
         )
         return accepted
     }
-
-    /**
-     * What arriving with these cartridges just opened up.
-     *
-     * The palettes drawn from a game's own colours are hidden until that
-     * game's ROM is on the device — hidden rather than greyed out, because a
-     * row that cannot be taken is still a row to read past, and a list of
-     * eight of them said "NEEDS GOLD" more often than it said anything else.
-     * Hidden, the only place a player learns those palettes exist at all is
-     * here, on the run that hands them one, which is what makes it worth
-     * saying out loud.
-     */
-    private fun unlockedBy(versions: List<RomVersion>): List<String> =
-        GbPalette.ALL
-            .filter { it.requiredRom != null && it.requiredRom in versions }
-            .map { "YOU UNLOCKED THE ${it.label} PALETTE!" }
 
     fun deleteRom(version: RomVersion) {
         roms.delete(version)
@@ -1796,16 +1774,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         downloadStage("ROMS") {
             val outcomes = com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)
             mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
-            val imported = outcomes.filter { it.imported }
-            val have = imported.map { it.version.label }
+            val have = outcomes.filter { it.imported }.map { it.version.label }
             val stillNeed = outcomes.filterNot { it.imported }.map { it.version.label }
             message(
-                *(
-                    listOfNotNull(
-                        have.takeIf { it.isNotEmpty() }?.let { "HAVE: ${it.joinToString(", ")}" },
-                        stillNeed.takeIf { it.isNotEmpty() }?.let { "STILL NEED: ${it.joinToString(", ")}" },
-                    ) + unlockedBy(imported.map { it.version })
-                    ).toTypedArray()
+                *listOfNotNull(
+                    have.takeIf { it.isNotEmpty() }?.let { "HAVE: ${it.joinToString(", ")}" },
+                    stillNeed.takeIf { it.isNotEmpty() }?.let { "STILL NEED: ${it.joinToString(", ")}" },
+                ).toTypedArray()
             )
         }
     }

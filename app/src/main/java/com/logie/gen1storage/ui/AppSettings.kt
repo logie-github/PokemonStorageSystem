@@ -224,14 +224,16 @@ class AppSettings(private val prefs: SharedPreferences) {
      *
      * Off, and the app is tapped and scrolled: a tap takes what is under it
      * and a list is dragged the way any list is. On, a swipe anywhere is the
-     * D-pad, wherever the finger lands — and lists stop scrolling under the
+     * D-pad, wherever the finger lands, and lists stop scrolling under the
      * finger, because a gesture cannot be both a scroll and a step.
      *
-     * Off by default. Someone who wants this knows they want it, and someone
-     * who does not should never meet a list that will not scroll.
+     * On by default. This app is a Game Boy with the buttons taken away, and
+     * a D-pad under the thumb is how it was meant to be driven; the row in
+     * OPTIONS gives the ordinary tapping and scrolling back to anyone who
+     * would rather have it.
      */
     var swipeControls: Boolean
-        get() = prefs.getBoolean(KEY_SWIPE_CONTROLS, false)
+        get() = prefs.getBoolean(KEY_SWIPE_CONTROLS, true)
         set(value) = prefs.edit().putBoolean(KEY_SWIPE_CONTROLS, value).apply()
 
     /**

@@ -54,6 +54,15 @@ class SpriteStore(
     val gen2Colours = Gen2Sprites.Store(directory)
 
     /**
+     * The player's own Red and Blue ROMs, if any — set once, from outside,
+     * because building one is its own store with its own directory and this
+     * one has no business owning it. A species with a ROM to read from is
+     * drawn from it instead of a download; nothing changes for a species —
+     * or a player — that has none.
+     */
+    var romStore: com.logie.gen1storage.rom.RomStore? = null
+
+    /**
      * Whether Generation II art takes the chosen palette instead of the
      * colours the Game Boy Color gave it.
      *
@@ -136,9 +145,63 @@ class SpriteStore(
         cutout: Boolean = false,
         shiny: Boolean = false,
     ): ImageBitmap? {
+        romVersionOf(gameVersionId)?.let { version ->
+            romStore?.frontSprite(version, speciesId)?.let { return loadFromRom(speciesId, it, cutout) }
+        }
         val set = resolve(speciesId, gameVersionId) ?: return null
         return load(set, speciesId, cutout, shiny)
     }
+
+    /**
+     * Where a downloaded Generation I sprite is a picture already drawn at
+     * some upscale, a ROM one is the cartridge's own 2bpp tiles decoded
+     * straight — no picture to point-sample down, only the same four-shade
+     * treatment [load] gives every other Generation I sprite, kept under its
+     * own cache key so a downloaded Red sprite for a species and a ROM-read
+     * one are never confused for each other.
+     */
+    private fun loadFromRom(
+        speciesId: String,
+        sprite: com.logie.gen1storage.rom.Gen1SpriteCodec.DecodedSprite,
+        cutout: Boolean,
+    ): ImageBitmap {
+        val key = buildString {
+            append(tintId).append("/rom/")
+            if (cutout) append("cut/")
+            append(spriteFileName(speciesId))
+        }
+        memory[key]?.let { return it }
+        val full = greyscaleOf(sprite)
+        val ramp = tintRamp
+        val shown = when {
+            ramp != null -> recolourToRamp(full, ramp, cutout)
+            cutout -> cutOutLightest(full)
+            else -> full
+        }
+        if (full !== shown) full.recycle()
+        val image = shown.asImageBitmap()
+        memory[key] = image
+        return image
+    }
+
+    /** A ROM sprite's 2bpp values (0-3), lightest first, as a plain greyscale bitmap. */
+    private fun greyscaleOf(sprite: com.logie.gen1storage.rom.Gen1SpriteCodec.DecodedSprite): Bitmap {
+        val bitmap = Bitmap.createBitmap(sprite.widthPx, sprite.heightPx, Bitmap.Config.ARGB_8888)
+        for (y in 0 until sprite.heightPx) {
+            for (x in 0 until sprite.widthPx) {
+                val shade = 255 - sprite.pixels[y * sprite.widthPx + x] * 85
+                bitmap.setPixel(x, y, (0xFF shl 24) or (shade shl 16) or (shade shl 8) or shade)
+            }
+        }
+        return bitmap
+    }
+
+    private fun romVersionOf(gameVersionId: String?): com.logie.gen1storage.rom.RomVersion? =
+        when (gameVersionId?.lowercase()) {
+            "red" -> com.logie.gen1storage.rom.RomVersion.RED
+            "blue" -> com.logie.gen1storage.rom.RomVersion.BLUE
+            else -> null
+        }
 
     /**
      * [cutout] drops the sprite's white field so it sits on whatever is behind

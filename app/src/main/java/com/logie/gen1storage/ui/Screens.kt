@@ -1071,6 +1071,7 @@ enum class OptionsDrawer(val label: String) {
     MOTION("ACCESSIBILITY"),
     LAYOUT("LAYOUT"),
     DOWNLOADS("DOWNLOADS"),
+    ROMS("ROMS"),
     SAVES("SAVES"),
     ABOUT("ABOUT"),
 }
@@ -1132,6 +1133,20 @@ private fun OptionsDrawerContent(
     onBack: () -> Unit,
 ) {
     val audio = LocalGen1Audio.current
+    val context = LocalContext.current
+    fun pickRom(version: com.logie.gen1storage.rom.RomVersion, uri: android.net.Uri?) {
+        if (uri == null) return
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull() ?: return
+        model.importRom(version, bytes)
+    }
+    val pickRed = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
+        pickRom(com.logie.gen1storage.rom.RomVersion.RED, it)
+    }
+    val pickBlue = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
+        pickRom(com.logie.gen1storage.rom.RomVersion.BLUE, it)
+    }
     val rows = buildList {
         when (drawer) {
             OptionsDrawer.VISUAL -> {
@@ -1305,6 +1320,37 @@ private fun OptionsDrawerContent(
                 }
                 if (!running && progress != null) {
                     add(OptionRow("OK") { model.dismissDownloadProgress() })
+                }
+            }
+
+            OptionsDrawer.ROMS -> {
+                // Sprites read straight out of the player's own ROM instead
+                // of a downloaded archive — a copy of a game only its owner
+                // could have dumped, kept only on this device and never sent
+                // anywhere by this app. One row per game this app knows how
+                // to read a sprite out of.
+                com.logie.gen1storage.rom.RomVersion.entries.forEach { version ->
+                    val here = model.roms.has(version)
+                    add(
+                        OptionRow(
+                            version.label,
+                            trailing = if (here) "${model.roms.sizeOf(version) / (1024 * 1024)} MB" else "NOT HERE",
+                        ) {
+                            if (here) {
+                                model.prompt(
+                                    Prompt.Confirm(
+                                        lines = listOf("REMOVE THE ${version.label} ROM?"),
+                                        confirmLabel = "YES",
+                                        cancelLabel = "NO",
+                                        onConfirm = { model.deleteRom(version) },
+                                    )
+                                )
+                            } else {
+                                val pick = if (version == com.logie.gen1storage.rom.RomVersion.RED) pickRed else pickBlue
+                                pick.launch(arrayOf("*/*"))
+                            }
+                        }
+                    )
                 }
             }
 

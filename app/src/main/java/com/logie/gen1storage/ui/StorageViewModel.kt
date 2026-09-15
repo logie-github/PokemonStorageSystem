@@ -15,6 +15,8 @@ import androidx.lifecycle.viewModelScope
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
+import com.logie.gen1storage.rom.RomStore
+import com.logie.gen1storage.rom.RomVersion
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.pokemon.Gen2Data
@@ -368,6 +370,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val engine = TransferEngine(saves, storage, journal, ledger)
     private val itemStorage = ItemRepository(storageDir)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
+    val roms = RomStore(File(application.filesDir, "roms")).also { sprites.romStore = it }
 
     /** When the ball went up, so the result can wait for it to finish. */
     private var sceneStartedAt = 0L
@@ -1621,6 +1624,31 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         deleteCries()
         deleteFollowers()
         deleteTrainers()
+    }
+
+    // ------- ROMs
+
+    /**
+     * Saves [bytes] as [version]'s own ROM, once [RomStore.import] has
+     * confirmed it really is one. Returns whether it was — a file this app
+     * cannot find its own data inside is never kept, and never mistaken for
+     * a reason to blame the player's copy.
+     */
+    fun importRom(version: RomVersion, bytes: ByteArray): Boolean {
+        val accepted = roms.import(version, bytes) != null
+        // A ROM changes what a sprite decodes to, the same as a download
+        // finishing does, so it rides the same cache-busting revision.
+        mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+        message(
+            if (accepted) "${version.label} IS IN."
+            else "THAT DOES NOT LOOK LIKE A ${version.label} ROM."
+        )
+        return accepted
+    }
+
+    fun deleteRom(version: RomVersion) {
+        roms.delete(version)
+        mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
     }
 
     // ------- export and import

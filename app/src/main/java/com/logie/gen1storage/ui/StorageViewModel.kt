@@ -1635,7 +1635,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * a reason to blame the player's copy.
      */
     fun importRom(version: RomVersion, bytes: ByteArray): Boolean {
-        val accepted = roms.import(version, bytes) != null
+        val accepted = roms.import(version, bytes)
         // A ROM changes what a sprite decodes to, the same as a download
         // finishing does, so it rides the same cache-busting revision.
         mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }

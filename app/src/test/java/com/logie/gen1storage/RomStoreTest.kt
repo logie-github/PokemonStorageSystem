@@ -67,14 +67,14 @@ class RomStoreTest {
         val store = RomStore(temporaryFolder.newFolder())
         val rom = buildFakeRom(tableOffset = 0x1000, spritesBySpeciesId = mapOf("RHYDON" to allZeroTileSprite))
 
-        val located = store.import(RomVersion.RED, rom)
+        val accepted = store.import(RomVersion.RED, rom)
 
-        assertNotNull(located)
+        assertTrue(accepted)
         assertTrue(store.has(RomVersion.RED))
         assertEquals(rom.size.toLong(), store.sizeOf(RomVersion.RED))
         assertFalse(store.has(RomVersion.BLUE))
 
-        assertNull(store.import(RomVersion.BLUE, ByteArray(1000) { it.toByte() }))
+        assertFalse(store.import(RomVersion.BLUE, ByteArray(1000) { it.toByte() }))
         assertFalse("a file this app cannot read is not one it should keep", store.has(RomVersion.BLUE))
     }
 

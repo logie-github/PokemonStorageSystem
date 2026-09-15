@@ -1141,11 +1141,13 @@ private fun OptionsDrawerContent(
         }.getOrNull() ?: return
         model.importRom(version, bytes)
     }
-    val pickRed = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-        pickRom(com.logie.gen1storage.rom.RomVersion.RED, it)
-    }
-    val pickBlue = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-        pickRom(com.logie.gen1storage.rom.RomVersion.BLUE, it)
+    // One launcher rather than one per version: a picker is asked for by
+    // name at the moment it is opened, and the callback (which fires later,
+    // long after this composition) reads that same name back.
+    var romBeingPicked by remember { mutableStateOf<com.logie.gen1storage.rom.RomVersion?>(null) }
+    val pickAnyRom = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        romBeingPicked?.let { pickRom(it, uri) }
+        romBeingPicked = null
     }
     val rows = buildList {
         when (drawer) {
@@ -1346,8 +1348,8 @@ private fun OptionsDrawerContent(
                                     )
                                 )
                             } else {
-                                val pick = if (version == com.logie.gen1storage.rom.RomVersion.RED) pickRed else pickBlue
-                                pick.launch(arrayOf("*/*"))
+                                romBeingPicked = version
+                                pickAnyRom.launch(arrayOf("*/*"))
                             }
                         }
                     )

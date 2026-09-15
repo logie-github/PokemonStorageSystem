@@ -22,10 +22,11 @@ import org.junit.Test
 class SaveClassifierTest {
 
     /**
-     * A Generation II save is read and never written. The classification is
-     * what everything downstream keys on: it carries the save, so the shelf
-     * can list it and the card can be drawn, and it is never [Valid], which
-     * is what the transfer engine requires before it will change anything.
+     * A Generation II save is judged by Generation II's own rules, not
+     * Generation I's — a party of six Gold Pokémon is not a broken Red
+     * party — and comes back [SaveClassification.Valid] the same as any
+     * Generation I save does, which is what lets the transfer engine change
+     * it at all.
      */
     @Test
     fun `a Gen II save is judged by Generation II's rules`() {

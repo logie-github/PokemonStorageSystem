@@ -419,7 +419,7 @@ private fun BoxHead(
                 Spacer(Modifier.size(gen1Dp(HEAD_SPRITE_PIXELS)))
             } else {
                 Gen1Sprite(
-                    pokemon.speciesId,
+                    pokemon.spriteSpeciesId(),
                     stored.provenance.gameVersion,
                     sprites,
                     revision = spriteRevision,

@@ -25,21 +25,6 @@ sealed interface SaveClassification {
         val problems: List<String>,
     ) : SaveClassification
 
-    /**
-     * Parsed, Generation II, and readable but never writable.
-     *
-     * The trainer card, the party and the boxes are all there to be looked
-     * at. What this app will not do is change one: a Gold save's Pokémon
-     * carry fields Generation I has no place for — held items, happiness, the
-     * split Special — and a transfer that dropped them would quietly damage
-     * the Pokémon it moved. Everything that writes checks
-     * [GameVersion.isWritable] and refuses.
-     */
-    data class ReadOnlyGeneration(
-        override val save: Gen1RecompSave,
-        val versionId: String?,
-    ) : SaveClassification
-
     /** Parsed Lua, but not a Gen1Recomp progress file at all. */
     data class Unsupported(val reason: String) : SaveClassification
 
@@ -60,7 +45,6 @@ sealed interface SaveClassification {
         get() = when (this) {
             is Valid -> if (warnings.isEmpty()) "OK" else warnings.first()
             is ValidWithInvalidPokemon -> problems.first()
-            is ReadOnlyGeneration -> "GEN II SAVE (${versionId ?: "unknown"}) - READ ONLY"
             is Unsupported -> reason
             is Malformed -> if (offset != null) "$reason (byte $offset)" else reason
             is Incomplete -> "MISSING: ${missing.joinToString(", ")}"
@@ -110,10 +94,7 @@ object SaveClassifier {
         if (missing.isNotEmpty()) {
             return SaveClassification.Incomplete(missing)
         }
-        val version = save.version ?: return SaveClassification.Unsupported("UNKNOWN GAME VERSION")
-        if (!version.isWritable) {
-            return SaveClassification.ReadOnlyGeneration(save, version.id)
-        }
+        save.version ?: return SaveClassification.Unsupported("UNKNOWN GAME VERSION")
 
         val problems = mutableListOf<String>()
         val warnings = mutableListOf<String>()

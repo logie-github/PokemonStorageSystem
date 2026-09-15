@@ -103,6 +103,14 @@ data class Gen2Species(
     override val primaryType: String,
     override val secondaryType: String?,
     override val growthRate: String,
+    /**
+     * How likely one of this species is to be female, out of 255 -
+     * pokecrystal's own `BASE_GENDER` byte, from `constants/pokemon_data_
+     * constants.asm`'s `percent EQUS "* $ff / 100"` macro: 0 is always male,
+     * 254 is always female, 255 (`GENDER_UNKNOWN`) is no gender at all.
+     * [genderOf] is what turns this and one Pokémon's own DVs into a gender.
+     */
+    val genderRatio: Int,
 ) : SpeciesInfo {
 
     override val generation: Int get() = 2
@@ -115,7 +123,32 @@ data class Gen2Species(
         Gen2Stat.SPECIAL_ATTACK -> baseSpecialAttack
         Gen2Stat.SPECIAL_DEFENSE -> baseSpecialDefense
     }
+
+    /**
+     * Which gender one specific Pokémon of this species is, ported from
+     * `GetGender` (`engine/pokemon/mon_stats.asm`): the Attack DV's own four
+     * bits at the top of a byte, the Speed DV's at the bottom, weighed
+     * against [genderRatio] the same way every later generation still does.
+     * Null for a species with no gender at all.
+     */
+    fun genderOf(attackDv: Int, speedDv: Int): Gender? = when (genderRatio) {
+        GENDER_UNKNOWN -> null
+        0 -> Gender.MALE
+        GENDER_F100 -> Gender.FEMALE
+        else -> {
+            val combined = ((attackDv and 0xF) shl 4) or (speedDv and 0xF)
+            if (combined <= genderRatio) Gender.FEMALE else Gender.MALE
+        }
+    }
+
+    companion object {
+        private const val GENDER_F100 = 254
+        const val GENDER_UNKNOWN = 255
+    }
 }
+
+/** MALE or FEMALE - [Gen2Species.genderOf] is null rather than either for a genderless species. */
+enum class Gender(val symbol: String) { MALE("♂"), FEMALE("♀") }
 
 /**
  * The six Generation II stats, keyed as upstream writes them.

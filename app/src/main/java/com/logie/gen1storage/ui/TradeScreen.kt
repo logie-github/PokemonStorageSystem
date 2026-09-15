@@ -9,17 +9,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.logie.gen1storage.pokemon.Gen1Data
-import com.logie.gen1storage.pokemon.Gen1TradeEvolution
+import com.logie.gen1storage.pokemon.tradeEvolutionName
+import com.logie.gen1storage.pokemon.tradeEvolutionOf
 
 /**
- * The trade machine: the four Pokémon a cartridge alone can never evolve.
+ * The trade machine: every Pokémon a cartridge alone can never evolve.
  *
- * Generation I gates Alakazam, Machamp, Golem and Gengar behind a trade, which
- * means behind a second cartridge, a second Game Boy and a link cable. This app
- * is already both ends of a cable — a Pokémon deposited here and withdrawn again
- * has been traded in every sense the cartridge would recognise — so the machine
- * can simply do it.
+ * Generation I gates Alakazam, Machamp, Golem and Gengar behind a trade, and
+ * Generation II keeps those four and adds six more behind a trade **and** a
+ * held item — Politoed, Slowking, Kingdra, Steelix, Scizor, Porygon2 — which
+ * means behind a second cartridge, a second Game Boy and a link cable either
+ * way. This app is already both ends of a cable — a Pokémon deposited here
+ * and withdrawn again has been traded in every sense the cartridge would
+ * recognise — so the machine can simply do it, for whichever ten a Pokémon's
+ * own generation offers.
  *
  * Nothing leaves the PC and no save is written. The Pokémon that goes in is the
  * Pokémon that comes out, one species further along, with its nickname, its
@@ -37,8 +40,8 @@ fun TradeScreen(state: UiState, model: StorageViewModel) {
         }
         val stored = candidates[index]
         val name = stored.pokemon.displayName.uppercase()
-        val becomes = Gen1TradeEvolution.evolutionOf(stored.pokemon.speciesId)
-            ?.let { Gen1Data.speciesName(it).uppercase() }
+        val becomes = tradeEvolutionOf(stored.pokemon)
+            ?.let { tradeEvolutionName(it, stored.pokemon.generation).uppercase() }
             ?: return
         model.prompt(
             Prompt.Confirm(
@@ -66,13 +69,13 @@ fun TradeScreen(state: UiState, model: StorageViewModel) {
 
         items(candidates) { stored ->
             val index = candidates.indexOf(stored)
-            val becomes = Gen1TradeEvolution.evolutionOf(stored.pokemon.speciesId)
-                ?.let { Gen1Data.speciesName(it).uppercase() }
+            val becomes = tradeEvolutionOf(stored.pokemon)
+                ?.let { tradeEvolutionName(it, stored.pokemon.generation).uppercase() }
                 .orEmpty()
             Gen1Frame {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Gen1Sprite(
-                        speciesId = stored.pokemon.speciesId,
+                        speciesId = stored.pokemon.spriteSpeciesId(),
                         gameVersionId = stored.provenance.gameVersion,
                         store = model.sprites,
                         revision = state.spriteRevision,

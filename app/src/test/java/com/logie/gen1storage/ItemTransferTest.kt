@@ -8,12 +8,20 @@ import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.Provenance
 import com.logie.gen1storage.storage.StorageRepository
+import com.logie.gen1storage.sync.SaveBackups
+import com.logie.gen1storage.sync.SaveRepository
+import com.logie.gen1storage.sync.SyncApi
+import com.logie.gen1storage.sync.getOrNull
+import com.logie.gen1storage.transfer.ItemTransferEngine
+import com.logie.gen1storage.transfer.TransferResult
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 
 class ItemTransferTest {
 
@@ -60,9 +68,9 @@ class ItemTransferTest {
     @Test
     fun `the app's item PC survives a restart`() {
         val directory = temporaryFolder.newFolder()
-        ItemRepository(directory).add("ULTRA_BALL", 7)
+        ItemRepository(directory).add("ULTRA_BALL", 7, generation = 1)
 
-        assertEquals(7, ItemRepository(directory).count("ULTRA_BALL"))
+        assertEquals(7, ItemRepository(directory).count("ULTRA_BALL", generation = 1))
     }
 
     @Test
@@ -92,6 +100,66 @@ class ItemTransferTest {
         val stored = repository.deposit(SaveFixtures.pokemon(), provenance())!!
 
         assertNull(repository.takeHeldItem(stored.uid))
+    }
+
+    @Test
+    fun `the two generations' items never share a stack`() {
+        val directory = temporaryFolder.newFolder()
+        val repository = ItemRepository(directory)
+
+        repository.add("POTION", 5, generation = 1)
+        repository.add("POTION", 3, generation = 2)
+
+        assertEquals(5, repository.count("POTION", generation = 1))
+        assertEquals(3, repository.count("POTION", generation = 2))
+        assertEquals(listOf(5), repository.state(1).map { it.count })
+        assertEquals(listOf(3), repository.state(2).map { it.count })
+        // Read together, each stack still says which vocabulary it is in.
+        assertEquals(setOf(1, 2), repository.state().map { it.generation }.toSet())
+
+        repository.remove("POTION", 5, generation = 1)
+        assertEquals(0, repository.count("POTION", generation = 1))
+        assertEquals(3, repository.count("POTION", generation = 2))
+    }
+
+    @Test
+    fun `a save's own items are tagged with its generation`() {
+        val gen1 = Gen1RecompSave(SaveFixtures.save(version = "red"))
+        val gen2 = Gen1RecompSave(SaveFixtures.save(version = "gold"))
+
+        assertEquals(1, gen1.pcItems.single().generation)
+        assertEquals(2, gen2.pcItems.single().generation)
+    }
+
+    @Test
+    fun `items move between the app's PC and a Generation II save`() = runTest {
+        val server = FakeSyncServer()
+        val playthroughId = "still-cave-midnight"
+        server.put(
+            "gold", playthroughId,
+            SaveFixtures.encode(SaveFixtures.save(version = "gold", playthroughId = playthroughId)),
+        )
+        val directory = temporaryFolder.newFolder()
+        val saves = SaveRepository(
+            SyncApi(transport = server, credentials = { "acct-1" to "tok-1" }),
+            SaveBackups(File(directory, "backups")),
+        )
+        val items = ItemRepository(directory)
+        val engine = ItemTransferEngine(saves, items)
+
+        val state = saves.listSaves().getOrNull()!!
+        val remote = state.saves.first { it.playthroughId == playthroughId }
+        val loaded = saves.load(remote).getOrNull()!!
+
+        val deposited = engine.deposit(loaded, "POTION", 1)
+        assertTrue(deposited is TransferResult.Success)
+        assertEquals(1, items.count("POTION", generation = 2))
+        assertEquals(0, items.count("POTION", generation = 1))
+
+        val reloaded = saves.load(remote).getOrNull()!!
+        val withdrawn = engine.withdraw(reloaded, "POTION", 1)
+        assertTrue(withdrawn is TransferResult.Success)
+        assertEquals(0, items.count("POTION", generation = 2))
     }
 
     private fun provenance() = Provenance(

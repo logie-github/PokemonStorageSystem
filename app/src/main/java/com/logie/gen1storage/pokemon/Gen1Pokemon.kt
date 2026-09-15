@@ -30,12 +30,12 @@ class Gen1Pokemon(
      * the raw table is the cartridge's and this app does not write fields into
      * one to keep track of its own business.
      *
-     * Defaulted to 1, which is what every Pokémon in this app's own PC is:
-     * Generation II saves are read and never written, so nothing from one can
-     * be deposited yet. When a Pokémon can be carried forward deliberately —
-     * the Time Capsule's job, not a side effect of a table lookup — this is
-     * the field that would change, and it would have to be stored alongside a
-     * deposited Pokémon to survive the trip.
+     * Defaulted to 1, since every save this app read before Generation II's
+     * tables existed was one. A Pokémon deposited out of a Gold, Silver or
+     * Crystal save carries a 2 here from the moment it lands in the PC — see
+     * [com.logie.gen1storage.storage.StoredPokemon.generation] — and one
+     * carried forward from Generation I gets it the one deliberate way:
+     * [TimeCapsule.carry].
      */
     val generation: Int = 1,
 ) {
@@ -82,6 +82,18 @@ class Gen1Pokemon(
     val maxHp: Int? get() = stats[Gen1Stat.HP]
     val hasStats: Boolean get() = Gen1Stats.hasCompleteStats(raw, generation)
     val isShiny: Boolean get() = Gen1Stats.isShiny(dvs)
+
+    /**
+     * MALE, FEMALE, or null - no gender at all, or a Generation I Pokémon,
+     * which the games never asked this of. [Gen2Species.genderOf] is what
+     * decides, off this Pokémon's own Attack and Speed DVs.
+     */
+    val gender: Gender?
+        get() {
+            if (generation < 2) return null
+            val species = species as? Gen2Species ?: return null
+            return species.genderOf(dvs[Gen1Stat.ATTACK] ?: 0, dvs[Gen1Stat.SPEED] ?: 0)
+        }
 
     val moves: List<MoveSlot>
         get() = raw["moves"].asTable()?.array().orEmpty().mapNotNull { entry ->

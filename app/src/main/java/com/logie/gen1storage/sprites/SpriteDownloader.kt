@@ -49,7 +49,15 @@ class SpriteDownloader(private val store: SpriteStore) {
         // asking anyway is a hundred round trips that can only 404.
         val gen1Species = Gen1Data.species.map { it.id }
         val gen2Species = Gen2Data.speciesIds
-        fun speciesFor(set: SpriteSet) = if (set.generation == 2) gen2Species else gen1Species
+        // UNOWN alone draws as one of twenty-six letters rather than one
+        // picture, so its sprite job is twenty-six — one per synthetic id
+        // Gen2Sprites.unownFormId builds — on top of the bare UNOWN id this
+        // app already showed before a Pokémon's own DVs picked a letter.
+        val gen2SpriteIds = gen2Species.flatMap { id ->
+            if (id.equals("UNOWN", ignoreCase = true)) listOf(id) + Gen2Sprites.UNOWN_FORM_IDS
+            else listOf(id)
+        }
+        fun speciesFor(set: SpriteSet) = if (set.generation == 2) gen2SpriteIds else gen1Species
         // Every file in the run, across every set, as one flat list. Going set
         // by set would have each set's tail waiting on its own last few files
         // while the line sat idle.

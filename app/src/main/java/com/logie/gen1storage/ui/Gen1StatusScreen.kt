@@ -32,7 +32,7 @@ import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
-import com.logie.gen1storage.pokemon.Gen1TradeEvolution
+import com.logie.gen1storage.pokemon.tradeEvolves
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.storage.Provenance
@@ -124,7 +124,7 @@ fun Gen1StatusScreen(
             // again; from out here it is the same sprite either way.
             val sprite: @Composable () -> Unit = {
                 Gen1Sprite(
-                    pokemon.speciesId,
+                    pokemon.spriteSpeciesId(),
                     gameVersionId,
                     store,
                     revision = spriteRevision,
@@ -209,7 +209,7 @@ private fun CameFrom(provenance: Provenance) {
 @Composable
 private fun StatusHeaderOne(pokemon: Gen1Pokemon) {
     GbText(
-        pokemon.displayName.uppercase(),
+        pokemon.displayName.uppercase() + (pokemon.gender?.symbol?.let { " $it" } ?: ""),
         modifier = Modifier.fillMaxWidth(),
         style = Gen1Text.copy(textAlign = TextAlign.End),
     )
@@ -274,7 +274,7 @@ private fun StatusPageOne(pokemon: Gen1Pokemon) {
             GbText(" ${pokemon.otName ?: "-----"}")
             // The one thing a cartridge cannot do on its own, said where a
             // player is already looking at what this Pokémon is.
-            if (Gen1TradeEvolution.evolves(pokemon.speciesId)) {
+            if (tradeEvolves(pokemon)) {
                 Spacer(Modifier.height(gen1Dp(3)))
                 GbText("EVOLVES BY", style = Gen1TextSmall, maxLines = 1)
                 GbText("TRADE", style = Gen1TextSmall, maxLines = 1)

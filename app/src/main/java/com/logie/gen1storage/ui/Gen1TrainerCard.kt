@@ -258,7 +258,7 @@ private fun Portrait(
             }
             if (lead != null) {
                 Gen1Sprite(
-                    speciesId = lead.speciesId,
+                    speciesId = lead.spriteSpeciesId(),
                     gameVersionId = gameVersionId,
                     store = sprites,
                     revision = spriteRevision,

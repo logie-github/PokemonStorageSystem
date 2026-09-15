@@ -11,6 +11,8 @@ import com.logie.gen1storage.lua.asTable
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.lua.luaStr
 import com.logie.gen1storage.pokemon.Gen1TradeEvolution
+import com.logie.gen1storage.pokemon.Gen2TradeEvolution
+import com.logie.gen1storage.pokemon.tradeEvolveMon
 import com.logie.gen1storage.pokemon.TimeCapsule
 import java.io.File
 import java.io.RandomAccessFile
@@ -276,13 +278,17 @@ class StorageRepository(private val directory: File) {
     }
 
     /**
-     * Trades a stored Pokémon with the machine, which is how the four that
-     * need a trade evolve.
+     * Trades a stored Pokémon with the machine, which is how a Pokémon that
+     * only evolves by trading does.
      *
-     * Returns what it became, or null when it was not one of the four or was
+     * Returns what it became, or null when it does not trade-evolve or was
      * not here — in which case nothing was written. The Pokémon stays in its
      * own spot: it is the same Pokémon, and rearranging the box around an
      * evolution would be the app moving something nobody asked it to move.
+     * Read against its own generation's rules: [Gen1TradeEvolution]'s four
+     * for one out of Generation I, [Gen2TradeEvolution]'s ten — the same
+     * four, unconditionally, and six more behind a held item — for one out
+     * of Generation II.
      */
     fun evolveByTrade(uid: String): String? = synchronized(lock) {
         ensureLoaded()
@@ -291,7 +297,7 @@ class StorageRepository(private val directory: File) {
             if (position < 0) continue
             val stored = box[position] ?: return null
             val data = stored.data.deepCopy()
-            val became = Gen1TradeEvolution.evolve(data) ?: return null
+            val became = tradeEvolveMon(data, stored.generation) ?: return null
             box[position] = stored.copy(data = data)
             persist()
             return became

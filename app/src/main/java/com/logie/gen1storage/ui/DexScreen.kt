@@ -32,9 +32,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.pokemon.Gen1Data
-import com.logie.gen1storage.pokemon.Gen1Species
 import com.logie.gen1storage.pokemon.Gen2Data
+import com.logie.gen1storage.pokemon.SpeciesInfo
 import com.logie.gen1storage.pokemon.dexPageOf
+import com.logie.gen1storage.pokemon.gen1SpeciesId
 import com.logie.gen1storage.sprites.TrainerStore
 import com.logie.gen1storage.sound.LocalGen1Audio
 
@@ -57,8 +58,15 @@ import com.logie.gen1storage.sound.LocalGen1Audio
  * screen says how many it is speaking for and offers to read the rest.
  *
  * One window with the list scrolling inside it, the way the box is drawn: a
- * hundred and fifty one separate boxes scrolling past each other is a list of
+ * couple of hundred separate boxes scrolling past each other is a list of
  * windows rather than a Pokédex.
+ *
+ * All 251 species are listed, not only Generation I's 151: a Gold or Silver
+ * save has its own 100 the first three cartridges never had, and a machine
+ * that reads every save has no reason to leave them off. Every id here is
+ * kept under Generation I's spelling for the two species the games spell
+ * differently — [gen1SpeciesId] is what a Generation II save's own sets are
+ * read through to line up with it.
  */
 @Composable
 fun DexScreen(state: UiState, model: StorageViewModel) {
@@ -66,19 +74,21 @@ fun DexScreen(state: UiState, model: StorageViewModel) {
 
     val loaded = state.saves.mapNotNull { state.save(it.key) }
     val owned = remember(loaded.size, state.loaded) {
-        loaded.flatMapTo(HashSet()) { it.save?.dexOwned.orEmpty() }
+        loaded.flatMapTo(HashSet()) { it.save?.dexOwned.orEmpty().map(::gen1SpeciesId) }
     }
     val seen = remember(loaded.size, state.loaded) {
-        loaded.flatMapTo(HashSet()) { it.save?.dexSeen.orEmpty() }
+        loaded.flatMapTo(HashSet()) { it.save?.dexSeen.orEmpty().map(::gen1SpeciesId) }
     }
     val inThePc = remember(state.storage.revision) {
         state.storage.boxes.flatMap { it.contents }
-            .mapNotNullTo(HashSet()) { it.pokemon.speciesId }
+            .mapNotNullTo(HashSet()) { it.pokemon.speciesId?.let(::gen1SpeciesId) }
     }
 
 
-    val rows = remember(filter, owned, seen, inThePc) {
-        Gen1Data.species
+    val rows: List<SpeciesInfo> = remember(filter, owned, seen, inThePc) {
+        val gen1: List<SpeciesInfo> = Gen1Data.species
+        val gen2Only: List<SpeciesInfo> = Gen2Data.species.filter { it.dexNumber > Gen1Data.species.size }
+        (gen1 + gen2Only)
             .sortedBy { it.dexNumber }
             .filter { species ->
                 when (filter) {
@@ -192,7 +202,7 @@ fun DexScreen(state: UiState, model: StorageViewModel) {
  */
 @Composable
 private fun DexRow(
-    species: Gen1Species,
+    species: SpeciesInfo,
     caught: Boolean,
     here: Boolean,
     met: Boolean,
@@ -255,21 +265,27 @@ private fun DexBall(tile: Int, trainers: TrainerStore, revision: Int) {
  */
 @Composable
 fun DexStatsScreen(state: UiState, model: StorageViewModel) {
-    val whole = Gen1Data.species.size
+    // The PC can hold either generation's Pokémon, so its own total is
+    // against the full 251 — the same catalogue [DexScreen] lists.
+    val whole = Gen2Data.SPECIES_COUNT
     val inThePc = remember(state.storage.revision) {
         state.storage.boxes.flatMap { it.contents }
-            .mapNotNullTo(HashSet()) { it.pokemon.speciesId }
+            .mapNotNullTo(HashSet()) { it.pokemon.speciesId?.let(::gen1SpeciesId) }
     }
     val cards = state.saves.map { remote ->
         val save = state.save(remote.key)?.save
-        Triple(
-            model.cartName(remote.key)?.uppercase()
+        // A Gold, Silver or Crystal card is judged against its own 251, not
+        // Generation I's 151 — a Crystal player who has caught everything
+        // Generation II offers should read 251/251, not more than whole.
+        DexCard(
+            name = model.cartName(remote.key)?.uppercase()
                 ?: "${remote.version.label} ${remote.label}".uppercase(),
-            save?.dexOwned?.size,
-            save?.dexSeen?.size,
+            owned = save?.dexOwned?.size,
+            seen = save?.dexSeen?.size,
+            whole = if (remote.version.generation >= 2) Gen2Data.SPECIES_COUNT else Gen1Data.species.size,
         )
     }
-    val unread = cards.count { it.second == null }
+    val unread = cards.count { it.owned == null }
     val count = if (unread > 0) 2 else 1
 
     val cursor = rememberCursorLayer(count) { index ->
@@ -292,12 +308,12 @@ fun DexStatsScreen(state: UiState, model: StorageViewModel) {
                     Spacer(Modifier.height(gen1Dp(3)))
                 }
             }
-            items(cards) { (name, own, met) ->
+            items(cards) { card ->
                 Column {
-                    GbText(name, maxLines = 1)
+                    GbText(card.name, maxLines = 1)
                     GbText(
-                        if (own == null) "NOT READ YET"
-                        else "OWN $own/$whole   SEEN $met/$whole",
+                        if (card.owned == null) "NOT READ YET"
+                        else "OWN ${card.owned}/${card.whole}   SEEN ${card.seen}/${card.whole}",
                         style = Gen1TextSmall.copy(color = Gen1Palette.Ink),
                         maxLines = 1,
                     )
@@ -565,6 +581,9 @@ private fun Gen1Page(content: @Composable androidx.compose.foundation.layout.Col
         )
     }
 }
+
+/** One cartridge's line on the stats screen, judged against its own generation's catalogue. */
+private data class DexCard(val name: String, val owned: Int?, val seen: Int?, val whole: Int)
 
 /** What the list is showing, taken round by pressing the row. */
 enum class DexFilter(val label: String) {

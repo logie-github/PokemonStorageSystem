@@ -12,7 +12,20 @@ import com.logie.gen1storage.lua.luaNum
  * the save writes them and how the games think of them: twenty Potions is one
  * entry, not twenty.
  */
-data class ItemStack(val id: String, val count: Int) {
+data class ItemStack(
+    val id: String,
+    val count: Int,
+    /**
+     * Which generation's vocabulary this stack is named in.
+     *
+     * Generation I and Generation II do not agree about what an item id
+     * means — a Generation II TM is not a Generation I one, and LEFTOVERS is
+     * not a word Red's inventory table has any use for — so a stack read out
+     * of a save carries the generation that save is, the same way a stored
+     * Pokémon carries its own.
+     */
+    val generation: Int = 1,
+) {
     /** `ULTRA_BALL` as the screen says it. */
     val label: String get() = id.replace('_', ' ')
 }
@@ -29,7 +42,7 @@ const val MAX_ITEM_COUNT = 99
  */
 object Gen1Items {
 
-    fun read(table: LuaValue.Table?): List<ItemStack> =
+    fun read(table: LuaValue.Table?, generation: Int = 1): List<ItemStack> =
         table?.entries().orEmpty().mapNotNull { (key, value) ->
             val id = (key as? LuaKey.Name)?.value ?: return@mapNotNull null
             // Both regions': a Gold save's badges live in the same table its
@@ -39,7 +52,7 @@ object Gen1Items {
                 return@mapNotNull null
             }
             val count = value.asInt() ?: return@mapNotNull null
-            if (count <= 0) null else ItemStack(id, count)
+            if (count <= 0) null else ItemStack(id, count, generation)
         }.sortedBy { it.id }
 
     /**

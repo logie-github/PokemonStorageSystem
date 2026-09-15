@@ -26,8 +26,27 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.logie.gen1storage.pokemon.Gen1Pokemon
+import com.logie.gen1storage.pokemon.Gen1Stats
+import com.logie.gen1storage.sprites.Gen2Sprites
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.SpriteStore
+
+/**
+ * The species id to load this Pokémon's sprite under.
+ *
+ * Every UNOWN is the same species, but not the same drawing: which of its
+ * twenty-six letters a cartridge shows comes out of the Pokémon's own DVs
+ * (see [Gen1Stats.unownLetter]), so a sprite lookup for one has to ask for a
+ * letter rather than for "UNOWN" and get whichever one happened to be
+ * downloaded. Anything else is shown under its own id, unchanged.
+ */
+fun Gen1Pokemon.spriteSpeciesId(): String? {
+    val id = speciesId ?: return null
+    return if (id.equals("UNOWN", ignoreCase = true)) {
+        Gen2Sprites.unownFormId(Gen1Stats.unownLetter(dvs))
+    } else id
+}
 
 /**
  * A Pokémon's sprite, in the art of the game it came from.

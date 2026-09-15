@@ -30,29 +30,20 @@ class ItemTransferEngine(
      * The app's copy is written first, then the save is committed without it.
      * A commit that fails takes the app's copy back out, so a refusal leaves
      * both sides exactly as they were.
-     */
-    /**
-     * Items stay in Generation I for now, and this is why.
      *
-     * A Pokémon carries its generation and the Time Capsule is the one way
-     * across. An item carries nothing: the app's item PC is a count against a
-     * name, and the two games do not agree about those names — LEFTOVERS and
-     * a GOLD BERRY mean nothing to Red, and a Generation I TM is not a
-     * Generation II one. Moving a count between them would write an item into
-     * a cartridge that cannot describe it, which is the corruption this app
-     * exists to avoid. Tagging the PC's items with a generation is the fix
-     * and it is not a line of code, so until then the answer is no.
+     * Kept in the generation it came from: the app's item PC is two tables,
+     * one per generation (see [com.logie.gen1storage.storage.ItemRepository]),
+     * so a Generation II save's LEFTOVERS is never offered to a Red cartridge
+     * that has no word for it.
      */
-    private fun refuseUnlessGen1(loaded: LoadedSave): TransferResult? = when {
-        !loaded.isWritable ->
+    private fun refuseUnlessWritable(loaded: LoadedSave): TransferResult? =
+        if (!loaded.isWritable) {
             TransferResult.Refused("${loaded.remote.version.label} SAVES ARE READ ONLY IN THIS APP.")
-        loaded.remote.version.generation != 1 ->
-            TransferResult.Refused("ITEMS CANNOT MOVE BETWEEN GEN I AND GEN II YET.")
-        else -> null
-    }
+        } else null
 
     suspend fun deposit(loaded: LoadedSave, id: String, count: Int): TransferResult {
-        refuseUnlessGen1(loaded)?.let { return it }
+        refuseUnlessWritable(loaded)?.let { return it }
+        val generation = loaded.remote.version.generation
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
         if (fresh.fingerprint != loaded.fingerprint) {
             return TransferResult.Refused("THE GAME CHANGED THIS SAVE. REFRESH AND TRY AGAIN.")
@@ -63,7 +54,7 @@ class ItemTransferEngine(
         if (available <= 0) return TransferResult.Refused("THAT ITEM IS NO LONGER THERE")
         val wanted = count.coerceIn(1, available)
 
-        val taken = items.add(id, wanted)
+        val taken = items.add(id, wanted, generation)
         if (taken <= 0) return TransferResult.Refused("THERE IS NO ROOM FOR IT")
 
         val mutated = Gen1RecompSave(save.root.deepCopy())
@@ -78,11 +69,11 @@ class ItemTransferEngine(
             // Nothing was written, so the app's copy is the only one that
             // moved and it goes straight back.
             is CommitOutcome.Refused -> {
-                items.remove(id, taken)
+                items.remove(id, taken, generation)
                 TransferResult.Refused(outcome.reason)
             }
             is CommitOutcome.Conflict -> {
-                items.remove(id, taken)
+                items.remove(id, taken, generation)
                 TransferResult.Refused(outcome.reason)
             }
             // The write may or may not have landed. The app's copy stays: at
@@ -100,10 +91,11 @@ class ItemTransferEngine(
      * confirmed does the app let go of its own copy.
      */
     suspend fun withdraw(loaded: LoadedSave, id: String, count: Int): TransferResult {
-        val held = items.count(id)
+        val generation = loaded.remote.version.generation
+        val held = items.count(id, generation)
         if (held <= 0) return TransferResult.Refused("THAT ITEM IS NOT IN THE PC")
 
-        refuseUnlessGen1(loaded)?.let { return it }
+        refuseUnlessWritable(loaded)?.let { return it }
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
         if (fresh.fingerprint != loaded.fingerprint) {
             return TransferResult.Refused("THE GAME CHANGED THIS SAVE. REFRESH AND TRY AGAIN.")
@@ -116,7 +108,7 @@ class ItemTransferEngine(
 
         return when (val outcome = saves.commit(fresh, mutated.root)) {
             is CommitOutcome.Committed -> {
-                items.remove(id, moved)
+                items.remove(id, moved, generation)
                 TransferResult.Success(
                     "${label(id)} x$moved went into the save.",
                     storedUid = null,

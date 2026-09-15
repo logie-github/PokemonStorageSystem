@@ -107,4 +107,19 @@ object Gen1Stats {
     fun isShiny(dvs: Map<Gen1Stat, Int>): Boolean =
         dvs[Gen1Stat.DEFENSE] == 10 && dvs[Gen1Stat.SPEED] == 10 && dvs[Gen1Stat.SPECIAL] == 10 &&
             (dvs[Gen1Stat.ATTACK] ?: 0) in setOf(2, 3, 6, 7, 10, 11, 14, 15)
+
+    /**
+     * Which of UNOWN's twenty-six letters these DVs draw, ported from
+     * `GetUnownLetter` (`engine/gfx/load_pics.asm`): the middle two bits of
+     * the Attack, Defense, Speed and Special DVs, packed into one byte in
+     * that order, and divided into twenty-six even bands.
+     */
+    fun unownLetter(dvs: Map<Gen1Stat, Int>): Char {
+        fun middleTwoBits(dv: Int) = (dv shr 1) and 0b11
+        val packed = (middleTwoBits(dvs[Gen1Stat.ATTACK] ?: 0) shl 6) or
+            (middleTwoBits(dvs[Gen1Stat.DEFENSE] ?: 0) shl 4) or
+            (middleTwoBits(dvs[Gen1Stat.SPEED] ?: 0) shl 2) or
+            middleTwoBits(dvs[Gen1Stat.SPECIAL] ?: 0)
+        return 'A' + (packed / 10)
+    }
 }

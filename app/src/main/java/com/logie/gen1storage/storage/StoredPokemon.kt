@@ -86,9 +86,11 @@ data class StoredPokemon(
      * A fact about the Pokémon rather than about the save it came from, and
      * kept beside the raw table rather than inside it: a Pokémon withdrawn
      * back into a cartridge carries exactly the fields it arrived with, and
-     * this is the app's bookkeeping. It changes in one place and one place
-     * only — [TimeCapsule.carry] — because moving a Pokémon forward is
-     * something a player does on purpose.
+     * this is the app's bookkeeping. Set once, at [StorageRepository.deposit],
+     * to whichever generation the save it came out of is. The one way it
+     * changes after that is [TimeCapsule.carry], because moving a Pokémon
+     * forward on its own — rather than as a side effect of where it happened
+     * to be deposited from — is something a player does on purpose.
      */
     val generation: Int = 1,
     /** What it was before it went through the Time Capsule, if it has. */

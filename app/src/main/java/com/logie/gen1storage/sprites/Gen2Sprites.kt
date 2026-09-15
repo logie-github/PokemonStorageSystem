@@ -36,20 +36,38 @@ object Gen2Sprites {
      *
      * UNOWN is the exception both repositories make: its twenty-six forms are
      * twenty-six folders, `unown_a` through `unown_z`, and the plain `unown`
-     * folder holds only the palettes they share. Which letter a Pokémon is
-     * comes out of its DVs, which is a thing to read properly rather than
-     * guess at, so for now every UNOWN is drawn as A — one sprite instead of
-     * none. Neither repository gives it a per-version drawing either, so the
-     * file is `front.png` in all three sets.
+     * folder holds only the palettes they share, no sprite of its own. This
+     * app asks for a particular letter by the synthetic id [unownFormId]
+     * builds — `UNOWN_A` through `UNOWN_Z` — which [gen2SpriteFolder]'s
+     * ordinary rule already turns into the right folder name; the bare
+     * `UNOWN` id (no letter decided yet) falls back to `unown_a`, the same
+     * representative drawing this app showed before a Pokémon's own DVs were
+     * read for one. Neither repository gives Unown a per-version drawing
+     * either, so the file is `front.png` in all three sets, for every letter.
      */
     fun url(set: SpriteSet, speciesId: String): String? {
         val repo = set.repo ?: return null
         val file = set.frontFile ?: return null
-        val unown = speciesId.uppercase() == "UNOWN"
-        val folder = if (unown) "unown_a" else gen2SpriteFolder(speciesId)
+        val upper = speciesId.uppercase()
+        val unown = upper == "UNOWN" || upper.startsWith("UNOWN_")
+        val folder = if (upper == "UNOWN") "unown_a" else gen2SpriteFolder(speciesId)
         return "https://raw.githubusercontent.com/$repo/master/gfx/pokemon/" +
             "$folder/${if (unown) "front.png" else file}"
     }
+
+    /** Every one of Unown's 26 letter forms, as the synthetic id [unownFormId] builds. */
+    val UNOWN_FORM_IDS: List<String> = ('A'..'Z').map { unownFormId(it) }
+
+    /**
+     * The species id this app stores and fetches one Unown letter form
+     * under. Not a real pokecrystal constant — Gen1Recomp writes every Unown
+     * as plain `UNOWN` regardless of letter — but [gen2SpriteFolder]'s
+     * generic rule turns it into the right upstream folder without needing
+     * to know Unown is special, and [SpriteStore] can cache the twenty-six
+     * letters as twenty-six ordinary species rather than one it has to pick
+     * a variant of at load time.
+     */
+    fun unownFormId(letter: Char): String = "UNOWN_${letter.uppercaseChar()}"
 
     /** The two middle colours of a species' shiny palette, from pokecrystal. */
     fun shinyUrl(speciesId: String): String =

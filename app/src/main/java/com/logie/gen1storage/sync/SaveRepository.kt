@@ -21,11 +21,10 @@ data class LoadedSave(
     /**
      * Whether this app may change this save, as against read it.
      *
-     * Generation II is read and never written: its Pokémon carry fields
-     * Generation I has no place for, and this app's transfer engine is
-     * Generation I's rules. Checked here and again in
-     * [SaveRepository.commit], because the one place it must never be missed
-     * is the one that uploads.
+     * All six games are writable now, so this is `false` only for a save
+     * this app could not classify in the first place. Checked here and
+     * again in [SaveRepository.commit], because the one place it must
+     * never be missed is the one that uploads.
      */
     val isWritable: Boolean
         get() = isUsable && remote.version.isWritable

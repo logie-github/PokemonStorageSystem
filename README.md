@@ -51,7 +51,7 @@ From here you have customization options. You can go to Options → Downloads to
 
 Get feedback and bug tests. the biggest thing I want to avoid is someone's saves getting wiped because I misunderstood how the save sync works. 
 
-Obviously we all want to see Gen 2 implementation, this is coming but I want to be sure Gen 1 works first before I add another generation on top of it. 
+Gen 2 is in now — Gold, Silver and Crystal saves read and write, the Time Capsule carries a Pokémon forward from Gen 1, trade evolutions and items work for either generation, and Unown draws the right letter and a Pokémon its own gender. Still on the list: Pokérus and happiness showing up on the status screen, and Day Care/breeding. 
 
 Compatability with LUA mods. I'd love to have this app be able to have people mod it like they've been doing with the game carts. Don't like the layout? Mod it. Don't like the colors or them? Mod it. Again, this is coming but I'm more concerned with functionality first. 
 

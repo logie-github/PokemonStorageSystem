@@ -19,8 +19,10 @@ import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.pokemon.Gen2Data
 import com.logie.gen1storage.pokemon.Gen1Data
-import com.logie.gen1storage.pokemon.Gen1TradeEvolution
 import com.logie.gen1storage.pokemon.TimeCapsule
+import com.logie.gen1storage.pokemon.tradeEvolutionName
+import com.logie.gen1storage.pokemon.tradeEvolutionOf
+import com.logie.gen1storage.pokemon.tradeEvolves
 import com.logie.gen1storage.storage.StoredPokemon
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -1059,7 +1061,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun tradeCandidates(): List<StoredPokemon> =
         mutable.value.storage.boxes.flatMap { it.contents }
-            .filter { Gen1TradeEvolution.evolves(it.pokemon.speciesId) }
+            .filter { tradeEvolves(it.pokemon) }
 
     /**
      * Trades a stored Pokémon with the machine, so that it evolves.
@@ -1077,7 +1079,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             return@launch
         }
         val from = stored.pokemon.speciesId
-        val to = Gen1TradeEvolution.evolutionOf(from)
+        val generation = stored.pokemon.generation
+        val to = tradeEvolutionOf(stored.pokemon)
         if (to == null) {
             message("${stored.pokemon.displayName.uppercase()} WOULD NOT CHANGE.")
             return@launch
@@ -1094,7 +1097,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         toSpeciesId = to,
                         name = name,
                         gameVersionId = stored.provenance.gameVersion,
-                        toDexNumber = Gen1Data.species(to)?.dexNumber,
+                        toDexNumber = if (generation >= 2) Gen2Data.species(to)?.dexNumber
+                        else Gen1Data.species(to)?.dexNumber,
                     ),
                 )
             }
@@ -1110,7 +1114,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         if (became == null) {
             message("NOTHING HAPPENED.")
         } else {
-            message("$name evolved into ${Gen1Data.speciesName(became).uppercase()}!")
+            message("$name evolved into ${tradeEvolutionName(became, generation).uppercase()}!")
         }
     }
 
@@ -1132,7 +1136,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private fun noteEvolvable(uid: String?) {
         if (uid == null || !mutable.value.tradeEvolution) return
         val stored = storage.get(uid) ?: return
-        if (Gen1TradeEvolution.evolves(stored.pokemon.speciesId)) wantsEvolving = wantsEvolving + uid
+        if (tradeEvolves(stored.pokemon)) wantsEvolving = wantsEvolving + uid
     }
 
     /**
@@ -1153,7 +1157,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             val uid = wantsEvolving.first()
             wantsEvolving = wantsEvolving.drop(1)
             val stored = storage.get(uid) ?: continue
-            if (!Gen1TradeEvolution.evolves(stored.pokemon.speciesId)) continue
+            if (!tradeEvolves(stored.pokemon)) continue
             val name = stored.pokemon.displayName.uppercase()
             mutable.update {
                 it.copy(
@@ -2302,12 +2306,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             message("IT IS NOT HOLDING ANYTHING.")
             return
         }
-        if (itemStorage.add(item, 1) <= 0) {
+        if (itemStorage.add(item, 1, stored.generation) <= 0) {
             message("THERE IS NO ROOM FOR IT.")
             return
         }
         if (storage.takeHeldItem(uid) == null) {
-            itemStorage.remove(item, 1)
+            itemStorage.remove(item, 1, stored.generation)
             message("IT IS NOT HOLDING ANYTHING.")
             return
         }

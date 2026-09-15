@@ -113,18 +113,29 @@ fun FollowerSprite(
 /**
  * What a spot shows when the follower sheets are not on the device: a filled
  * marker, so the box still reads as arranged rather than empty.
+ *
+ * Hollow while the art is still being fetched and solid once it is not. A
+ * box of solid blocks says the art is missing; a box of outlines says it is
+ * on its way, which on a first run is what is actually happening. See
+ * [Gen1Loading].
  */
 @Composable
 private fun OccupiedMark() {
     val pixel = gen1PixelPx().toFloat()
+    val waiting = Gen1Loading.fetching
     Box(
         Modifier.fillMaxSize().drawBehind {
             val inset = pixel * 4
-            drawRect(
-                Gen1Palette.Ink,
-                Offset(inset, inset),
-                Size(size.width - inset * 2, size.height - inset * 2),
-            )
+            val width = size.width - inset * 2
+            val height = size.height - inset * 2
+            if (!waiting) {
+                drawRect(Gen1Palette.Ink, Offset(inset, inset), Size(width, height))
+                return@drawBehind
+            }
+            drawRect(Gen1Palette.Ink, Offset(inset, inset), Size(width, pixel))
+            drawRect(Gen1Palette.Ink, Offset(inset, inset + height - pixel), Size(width, pixel))
+            drawRect(Gen1Palette.Ink, Offset(inset, inset), Size(pixel, height))
+            drawRect(Gen1Palette.Ink, Offset(inset + width - pixel, inset), Size(pixel, height))
         }
     )
 }

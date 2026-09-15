@@ -344,6 +344,21 @@ data class UiState(
     val outLabel: String get() = "TRANSFER OUT"
     val inLabel: String get() = "TRANSFER IN"
     val palette: GbPalette get() = GbPalette.fromId(paletteId)
+
+    /**
+     * The art download that is actually running, or null when none is.
+     *
+     * Whichever stage is in flight rather than a figure across all four sets:
+     * a first run fetches two of them, so a combined percentage would stop at
+     * half and look stuck. The header shows this, and every screen that draws
+     * a gap where a sprite should be reads [fetchingArt] to say "waiting"
+     * instead of "missing".
+     */
+    val artProgress: DownloadProgress?
+        get() = listOfNotNull(followerProgress, spriteProgress, trainerProgress, cryProgress)
+            .firstOrNull { !it.finished }
+
+    val fetchingArt: Boolean get() = artProgress != null
     val saves: List<RemoteSave> get() = account?.saves.orEmpty()
     fun remote(key: String?): RemoteSave? = saves.firstOrNull { it.key == key }
     fun save(key: String?): LoadedSave? = loaded[key]

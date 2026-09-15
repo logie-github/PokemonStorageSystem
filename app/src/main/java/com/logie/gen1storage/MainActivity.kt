@@ -47,10 +47,12 @@ import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
+import com.logie.gen1storage.ui.Gen1TextSmall
 import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.LocalGen1Narrow
 import com.logie.gen1storage.ui.Gen1Typing
 import com.logie.gen1storage.ui.Gen1Haptics
+import com.logie.gen1storage.ui.Gen1Loading
 import com.logie.gen1storage.ui.Gen1Motion
 import com.logie.gen1storage.ui.Gen1NoOverscroll
 import com.logie.gen1storage.ui.rememberConfirmTick
@@ -143,6 +145,9 @@ private fun StorageApp(model: StorageViewModel) {
         Gen1Haptics.enabled = state.haptics
         Gen1Motion.reduced = state.reduceMotion
         Gen1Motion.allowed = state.motionsOn
+        // Read by the box cells and the sprite placeholders, which draw a gap
+        // either way and have no view model in reach to ask why.
+        Gen1Loading.fetching = state.fetchingArt
     }
 
     // The game can save at any moment, and every revision this app is holding
@@ -301,6 +306,11 @@ private fun StorageApp(model: StorageViewModel) {
     ) {
         Column(Modifier.fillMaxSize()) {
             TopBar()
+            // A line under the header for as long as art is still arriving,
+            // and nothing at all once it has. Every screen draws gaps while
+            // a first run is fetching, and this is the app saying why rather
+            // than leaving someone to work it out from the question marks.
+            state.artProgress?.let { LoadingStrip(it.percent) }
             Box(Modifier.weight(1f)) {
                 if (showTutorial) {
                     Gen1Tutorial(state, model, onFinished = model::finishTutorial)
@@ -431,6 +441,24 @@ private fun TopBar() {
         GbText(
             "POKéMON STORAGE SYSTEM",
             style = Gen1Text.copy(color = Gen1Palette.Lightest),
+            maxLines = 1,
+        )
+    }
+}
+
+/** What the header says while the art is still coming down. */
+@Composable
+private fun LoadingStrip(percent: Int) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Gen1Palette.Darkest)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        GbText(
+            "LOADING ART  $percent%",
+            style = Gen1TextSmall.copy(color = Gen1Palette.Lightest),
             maxLines = 1,
         )
     }

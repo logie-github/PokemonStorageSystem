@@ -2,6 +2,8 @@ package com.logie.gen1storage.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -58,8 +60,13 @@ import kotlin.math.min
  *
  * Every beat that names a screen shows that screen while he names it, drawn
  * against [TutorialSamples] rather than against the player's own account —
- * see [TutorialScreens.kt]. Nothing on those screens can be touched: the tour
- * is a tour.
+ * see [TutorialScreens.kt]. Those screens are behind glass, except the box,
+ * which is handed over to be poked while he is stood next to it.
+ *
+ * One beat asks rather than tells: Android grants a folder to an app when
+ * somebody picks it in the system's own chooser, so the permission the app
+ * needs to read a player's cartridge dumps is a question Bill asks, not a
+ * setting buried three drawers into OPTIONS.
  *
  * It plays once. [AppSettings.tutorialSeen] is written the moment the last
  * beat is taken, and REPLAY TUTORIAL in OPTIONS is the only thing that puts
@@ -81,8 +88,22 @@ fun Gen1Tutorial(
     }
 
     // The A button, and nothing else: no rows to run down, so the cursor's
-    // only job here is to take the next beat the same way a tap does.
-    rememberCursorLayer(1) { advance() }
+    // only job here is to take the next beat the same way a tap does. A beat
+    // that asks something puts its own rows on top of this layer, and those
+    // are then what A takes.
+    rememberCursorLayer(1) { if (current.ask == null) advance() }
+
+    // Android's own folder chooser, which is where the permission actually
+    // comes from: picking a folder in it is what grants this app access to
+    // it. Whatever comes back — a folder, or a player who changed their mind
+    // — the tour carries on; the import runs behind it and says what it found
+    // in a window of its own.
+    val pickRomsFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) model.importRomsFolder(uri)
+        advance()
+    }
 
     // Whether his line is still arriving. He moves in time with his own
     // speech and holds still once it is down, which is the whole of what
@@ -103,7 +124,10 @@ fun Gen1Tutorial(
         Modifier
             .fillMaxSize()
             .gen1Ground()
-            .pointerInput(beat) { detectTapGestures { advance() } }
+            .then(
+                if (current.ask != null) Modifier
+                else Modifier.pointerInput(beat) { detectTapGestures { advance() } }
+            )
             .padding(gen1Dp(4)),
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -113,7 +137,7 @@ fun Gen1Tutorial(
                 // art and then the sprites, and the bar reports the one that
                 // is actually running rather than sitting at nothing until
                 // its own stage comes round.
-                val progress = state.spriteProgress ?: state.followerProgress
+                val progress = state.artProgress
                 when {
                     stage != null -> stage(model, state.spriteRevision)
                     // The opening beat has no screen to show and is the one
@@ -121,8 +145,7 @@ fun Gen1Tutorial(
                     // where the download reports itself. Only here: once the
                     // tour moves on, what the app is fetching in the
                     // background is the app's own business.
-                    beat == 0 && progress != null && !progress.finished ->
-                        ConnectingWindow(progress.percent)
+                    beat == 0 && progress != null -> ConnectingWindow(progress.percent)
                 }
                 // A pane over the demo that takes every touch, so a tap on it
                 // means what a tap anywhere else means. Lifted for the beat
@@ -131,7 +154,7 @@ fun Gen1Tutorial(
                 // Pokemon poked there answers exactly as it would in the real
                 // one. Advancing from that beat is the text box and the arrow
                 // under it, which is where a Game Boy always put it.
-                if (!current.handsOver) {
+                if (!current.handsOver && current.ask == null) {
                     Box(
                         Modifier
                             .matchParentSize()
@@ -149,12 +172,20 @@ fun Gen1Tutorial(
             Spacer(Modifier.height(gen1Dp(2)))
             Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
                 Gen1TypedLines(current.lines, onFinished = { speaking = false })
-                // The arrow only once he has finished saying it, the way the
-                // cartridge only offers one when the box has stopped printing.
-                if (!speaking) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        Gen1BlinkingArrow()
-                    }
+                // Only once he has finished saying it, the way the cartridge
+                // only offers a choice when the box has stopped printing.
+                if (!speaking) when (current.ask) {
+                    null -> Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) { Gen1BlinkingArrow() }
+
+                    TutorialAsk.ROMS -> Gen1ChoiceRows(
+                        listOf(
+                            "FIND THE FOLDER" to { pickRomsFolder.launch(null) },
+                            "NOT NOW" to { advance() },
+                        )
+                    )
                 }
             }
         }
@@ -305,7 +336,30 @@ private data class TutorialBeat(
     val soundAfterMillis: Long = 0L,
     /** Whether the demo on screen is the player's to touch while it is up. */
     val handsOver: Boolean = false,
+    /** A beat that waits on an answer rather than on a tap. */
+    val ask: TutorialAsk? = null,
 )
+
+/**
+ * Something the introduction needs from the player rather than something it
+ * is telling them.
+ *
+ * A beat carrying one offers rows instead of a blinking arrow, and tapping
+ * the screen does not move it on: the only way past is answering.
+ */
+private enum class TutorialAsk {
+    /**
+     * Where the player keeps their cartridge dumps.
+     *
+     * Asked here rather than left to be found in OPTIONS because it is the
+     * one thing the app cannot do for itself and the one thing that changes
+     * what it can show — sprites read out of the player's own ROMs, and the
+     * palettes those ROMs unlock. Android grants the folder to the app when
+     * the player picks it in the system's own chooser, which is exactly the
+     * permission Bill is asking for.
+     */
+    ROMS,
+}
 
 /**
  * The tour, in order.
@@ -323,12 +377,25 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         ),
     ),
     TutorialBeat(
-        listOf("BILL: Every game you sync turns up as a card. Load one and you are stood in that save. Neat, isn't it?"),
+        listOf(
+            "BILL: Before we go on, I need a few permissions to be sure this " +
+                "is set up right. Can you find your ROMs folder for me?"
+        ),
+        ask = TutorialAsk.ROMS,
+    ),
+    TutorialBeat(
+        listOf(
+            "BILL: This is your trainer card. Insert it and the PC opens that " +
+                "save - your party, your boxes, your items."
+        ),
         stage = { model, revision -> TutorialTrainerCardScreen(model, revision) },
         sound = SoundEffect.SAVE,
     ),
     TutorialBeat(
-        listOf("BILL: Watch. It leaves the cartridge as it arrives here - one copy, never two. I was quite firm about that."),
+        listOf(
+            "BILL: To store a Pokemon, pick it and send it here. It leaves the " +
+                "game and turns up in your PC the next time you sync."
+        ),
         stage = { model, revision -> TutorialTransferScreen(model, revision) },
         sound = SoundEffect.TRANSFER,
         // Long enough for the ball to open and the Pokemon to finish growing,
@@ -336,13 +403,13 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         soundAfterMillis = 1_400L,
     ),
     TutorialBeat(
-        listOf("BILL: Six hundred spaces, all yours. Go on - poke one, they answer."),
+        listOf("BILL: And these are your boxes. Six hundred spaces. Tap one to hear it."),
         stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
         sound = SoundEffect.SELECT,
         handsOver = true,
     ),
     TutorialBeat(
-        listOf("BILL: Right - I'm late for something. It's your PC now. Do look after them!"),
+        listOf("BILL: That's everything. Have a look around - I'll leave you to it."),
         sound = SoundEffect.LOG_OFF,
     ),
 )

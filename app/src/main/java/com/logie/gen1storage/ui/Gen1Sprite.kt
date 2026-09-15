@@ -163,7 +163,14 @@ fun Gen1Sprite(
     }
 }
 
-/** The bracketed "?" that stands in until a sprite exists. */
+/**
+ * The bracketed mark that stands in until a sprite exists.
+ *
+ * A "?" where there is genuinely no art for this species, and a "…" while a
+ * download is still running — the two look the same on screen and mean
+ * opposite things, and on a first run almost every gap is the second one.
+ * See [Gen1Loading].
+ */
 @Composable
 fun SpritePlaceholderMark(modifier: Modifier = Modifier) {
     Box(
@@ -185,7 +192,7 @@ fun SpritePlaceholderMark(modifier: Modifier = Modifier) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        GbText("?", style = Gen1TextLarge)
+        GbText(if (Gen1Loading.fetching) "…" else "?", style = Gen1TextLarge)
     }
 }
 

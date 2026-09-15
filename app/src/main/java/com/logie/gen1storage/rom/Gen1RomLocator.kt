@@ -33,19 +33,29 @@ import com.logie.gen1storage.pokemon.Gen1Species
  * (`IndexToPokedex`) before it ever multiplies by [BASE_DATA_SIZE] — the two
  * tables are ordered differently, and BaseStats is ordered by Pokédex number,
  * one entry per original 151.
+ *
+ * Mew is the one species this does not hold: `GetMonHeader` checks for it
+ * (`cp MEW`) *before* that conversion and copies its record from a standalone
+ * `MewBaseStats` instead — confirmed against a real Red ROM, where the other
+ * 150 records sit exactly 28 bytes apart as expected and Mew's is nowhere
+ * near them. It is looked for on its own, by the same kind of signature, and
+ * kept as its own answer rather than folded into [Located.tableOffset].
  */
 object Gen1RomLocator {
 
-    /** Where in the ROM file the base-stats table starts, once confirmed. */
-    data class Located(val tableOffset: Int)
+    /** Where in the ROM file the base-stats table starts, and Mew's own separate record, once confirmed. */
+    data class Located(val tableOffset: Int, val mewOffset: Int?)
 
     /**
      * Confirms this looks like a real Red or Blue ROM by finding its own
      * base-stats table, or returns null — never a location this app is not
-     * sure of.
+     * sure of. Mew's own record is found the same way but is allowed to be
+     * missing without failing the rest: a ROM this app can otherwise read
+     * fine is not refused over one species' sprite.
      */
     fun locate(rom: ByteArray): Located? {
-        val bySpecies = Gen1Data.species.sortedBy { it.dexNumber }
+        // Every species but Mew — see the class doc.
+        val bySpecies = Gen1Data.species.filter { it.id != "MEW" }.sortedBy { it.dexNumber }
         if (bySpecies.isEmpty() || bySpecies.first().dexNumber != 1) return null
         val signatures = bySpecies.map { signatureOf(it) }
         val firstSignature = signatures.first()
@@ -54,9 +64,18 @@ object Gen1RomLocator {
         while (true) {
             val candidate = indexOf(rom, firstSignature, at)
             if (candidate < 0) return null
-            if (matchesWholeTable(rom, candidate, signatures)) return Located(candidate)
+            if (matchesWholeTable(rom, candidate, signatures)) {
+                return Located(candidate, locateMew(rom))
+            }
             at = candidate + 1
         }
+    }
+
+    /** Mew's own standalone record, wherever it is — its five stats all being 100 makes it its own signature. */
+    private fun locateMew(rom: ByteArray): Int? {
+        val mew = Gen1Data.species("MEW") ?: return null
+        val at = indexOf(rom, signatureOf(mew), 0)
+        return at.takeIf { it >= 0 }
     }
 
     /**
@@ -66,7 +85,8 @@ object Gen1RomLocator {
      */
     fun frontSprite(rom: ByteArray, located: Located, speciesId: String): Gen1SpriteCodec.DecodedSprite? {
         val species = Gen1Data.species(speciesId) ?: return null
-        val recordStart = located.tableOffset + (species.dexNumber - 1) * BASE_DATA_SIZE
+        val recordStart = if (species.id == "MEW") located.mewOffset ?: return null
+            else located.tableOffset + (species.dexNumber - 1) * BASE_DATA_SIZE
         val pointerAt = recordStart + BASE_FRONTPIC_OFFSET
         if (pointerAt + 1 !in rom.indices) return null
         val pointer = (rom[pointerAt].toInt() and 0xFF) or ((rom[pointerAt + 1].toInt() and 0xFF) shl 8)

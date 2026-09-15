@@ -172,6 +172,19 @@ class AppSettings(private val prefs: SharedPreferences) {
     }
 
     /**
+     * Whether the player has been shown around the machine once already.
+     *
+     * False on a fresh install, which is the only thing that starts the
+     * introduction — it is a first run, not a thing to meet again every time
+     * the app opens. REPLAY TUTORIAL in OPTIONS is what puts it back to false,
+     * so someone who wants it again can have it and nobody else ever sees it
+     * twice.
+     */
+    var tutorialSeen: Boolean
+        get() = prefs.getBoolean(KEY_TUTORIAL_SEEN, false)
+        set(value) = prefs.edit().putBoolean(KEY_TUTORIAL_SEEN, value).apply()
+
+    /**
      * Call this app's storage BILL'S PC rather than naming its author.
      *
      * Off, because the machine is this app and it says so. On, it takes the
@@ -279,6 +292,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_TRAINER_PREFIX = "trainer-sprite-"
         const val KEY_GAME_SLOT_ID_PREFIX = "game-slot-id-"
         const val KEY_BILLS_PC = "bills-pc"
+        const val KEY_TUTORIAL_SEEN = "tutorial-seen"
         const val KEY_TRADE_EVOLUTION = "trade-evolution"
         const val KEY_TRADE_ANIMATION = "trade-animation"
         const val KEY_REDUCE_MOTION = "reduce-motion"

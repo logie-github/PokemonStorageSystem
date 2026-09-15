@@ -15,8 +15,15 @@ import kotlin.coroutines.coroutineContext
  * for a server to answer. A handful in flight keeps the line busy without
  * asking a phone to hold more sockets than it comfortably can, and without
  * looking to the far end like something worth rate limiting.
+ *
+ * Twelve rather than six, because the first run now fetches the sprites
+ * unasked while someone is being shown around the app: the wait is real time
+ * a player is sitting through, not a progress bar they chose to open. Twelve
+ * sockets against a static file host is still a polite number — a browser
+ * opens six per origin and these are one origin's worth of tiny files — and
+ * the round trips, which are the whole cost here, halve.
  */
-const val AT_ONCE = 6
+const val AT_ONCE = 12
 
 /**
  * Runs [fetch] over [items], a few at a time, reporting after each one.
@@ -27,8 +34,8 @@ const val AT_ONCE = 6
  * coroutine per file.** The two look alike at a hundred and fifty files and
  * do not at fifteen hundred: launching one per item builds the whole run in
  * memory before a byte is fetched, and that list grows every time a set of
- * art is added. Six workers taking the next item until there are none is the
- * same download with a cost that does not move.
+ * art is added. A fixed few workers taking the next item until there are
+ * none is the same download with a cost that does not move.
  *
  * Nothing a worker does can end the run. A file that fails is counted and the
  * next one starts; a report that throws — a notification the system refused,

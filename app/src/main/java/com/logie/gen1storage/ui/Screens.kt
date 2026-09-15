@@ -1390,6 +1390,10 @@ private fun OptionsDrawerContent(
 
             OptionsDrawer.ABOUT -> {
                 add(OptionRow("CREDITS") { model.open(Screen.Credits) })
+                // The first-run introduction, on demand. It plays itself once
+                // and is then never seen again, which is right for a tour and
+                // wrong for the one person who wanted to watch it twice.
+                add(OptionRow("REPLAY TUTORIAL") { model.replayTutorial() })
                 add(OptionRow("SEND REPORT", action = onShareReport))
             }
         }
@@ -1591,6 +1595,15 @@ fun CreditsScreen() {
                         "FOLLOWER ART",
                         "SHOCKSLAYER AND THE",
                         "FOLLOWERS EX / POKEPC LINEAGE",
+                    )
+                }
+                item {
+                    Credit(
+                        "BILL",
+                        "SPRITE BY SYLPHIE",
+                        "USED WITH PERMISSION",
+                        "github.com/Rangi42/",
+                        "polishedcrystal",
                     )
                 }
                 item {

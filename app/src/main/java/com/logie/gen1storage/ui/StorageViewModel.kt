@@ -278,6 +278,11 @@ data class UiState(
     val windowsOnRight: Boolean = true,
     /** Whether this app's storage is called BILL'S PC instead of LOGIE'S PC. */
     val billsPc: Boolean = false,
+    /**
+     * Whether the introduction has been sat through. False is what a fresh
+     * install looks like, and it is the only thing that plays it.
+     */
+    val tutorialSeen: Boolean = true,
     /** How fast the text prints, as the games' OPTIONS screen puts it. */
     val textSpeed: TextSpeed = TextSpeed.DEFAULT,
     /** Shown while a transfer is in flight, and cleared by its result. */
@@ -514,6 +519,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
                 billsPc = settings.billsPc,
+                tutorialSeen = settings.tutorialSeen,
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
@@ -1192,6 +1198,32 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setBillsPc(on: Boolean) {
         settings.billsPc = on
         mutable.update { it.copy(billsPc = on) }
+    }
+
+    /**
+     * The introduction is over, and stays over.
+     *
+     * Written to disk rather than held in memory: the whole point of it is
+     * that a second run opens straight onto the menu.
+     */
+    fun finishTutorial() {
+        settings.tutorialSeen = true
+        mutable.update { it.copy(tutorialSeen = true) }
+    }
+
+    /**
+     * OPTIONS asking for it again.
+     *
+     * Back out to the main menu on the way, because the introduction is drawn
+     * where a screen is drawn: left where it was, finishing it would drop the
+     * player back into the OPTIONS drawer they started it from, which is the
+     * one place a tour of the machine should not end.
+     */
+    fun replayTutorial() {
+        settings.tutorialSeen = false
+        mutable.update {
+            it.copy(tutorialSeen = false, prompt = null, stack = listOf(Screen.Home))
+        }
     }
 
     /** Takes the next speed round, which is how the games' own row works. */

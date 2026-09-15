@@ -11,15 +11,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -46,10 +43,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
-import com.logie.gen1storage.ui.DownloadProgressBar
 import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
-import com.logie.gen1storage.ui.Gen1Frame
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1Theme
@@ -60,6 +55,7 @@ import com.logie.gen1storage.ui.Gen1Motion
 import com.logie.gen1storage.ui.Gen1NoOverscroll
 import com.logie.gen1storage.ui.rememberConfirmTick
 import com.logie.gen1storage.ui.rememberCursorTick
+import com.logie.gen1storage.ui.Gen1Tutorial
 import com.logie.gen1storage.ui.Gen1EvolutionScene
 import com.logie.gen1storage.ui.DexEntryScreen
 import com.logie.gen1storage.ui.DexStatsScreen
@@ -178,17 +174,26 @@ private fun StorageApp(model: StorageViewModel) {
     val locked = state.busy ||
         (state.transferScene != null && state.transferScene?.question == null)
 
+    // The first run, and only the first: a fresh install has never been shown
+    // round the machine, and this is what shows it. Written to disk by the
+    // last beat, so it is gone by the next launch; REPLAY TUTORIAL in OPTIONS
+    // is what brings it back.
+    val showTutorial = !state.tutorialSeen
+
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(
         enabled = locked ||
+            showTutorial ||
             state.transferScene?.question != null ||
             state.prompt != null ||
             state.stack.size > 1,
     ) {
         // Enabled but deliberately deaf while locked: swallowing Back is what
         // stops it walking out of a screen the transfer is still working on,
-        // and it must not fall through to closing the app either.
-        if (locked) return@BackHandler
+        // and it must not fall through to closing the app either. The
+        // introduction is the same: it is four taps long and Back is not one
+        // of the ways out of it, least of all the one that closes the app.
+        if (locked || showTutorial) return@BackHandler
         // Backing out of the question is saying no to it.
         if (state.transferScene?.question != null) model.cancelSend() else model.back()
     }
@@ -216,14 +221,19 @@ private fun StorageApp(model: StorageViewModel) {
     // Nothing drawn a box is opened to is a reason to send someone hunting
     // through OPTIONS for a DOWNLOAD button first. A device with none of the
     // sprites on it yet — the very first run, or one where they were cleared
-    // — fetches them itself, and the ordinary menu waits behind a small
-    // "connecting" message until they land. A set that fails to arrive is
-    // still a gap in the art rather than a reason to hold the door shut
-    // forever, exactly as OPTIONS' own download never blocks on a failure.
-    val needsFirstRunConnect = state.spritesInstalled == 0 && state.spriteProgress?.finished != true
+    // — fetches them itself.
+    //
+    // In the background, and that is the point: the app is not held shut
+    // behind a progress bar while fifteen hundred small files land. A first
+    // run has the introduction to be getting on with (see [Gen1Tutorial]),
+    // which is where the bar is shown, and every run after that simply opens
+    // on the menu with the art filling in behind it — a sprite that has not
+    // arrived draws as the bracketed mark it already draws when a download
+    // has never been run at all.
     LaunchedEffect(Unit) {
         if (state.spritesInstalled == 0) model.downloadSprites()
     }
+
 
     // A transfer that went through, heard once.
     LaunchedEffect(state.transfers) {
@@ -277,7 +287,7 @@ private fun StorageApp(model: StorageViewModel) {
                         cursor.confirm()
                     }
                     GbButton.START ->
-                        if (state.screen != Screen.Options && !needsFirstRunConnect) {
+                        if (state.screen != Screen.Options && !showTutorial) {
                             audio.play(SoundEffect.OPTIONS)
                             model.open(Screen.Options)
                         }
@@ -292,8 +302,8 @@ private fun StorageApp(model: StorageViewModel) {
         Column(Modifier.fillMaxSize()) {
             TopBar()
             Box(Modifier.weight(1f)) {
-                if (needsFirstRunConnect) {
-                    ConnectingScreen(state.spriteProgress?.percent ?: 0)
+                if (showTutorial) {
+                    Gen1Tutorial(state, model, onFinished = model::finishTutorial)
                 } else {
                     // Opened up, the status pages take the left half — so the
                     // screen they were opened from stays live on the right
@@ -423,26 +433,6 @@ private fun TopBar() {
             style = Gen1Text.copy(color = Gen1Palette.Lightest),
             maxLines = 1,
         )
-    }
-}
-
-/**
- * The very first thing a fresh install sees instead of the main menu: the
- * sprite sheets are being fetched, unasked, because a Pokémon with no art at
- * all is a worse first impression than a short wait naming what it is for.
- */
-@Composable
-private fun ConnectingScreen(percent: Int) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Gen1Frame(
-            Modifier.wrapContentWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-        ) {
-            GbText("CONNECTING TO THE")
-            GbText("POKéMON STORAGE SYSTEM...")
-            Spacer(Modifier.height(12.dp))
-            DownloadProgressBar(percent, Modifier.width(200.dp))
-        }
     }
 }
 

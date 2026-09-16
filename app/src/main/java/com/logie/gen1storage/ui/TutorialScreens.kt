@@ -62,17 +62,17 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
     // portrait, and in a stage with a screen's worth of height to fill that
     // came out as a card two thirds of the way down the phone with a hole in
     // the middle of it. Wrapped in its own height so nothing stretches it.
-    Box(Modifier.fillMaxWidth().wrapContentHeight()) {
+    Box(Modifier.fillMaxWidth().wrapContentHeight(), contentAlignment = Alignment.Center) {
         Gen1TrainerCard(
             remote = remote,
             save = save,
             title = "CARD 1",
             sprites = model.sprites,
             trainers = model.trainers,
-            trainerSprite = null,
+            trainerSprite = com.logie.gen1storage.sprites.TrainerStore.PLAYER,
             spriteRevision = spriteRevision,
             modifier = Modifier
-                .fillMaxWidth()
+                .wrapContentWidth()
                 .graphicsLayer { translationY = dealt.value * size.height },
             inserted = true,
         )

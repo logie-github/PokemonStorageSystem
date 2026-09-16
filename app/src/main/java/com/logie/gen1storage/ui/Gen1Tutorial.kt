@@ -637,14 +637,12 @@ private enum class TutorialAsk {
 private fun romsFound(model: StorageViewModel): List<String> {
     val missing = model.romsStillMissing()
     return when {
-        missing.isEmpty() -> listOf("BILL: Lovely. Your ROMs have been found.")
+        missing.isEmpty() -> listOf("BILL: Lovely. Your ROM files have all been found. That should give the system everything it needs.")
         missing.size == 1 -> listOf(
-            "BILL: Good. I see that one is missing, be sure to import " +
-                "${missing.single()} later."
+            "BILL: Good. It looks like ${missing.single()} is missing, though. Pokémon using this data may not display properly until you add it."
         )
         else -> listOf(
-            "BILL: I see that a few are missing. The system won't display " +
-                "correctly without these, so be sure to import them later."
+            "BILL: I see a few reference files are missing. Pokémon records referencing that data may not display correctly without them, so be sure to add those later."
         )
     }
 }
@@ -657,43 +655,43 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: Ahh, there we go. I was hesitant about putting the " +
-                "Pokemon Storage System on a mobile device, but the " +
-                "connection appears to be a success."
+            "BILL: Ahh, there we go. It appears the connection to the Pokémon " +
+                "Storage System appears to be a success!"
         ),
         billTunesIn = true,
         connected = true,
     ),
-    // What the thing actually is, before a word about how to work it. A tour
-    // that opens on "press this to do that" is a manual; somebody meeting the
-    // Storage System for the first time wants to know what it is for.
     TutorialBeat(
         listOf(
-            "BILL: So. This is the Storage System — the same one sitting in " +
-                "every POKEMON CENTER, except this one is in your pocket " +
-                "rather than bolted to a desk in my cottage."
+            "BILL: This is the Pokemon Storage System. It works on the same " +
+                "network as the PCs inside POKéMON CENTERs all over the Kanto " +
+                "region. Normally, your Pokémon are sent back to the lab or " +
+                "research facility your Pokedex is registered with. This app " +
+                "lets you reach that system and store your pokemon on your " +
+                "phone, instead."
         ),
     ),
     TutorialBeat(
         listOf(
-            "BILL: One box, and every one of your games can reach it. RED, " +
-                "BLUE, YELLOW, GOLD, SILVER, CRYSTAL — it makes no difference " +
-                "which one a Pokemon was caught in. It can be stored here, " +
-                "and it can be sent back out to any of the others."
+            "BILL: This app is an upgrade of the software used by the Pokemon " +
+                "Centers, so you will be able to do more useful things."
         ),
     ),
     TutorialBeat(
         listOf(
-            "BILL: Six hundred spaces, and nothing is lost on the way in. " +
-                "Nicknames, moves, the numbers nobody is supposed to know " +
-                "about — it comes back out the same Pokemon that went in."
+            "BILL: There are six hundred storage spaces, so your Pokémon should " +
+                "have plenty of room to stretch their legs."
         ),
     ),
     TutorialBeat(
         listOf(
-            "BILL: First, your games. Put your sync codes in and the PC can " +
-                "read your saves. They stay on this device. I have no access " +
-                "to your Pokemon and neither does anyone else."
+            "BILL: First, in order to sync your app with the storage system " +
+                "you'll need to register your Trainer Card. Enter the sync code " +
+                "found on your PC. Save Sync will connect your record and you'll " +
+                "be able to store your pokemon!",
+            "BILL: Think of it like registering another destination on the " +
+                "Pokémon transfer network. Once that's done, the system will " +
+                "know where your Pokémon should be sent."
         ),
         stage = { model, _ -> TutorialSyncScreen(model) },
         handsOver = true,
@@ -701,8 +699,9 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: By the way, in order to have visual data for your Pokemon, " +
-                "could you help me find your ROMs folder?"
+            "BILL: There is one more thing. The PC needs the data from your " +
+                "reference files so it knows how Pokémon from each region should " +
+                "look. Could you show me where you've kept your ROM files?"
         ),
         ask = TutorialAsk.ROMS,
     ),
@@ -712,16 +711,21 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: This is your trainer card. Insert it and the PC opens that " +
-                "save. Your party, your boxes, your items."
+            "BILL: This is a Trainer Card. Insert yours into the app and the " +
+                "Storage System will connect to your records.",
+            "BILL: You'll be able to see the Pokémon from all across your " +
+                "journey, any items they brought with them items, and any other " +
+                "relevant data."
         ),
         stage = { model, revision -> TutorialTrainerCardScreen(model, revision) },
         sound = SoundEffect.SAVE,
     ),
     TutorialBeat(
         listOf(
-            "BILL: To store a Pokemon, pick it and send it here. It leaves the " +
-                "game and turns up in your PC the next time you sync."
+            "BILL: To store a Pokémon in the app, deposit a pokemon into your " +
+                "PC and save your progress. The next time that Trainer Card " +
+                "syncs, the save sync will move the Pokémon out of its current " +
+                "box and into the Storage System."
         ),
         stage = { model, revision -> TutorialTransferScreen(model, revision) },
         // No beat-level sound here: the scene itself replays every few
@@ -730,9 +734,11 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: There's much more space than you'll usually have. Rather " +
-                "than multiple boxes, you have one shared box. I'm sure the " +
-                "Pokemon enjoy being together like this."
+            "BILL: Normally, pokemon center boxes are limited to a small number " +
+                "of pokemon due to hardware constraints. Pokémon are divided " +
+                "between several boxes at their registered storage location. " +
+                "Here, all six hundred spaces are kept together.",
+            "BILL: I believe the pokemon prefer the extra company."
         ),
         stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
         sound = SoundEffect.SELECT,
@@ -740,15 +746,17 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: Viewing your box will allow you to send Pokemon back to " +
-                "the PC, but will also let you check their stats and see " +
-                "which moves they've learned."
+            "BILL: From the app, you can send a Pokémon back to a PC at a " +
+                "pokemon center.",
+            "BILL: You can also check its stats, see which moves it knows, and " +
+                "make sure you're sending the right Pokémon before you transfer " +
+                "it back out."
         ),
         stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
         handsOver = true,
     ),
     TutorialBeat(
-        listOf("BILL: That's everything. Have a look around. I'll leave you to it."),
+        listOf("BILL: That's everything! Thank you for testing the mobile Pokemon Storage System."),
         sound = SoundEffect.LOG_OFF,
     ),
 )

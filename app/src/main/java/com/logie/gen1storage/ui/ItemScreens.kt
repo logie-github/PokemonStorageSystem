@@ -53,6 +53,9 @@ fun MainMenuScreen(state: UiState, model: StorageViewModel) {
             else model.open(Screen.ChooseCart(null, thenOpenStorage = true))
         })
         itemPcLabel?.let { add(it to { model.open(Screen.ItemPc) }) }
+        // Generation II only, and only with a card in — the MAILBOX is the
+        // save's own, not this app's, and Generation I never had one.
+        if (save?.isGen2 == true) add("MAILBOX" to { model.open(Screen.Mailbox) })
         add("OPTIONS" to { model.open(Screen.Options) })
     }
     // The shared cursor rather than a count of its own, so the arrow is on a

@@ -4,18 +4,28 @@ import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.asInt
 import com.logie.gen1storage.lua.asString
 import com.logie.gen1storage.lua.asTable
+import com.logie.gen1storage.lua.luaNum
+import com.logie.gen1storage.lua.luaStr
 
 /**
- * MAIL: the ten letters a Generation II Pokémon can carry.
+ * MAIL: the ten letters a Generation II Pokémon can carry, and the PC
+ * MAILBOX that holds the ones detached from a Pokémon.
  *
- * The letter is not a field on the Pokémon. `sPartyMail` is six `mailmsg`
- * structs indexed **by party slot**, and Gen1Recomp keeps that shape as
- * `save.mail.party` (see its `src/core/gen2/Mail.lua`, which ports
- * `engine/pokemon/mail.asm` and the struct out of `macros/ram.asm`). The
- * consequence is the whole reason this object exists: taking a Pokémon out of
- * slot 2 has to move slots 3 through 6 up behind it, or the next Pokémon
- * along inherits somebody else's letter. That is `RemoveMonFromPartyOrBox`'s
- * "Mail time!" tail in `engine/pokemon/move_mon.asm`, and it is not optional.
+ * Two structures, both ported from `engine/pokemon/mail.asm` by way of
+ * Gen1Recomp's `src/core/gen2/Mail.lua`:
+ *
+ *  - `save.mail.party` — `sPartyMail`, six `mailmsg` structs indexed **by
+ *    party slot**, sparse. A letter is not a field on the Pokémon: taking one
+ *    out of slot 2 has to move slots 3 through 6 up behind it, or the next
+ *    Pokémon along inherits somebody else's letter. That is
+ *    `RemoveMonFromPartyOrBox`'s "Mail time!" tail and [removePartySlot] is
+ *    it. Sending a letter to the PC ([clearPartySlot]) does not shift
+ *    anything — the mon stays exactly where it was, only lighter.
+ *
+ *  - `save.mail.box` — `sMailboxes`, up to [MAILBOX_CAPACITY] structs, dense
+ *    and ordered, exactly the array every other list in this save is (see
+ *    [LuaValue.Table.array]). `MailboxPC` lists them by author; nothing here
+ *    reorders them.
  *
  * The Pokémon holding one is a separate question, answered by [isMail] over
  * the item it carries.
@@ -39,6 +49,9 @@ object Gen2Mail {
     /** `PARTY_LENGTH`: `sPartyMail` is this many structs and no more. */
     const val PARTY_LENGTH = 6
 
+    /** `MAILBOX_CAPACITY`: what `sMailboxCount` is allowed to reach. */
+    const val MAILBOX_CAPACITY = 10
+
     fun isMail(itemId: String?): Boolean =
         itemId != null && itemId.uppercase() in IDS
 
@@ -51,17 +64,20 @@ object Gen2Mail {
         val species: String?,
     )
 
+    // ------- the letter on a Pokémon
+
     /** The letter pinned to a party slot, 1-based, or null for an empty one. */
-    fun letter(root: LuaValue.Table, slot: Int): Letter? {
-        val entry = partyTable(root)?.get(slot).asTable() ?: return null
-        val type = entry["type"].asString() ?: return null
-        return Letter(
-            type = type,
-            message = entry["message"].asString().orEmpty(),
-            author = entry["author"].asString().orEmpty(),
-            authorId = entry["authorId"].asInt(),
-            species = entry["species"].asString(),
-        )
+    fun letter(root: LuaValue.Table, slot: Int): Letter? = fromLua(partyTable(root)?.get(slot))
+
+    /**
+     * `Mail.clear`'s own shape: empties one slot and nothing else.
+     *
+     * For a letter that is leaving the Pokémon rather than the Pokémon
+     * leaving the party — [appendToMailbox] uses this, never
+     * [removePartySlot], because the mon stays exactly where it was.
+     */
+    fun clearPartySlot(root: LuaValue.Table, slot: Int) {
+        partyTable(root)?.let { it[slot] = null }
     }
 
     /**
@@ -82,6 +98,127 @@ object Gen2Mail {
         party[PARTY_LENGTH] = null
     }
 
+    /**
+     * `Mail.set`: pins a letter to a party slot, making the party mail table
+     * the first time this save has ever needed one.
+     */
+    private fun setPartySlot(root: LuaValue.Table, slot: Int, letter: Letter) {
+        if (slot < 1) return
+        ensurePartyTable(root)[slot] = toLua(letter)
+    }
+
+    /**
+     * `Mail.sendToPc` (the deposit-blocking `SEND MAIL TO PC` question, once
+     * answered yes): detaches [partySlot]'s letter from its Pokémon and files
+     * it in the MAILBOX, clearing the held item in the same motion so a
+     * Pokémon can never end up holding an item with no letter behind it or a
+     * letter with no item. False when that Pokémon holds no mail or the
+     * MAILBOX has no room; the party is untouched either way.
+     */
+    fun sendToPc(root: LuaValue.Table, partySlot: Int): Boolean {
+        val party = root["party"].asTable()?.array() ?: return false
+        val mon = party.getOrNull(partySlot - 1).asTable() ?: return false
+        val heldItem = mon["item"].asString() ?: return false
+        if (!isMail(heldItem) || mailboxFull(root)) return false
+        // A mail ITEM with no struct behind it — an older save, or a letter
+        // the extractor could not resolve — is sent on as a blank letter
+        // rather than dropping the stationery on the floor.
+        val entry = letter(root, partySlot) ?: Letter(heldItem, "", "", null, mon["species"].asString())
+        appendToMailbox(root, entry)
+        clearPartySlot(root, partySlot)
+        mon["item"] = null
+        return true
+    }
+
+    /**
+     * `Mail.moveFromPcToParty` (ATTACH MAIL): moves the letter at
+     * [mailboxIndex] onto [partySlot] and gives that Pokémon its stationery
+     * as a held item. False when there is no such letter or no such
+     * Pokémon; whether that Pokémon is *allowed* to take it — an egg, one
+     * already holding something — is for the caller to have asked first,
+     * the same way the cartridge's own menu asks before this ever runs.
+     */
+    fun attachFromMailbox(root: LuaValue.Table, mailboxIndex: Int, partySlot: Int): Boolean {
+        val party = root["party"].asTable()?.array() ?: return false
+        val mon = party.getOrNull(partySlot - 1).asTable() ?: return false
+        val entry = mailbox(root).getOrNull(mailboxIndex - 1) ?: return false
+        removeFromMailbox(root, mailboxIndex)
+        setPartySlot(root, partySlot, entry)
+        mon["item"] = luaStr(entry.type)
+        return true
+    }
+
     private fun partyTable(root: LuaValue.Table): LuaValue.Table? =
         root["mail"].asTable()?.get("party").asTable()
+
+    private fun ensurePartyTable(root: LuaValue.Table): LuaValue.Table {
+        val mail = root["mail"].asTable() ?: LuaValue.Table().also { root["mail"] = it }
+        return mail["party"].asTable() ?: LuaValue.Table().also { mail["party"] = it }
+    }
+
+    // ------- the MAILBOX
+
+    /** Every letter the MAILBOX holds, author-list order — `Mail.mailbox`. */
+    fun mailbox(root: LuaValue.Table): List<Letter> =
+        boxTable(root)?.array().orEmpty().mapNotNull(::fromLua)
+
+    fun mailboxCount(root: LuaValue.Table): Int = boxTable(root)?.array()?.size ?: 0
+
+    fun mailboxFull(root: LuaValue.Table): Boolean = mailboxCount(root) >= MAILBOX_CAPACITY
+
+    /**
+     * `SendMailToPC`'s struct move, without the party or item side of it —
+     * see the transfer engine for the whole operation. False only when the
+     * MAILBOX has no room, which the caller checks first so nothing here
+     * needs to undo a partial write.
+     */
+    fun appendToMailbox(root: LuaValue.Table, letter: Letter): Boolean {
+        if (mailboxFull(root)) return false
+        val box = ensureBoxTable(root)
+        box.setArray(box.array() + toLua(letter))
+        return true
+    }
+
+    /**
+     * `DeleteMailFromPC`: the shift-up that keeps `sMailboxes` dense, taken
+     * by 1-based position exactly as the list on screen numbers it.
+     */
+    fun removeFromMailbox(root: LuaValue.Table, index: Int): Letter? {
+        val box = boxTable(root) ?: return null
+        val list = box.array().toMutableList()
+        if (index !in 1..list.size) return null
+        val removed = list.removeAt(index - 1)
+        box.setArray(list)
+        return fromLua(removed)
+    }
+
+    private fun boxTable(root: LuaValue.Table): LuaValue.Table? =
+        root["mail"].asTable()?.get("box").asTable()
+
+    private fun ensureBoxTable(root: LuaValue.Table): LuaValue.Table {
+        val mail = root["mail"].asTable() ?: LuaValue.Table().also { root["mail"] = it }
+        return mail["box"].asTable() ?: LuaValue.Table().also { mail["box"] = it }
+    }
+
+    // ------- the struct itself
+
+    private fun fromLua(value: LuaValue?): Letter? {
+        val entry = value.asTable() ?: return null
+        val type = entry["type"].asString() ?: return null
+        return Letter(
+            type = type,
+            message = entry["message"].asString().orEmpty(),
+            author = entry["author"].asString().orEmpty(),
+            authorId = entry["authorId"].asInt(),
+            species = entry["species"].asString(),
+        )
+    }
+
+    private fun toLua(letter: Letter): LuaValue.Table = LuaValue.Table().apply {
+        this["type"] = luaStr(letter.type)
+        this["message"] = luaStr(letter.message)
+        this["author"] = luaStr(letter.author)
+        letter.authorId?.let { this["authorId"] = luaNum(it) }
+        letter.species?.let { this["species"] = luaStr(it) }
+    }
 }

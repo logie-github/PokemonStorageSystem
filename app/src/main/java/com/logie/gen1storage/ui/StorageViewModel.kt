@@ -20,6 +20,7 @@ import com.logie.gen1storage.rom.RomVersion
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.pokemon.Gen2Data
+import com.logie.gen1storage.pokemon.Gen2Mail
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.TimeCapsule
 import com.logie.gen1storage.pokemon.tradeEvolutionName
@@ -53,6 +54,7 @@ import com.logie.gen1storage.transfer.RecoveryReport
 import com.logie.gen1storage.update.UpdateChecker
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.ItemTransferEngine
+import com.logie.gen1storage.transfer.MailEngine
 import com.logie.gen1storage.transfer.Placement
 import com.logie.gen1storage.transfer.PlacementLedger
 import com.logie.gen1storage.transfer.TransferEngine
@@ -85,6 +87,8 @@ sealed interface Screen {
     data object Storage : Screen
     /** The loaded save's item PC, and this app's. */
     data object ItemPc : Screen
+    /** The loaded save's PC MAILBOX, Generation II only. */
+    data object Mailbox : Screen
     data object Link : Screen
     /**
      * Choosing a cartridge. A null [game] shows only the three games; once one
@@ -249,6 +253,25 @@ sealed interface Prompt {
         val max: Int,
         val onChoose: (Int) -> Unit,
     ) : Prompt
+
+    // ------- mail
+
+    /** A letter, read in full — from a party Pokémon or the MAILBOX alike. */
+    data class ReadMail(val letter: Gen2Mail.Letter) : Prompt
+
+    /**
+     * The MAIL row on a live party Pokémon's status screen: READ or SEND TO
+     * PC, `MonMailAction`'s own two live verbs. TAKE — losing the message
+     * for the stationery — is not offered; see [MailEngine]'s own note on
+     * why.
+     */
+    data class MailAction(val key: String, val slot: Int) : Prompt
+
+    /** One letter in the MAILBOX: READ or ATTACH. `MailboxMenu`'s own two. */
+    data class MailboxAction(val key: String, val index: Int) : Prompt
+
+    /** ATTACH MAIL's party list: which Pokémon takes this letter. */
+    data class AttachMail(val key: String, val mailboxIndex: Int) : Prompt
 }
 
 data class UiState(
@@ -387,6 +410,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val engine = TransferEngine(saves, storage, journal, ledger)
     private val itemStorage = ItemRepository(storageDir)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
+    private val mailEngine = MailEngine(saves)
     val roms = RomStore(File(application.filesDir, "roms")).also { sprites.romStore = it }
 
     /** When the ball went up, so the result can wait for it to finish. */
@@ -2448,6 +2472,43 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 else itemEngine.withdraw(loaded, id, count)
             }
             mutable.update { it.copy(items = itemStorage.state()) }
+            finish(result, key)
+        }
+    }
+
+    // ------- mail
+
+    /**
+     * `SEND MAIL TO PC`: the way past the deposit refusal for a Pokémon
+     * holding mail. Same shape as [transferItem] — the save is re-read,
+     * the engine checks it is still the save this screen was looking at,
+     * and the result closes the same way any other transfer does.
+     */
+    fun sendMailToPc(key: String, partySlot: Int) {
+        if (mutable.value.save(key) == null) return message("OPEN THE SAVE FIRST.")
+        viewModelScope.launch {
+            mutable.update { it.copy(busy = true, prompt = null) }
+            val loaded = freshSave(key)
+            if (loaded == null) {
+                mutable.update { it.copy(busy = false) }
+                return@launch message("THE SAVE COULD NOT BE READ.")
+            }
+            val result = runTransfer { mailEngine.sendToPc(loaded, partySlot) }
+            finish(result, key)
+        }
+    }
+
+    /** `ATTACH MAIL`: a MAILBOX letter onto a chosen party Pokémon. */
+    fun attachMailFromBox(key: String, mailboxIndex: Int, partySlot: Int) {
+        if (mutable.value.save(key) == null) return message("OPEN THE SAVE FIRST.")
+        viewModelScope.launch {
+            mutable.update { it.copy(busy = true, prompt = null) }
+            val loaded = freshSave(key)
+            if (loaded == null) {
+                mutable.update { it.copy(busy = false) }
+                return@launch message("THE SAVE COULD NOT BE READ.")
+            }
+            val result = runTransfer { mailEngine.attachFromMailbox(loaded, mailboxIndex, partySlot) }
             finish(result, key)
         }
     }

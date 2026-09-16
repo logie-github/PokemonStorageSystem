@@ -83,6 +83,7 @@ import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.Gen1TransferScene
 import com.logie.gen1storage.ui.ItemPcScreen
+import com.logie.gen1storage.ui.MailboxScreen
 import com.logie.gen1storage.ui.MainMenuScreen
 import com.logie.gen1storage.ui.StorageHomeScreen
 import com.logie.gen1storage.ui.StatusScreen
@@ -402,6 +403,7 @@ private fun ScreenContent(
         Screen.Home -> MainMenuScreen(state, model)
         Screen.Storage -> StorageHomeScreen(state, model)
         Screen.ItemPc -> ItemPcScreen(state, model)
+        Screen.Mailbox -> MailboxScreen(state, model)
         Screen.Link -> LinkScreen(state, model)
         is Screen.ChooseCart ->
             ChooseCartScreen(

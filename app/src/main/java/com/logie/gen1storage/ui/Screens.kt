@@ -50,6 +50,7 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
+import com.logie.gen1storage.pokemon.Gen2Mail
 import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sound.SoundEffect
 import com.logie.gen1storage.storage.Provenance
@@ -882,6 +883,14 @@ fun StatusScreen(
         if (storedUid != null) {
             add(NICKNAME_LABEL to { model.prompt(Prompt.RenameMon(storedUid)) })
             add(SHARE_LABEL to { model.shareCard(storedUid) })
+        }
+        // A live save's own party — key means the game, area 0 the party —
+        // and only while it is actually carrying a letter. `MonMailAction`'s
+        // own row, `mon_menu.asm`'s MAIL.
+        if (key != null && area == 0 && pokemon.holdsMail) {
+            // The screen's own slot is 0-based; sPartyMail and everything
+            // that reads it (Gen2Mail, MailEngine) count from one.
+            add("MAIL" to { model.prompt(Prompt.MailAction(key, slot + 1)) })
         }
     }
     val actions = buildList<Pair<String, () -> Unit>> {
@@ -2004,6 +2013,74 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 speciesId = prompt.speciesId,
                 store = model.sprites,
                 onChoose = { model.chooseSpriteSet(prompt.speciesId, it) },
+                onCancel = model::dismissPrompt,
+            )
+
+            is Prompt.ReadMail -> {
+                val letter = prompt.letter
+                val heading = letter.author.ifBlank { itemLabel(letter.type) }.uppercase()
+                Gen1DialogueBox(listOf("$heading:", letter.message)) {
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    Gen1ChoiceRows(listOf("OK" to model::dismissPrompt))
+                }
+            }
+
+            is Prompt.MailAction -> {
+                val letter = state.save(prompt.key)?.save
+                    ?.let { Gen2Mail.letter(it.root, prompt.slot) }
+                Gen1DialogueBox(listOf("MAIL")) {
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    Gen1ChoiceRows(
+                        buildList {
+                            letter?.let {
+                                add("READ" to { model.prompt(Prompt.ReadMail(it)) })
+                            }
+                            add(
+                                "SEND TO PC" to {
+                                    model.prompt(
+                                        Prompt.Confirm(
+                                            lines = listOf("SEND THE REMOVED", "MAIL TO YOUR PC?"),
+                                            confirmLabel = "YES",
+                                            cancelLabel = "NO",
+                                            onConfirm = { model.sendMailToPc(prompt.key, prompt.slot) },
+                                        )
+                                    )
+                                }
+                            )
+                            add("CANCEL" to model::dismissPrompt)
+                        }
+                    )
+                }
+            }
+
+            is Prompt.MailboxAction -> {
+                val letter = state.save(prompt.key)?.save
+                    ?.let { Gen2Mail.mailbox(it.root).getOrNull(prompt.index - 1) }
+                Gen1DialogueBox(listOf("MAIL")) {
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    Gen1ChoiceRows(
+                        buildList {
+                            letter?.let {
+                                add("READ MAIL" to { model.prompt(Prompt.ReadMail(it)) })
+                            }
+                            add(
+                                "ATTACH MAIL" to {
+                                    model.prompt(Prompt.AttachMail(prompt.key, prompt.index))
+                                }
+                            )
+                            add("CANCEL" to model::dismissPrompt)
+                        }
+                    )
+                }
+            }
+
+            is Prompt.AttachMail -> AttachMailPicker(
+                key = prompt.key,
+                mailboxIndex = prompt.mailboxIndex,
+                party = state.save(prompt.key)?.save?.party.orEmpty(),
+                onChoose = { index ->
+                    model.attachMailFromBox(prompt.key, prompt.mailboxIndex, index + 1)
+                },
                 onCancel = model::dismissPrompt,
             )
         }

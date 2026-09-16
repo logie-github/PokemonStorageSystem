@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -23,13 +26,17 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -45,6 +52,7 @@ import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sound.SoundEffect
 import com.logie.gen1storage.sprites.recolourToRamp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.floor
 import kotlin.math.min
 
@@ -128,6 +136,43 @@ fun Gen1Tutorial(
     // separates a portrait from a talking one.
     var speaking by remember(beat) { mutableStateOf(true) }
 
+    // The picture, coming in. He opens on a dead line — transparent, flat,
+    // no contrast to it at all — and it clears the moment the connection
+    // actually works, which is what he is describing while it happens: "the
+    // connection appears to be a success" said over the picture succeeding.
+    // The two halves of that read differently on purpose. Opacity eases up
+    // in one smooth pull, a signal fading in; contrast arrives in three
+    // steps rather than a slide, because a picture does not gradually gain
+    // contrast — it is fuzzy and then, a beat later, it very much is not.
+    val billAlpha = remember { Animatable(BILL_STATIC_ALPHA) }
+    var billContrast by remember { mutableFloatStateOf(BILL_MIN_CONTRAST) }
+    LaunchedEffect(beat) {
+        when {
+            current.billStatic -> {
+                billAlpha.snapTo(BILL_STATIC_ALPHA)
+                billContrast = BILL_MIN_CONTRAST
+            }
+            !current.billTunesIn -> {
+                billAlpha.snapTo(1f)
+                billContrast = 1f
+            }
+            !Gen1Motion.moves(Motion.TEXT) -> {
+                billAlpha.snapTo(1f)
+                billContrast = 1f
+            }
+            else -> {
+                // Concurrent rather than one after the other: the fade and
+                // the three jumps land over the same stretch of time, so the
+                // picture is visibly sharpening while it is still growing in.
+                launch { billAlpha.animateTo(1f, tween(BILL_TUNE_IN_MILLIS, easing = LinearEasing)) }
+                repeat(BILL_CONTRAST_STEPS) { step ->
+                    billContrast = (step + 1f) / BILL_CONTRAST_STEPS
+                    delay((BILL_TUNE_IN_MILLIS / BILL_CONTRAST_STEPS).toLong())
+                }
+            }
+        }
+    }
+
     // Each beat announces itself with the sound the screen it is about makes
     // when it is used for real. The transfer's waits for the Pokemon to
     // actually land, because a confirmation heard before the thing it
@@ -174,7 +219,7 @@ fun Gen1Tutorial(
                         horizontalArrangement =
                             if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
                     ) {
-                        BillPortrait(speaking)
+                        BillPortrait(speaking, alpha = billAlpha.value, contrast = billContrast)
                     }
                     Spacer(Modifier.height(gen1Dp(2)))
                     Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
@@ -254,7 +299,20 @@ private fun ConnectingWindow(percent: Int) {
  * screen made of hard pixels.
  */
 @Composable
-fun BillPortrait(speaking: Boolean, modifier: Modifier = Modifier) {
+fun BillPortrait(
+    speaking: Boolean,
+    modifier: Modifier = Modifier,
+    /** How much of him is showing, nought to one. See [Gen1Tutorial]'s opening beat. */
+    alpha: Float = 1f,
+    /**
+     * How much of the picture is there, nought being a flat mid-grey square
+     * and one being the picture as drawn. Applied as a contrast pull toward
+     * that grey rather than as a second recolour: doing it as a colour
+     * filter over the already-recoloured bitmap means it costs nothing more
+     * than the one draw call, at any value, every frame.
+     */
+    contrast: Float = 1f,
+) {
     val context = LocalContext.current
     val palette = Gen1Palette.palette
     val image = remember(palette.id) { loadBill(context.resources, palette) }
@@ -292,14 +350,36 @@ fun BillPortrait(speaking: Boolean, modifier: Modifier = Modifier) {
                     Image(
                         bitmap = image,
                         contentDescription = "BILL",
-                        modifier = Modifier.fillMaxSize().offset(y = lift),
+                        modifier = Modifier.fillMaxSize().offset(y = lift).alpha(alpha),
                         contentScale = ContentScale.Fit,
                         filterQuality = FilterQuality.None,
+                        colorFilter = ColorFilter.colorMatrix(contrastMatrix(contrast)),
                     )
                 }
             }
         }
     }
+}
+
+/**
+ * A contrast pull toward flat mid-grey, as a colour matrix.
+ *
+ * `output = input * contrast + 128 * (1 - contrast)`: at 1 the picture is
+ * untouched, and at 0 every channel lands on 128 regardless of what it was,
+ * which is a blank grey square rather than black or white — the "no signal"
+ * a contrast of zero actually looks like.
+ */
+private fun contrastMatrix(contrast: Float): ColorMatrix {
+    val scale = contrast.coerceIn(0f, 1f)
+    val shift = 128f * (1f - scale)
+    return ColorMatrix(
+        floatArrayOf(
+            scale, 0f, 0f, 0f, shift,
+            0f, scale, 0f, 0f, shift,
+            0f, 0f, scale, 0f, shift,
+            0f, 0f, 0f, 1f, 0f,
+        )
+    )
 }
 
 /** One of the sprite's own pixels, at whatever whole scale it is drawn at. */
@@ -358,6 +438,20 @@ private fun loadBill(
 /** How many source pixels the art is across, which is also how tall. */
 private const val BILL_PIXELS = 128
 
+/** How much of him is showing while the connection is dead. Not zero: a
+ * picture that has not arrived yet is a faint one, not an absent one. */
+private const val BILL_STATIC_ALPHA = 0.18f
+
+/** How much contrast the picture has while it is dead — none. */
+private const val BILL_MIN_CONTRAST = 0f
+
+/** How long the fade and the three contrast jumps take, together. */
+private const val BILL_TUNE_IN_MILLIS = 900
+
+/** Three jumps, because a signal locking in reads as a few snaps into place
+ * rather than a slide — see [Gen1Tutorial]'s opening beat. */
+private const val BILL_CONTRAST_STEPS = 3
+
 /** One thing Bill says, and the screen he says it over. */
 private data class TutorialBeat(
     val lines: List<String>,
@@ -387,6 +481,17 @@ private data class TutorialBeat(
      * quietly take the A button away from its LINK button.
      */
     val asksForCodes: Boolean = false,
+    /**
+     * The connection has not caught yet: the portrait is faint and flat, and
+     * stays that way for as long as this beat is up. Only the first beat.
+     */
+    val billStatic: Boolean = false,
+    /**
+     * The beat the picture arrives on: opacity eases up, contrast snaps in
+     * three, over [BILL_TUNE_IN_MILLIS]. Only the beat right after
+     * [billStatic]; everywhere after that the picture has simply arrived.
+     */
+    val billTunesIn: Boolean = false,
 )
 
 /**
@@ -413,7 +518,9 @@ private enum class TutorialAsk {
 /**
  * The tour, in order.
  *
- * Four things and a goodbye. Short on purpose: nobody meets a storage system
+ * Opens on a dead line before anything else, so the first thing said is not
+ * narration — it is Bill checking the connection is actually there, which it
+ * is not yet. Short past that on purpose: nobody meets a storage system
  * wanting a lecture about one, and every screen named here is a screen the
  * player is about to be standing on anyway.
  */
@@ -442,11 +549,16 @@ private fun romsFound(model: StorageViewModel): List<String> {
 
 private fun tutorialBeats(): List<TutorialBeat> = listOf(
     TutorialBeat(
+        listOf("BILL: Hello? Can you hear me? Is this thing turned on?"),
+        billStatic = true,
+    ),
+    TutorialBeat(
         listOf(
             "BILL: Ahh, there we go. I was hesitant about putting the " +
                 "Pokemon Storage System on a mobile device, but the " +
                 "connection appears to be a success."
         ),
+        billTunesIn = true,
     ),
     TutorialBeat(
         listOf(

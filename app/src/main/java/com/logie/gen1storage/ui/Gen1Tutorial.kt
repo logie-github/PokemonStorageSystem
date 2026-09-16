@@ -108,6 +108,16 @@ fun Gen1Tutorial(
         advance()
     }
 
+    // Codes accepted is an answer, so the tour does not also need to be told.
+    //
+    // Only a device that links *while this beat is up*: one that was already
+    // linked when it opened should read what he says about where the codes
+    // live rather than have the beat vanish before the sentence lands.
+    val linkedWhenAsked = remember(beat) { state.linked }
+    LaunchedEffect(state.linked, beat) {
+        if (current.asksForCodes && state.linked && !linkedWhenAsked) advance()
+    }
+
     // Whether his line is still arriving. He moves in time with his own
     // speech and holds still once it is down, which is the whole of what
     // separates a portrait from a talking one.
@@ -352,6 +362,15 @@ private data class TutorialBeat(
     val handsOver: Boolean = false,
     /** A beat that waits on an answer rather than on a tap. */
     val ask: TutorialAsk? = null,
+    /**
+     * Whether this is the beat with SAVE SYNC live on it, which moves itself
+     * along the moment a pair of codes is accepted.
+     *
+     * Not a [TutorialAsk]: an ask puts rows in the text box, and rows here
+     * would be a cursor layer stacked on top of the screen's own, which would
+     * quietly take the A button away from its LINK button.
+     */
+    val asksForCodes: Boolean = false,
 )
 
 /**
@@ -392,8 +411,18 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: Before we go on, I need a few permissions to be sure this " +
-                "is set up right. Can you find your ROMs folder for me?"
+            "BILL: First, your games. Put your sync codes in and the PC can " +
+                "read your saves. They stay on this device. I have no access " +
+                "to your Pokemon and neither does anyone else."
+        ),
+        stage = { model, _ -> TutorialSyncScreen(model) },
+        handsOver = true,
+        asksForCodes = true,
+    ),
+    TutorialBeat(
+        listOf(
+            "BILL: One more permission and we're set. Can you find your ROMs " +
+                "folder for me?"
         ),
         ask = TutorialAsk.ROMS,
     ),

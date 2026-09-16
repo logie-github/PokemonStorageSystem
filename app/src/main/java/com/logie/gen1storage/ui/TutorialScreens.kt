@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.logie.gen1storage.gen1recomp.GameVersion
 import kotlinx.coroutines.delay
 
@@ -155,3 +156,19 @@ private const val REPLAY_MILLIS = 4_200L
 
 /** How long the bracket rests on each Pokemon as it walks the box. */
 private const val STEP_MILLIS = 620L
+
+/**
+ * SAVE SYNC, live, as [LinkScreen] draws it.
+ *
+ * The one screen in the tour that is not a demonstration. Everything else is
+ * sample data behind glass; this is the real thing with a real keyboard,
+ * because the codes have to be typed somewhere and the alternative is telling
+ * a player to go and find a screen they have just been shown. It keeps its
+ * own cursor while it is up, which is why the beat that shows it hands the
+ * stage over rather than covering it.
+ */
+@Composable
+fun TutorialSyncScreen(model: StorageViewModel) {
+    val state by model.state.collectAsStateWithLifecycle()
+    LinkScreen(state, model)
+}

@@ -4,6 +4,7 @@ import com.logie.gen1storage.lua.LuaKey
 import com.logie.gen1storage.lua.LuaText
 import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.LuaWriter
+import com.logie.gen1storage.lua.asBoolean
 import com.logie.gen1storage.lua.asInt
 import com.logie.gen1storage.lua.asString
 import com.logie.gen1storage.lua.asTable
@@ -42,9 +43,19 @@ class Gen1Pokemon(
 
     val speciesId: String? get() = speciesId(raw)
 
-    /** This Pokémon's row, out of its own generation's table. */
+    /**
+     * This Pokémon's row, out of its own generation's table.
+     *
+     * Null for an egg, and that is the point of an egg: the species is
+     * written on the record because the game has to know what will hatch,
+     * and nothing is allowed to show it. The cartridge does the same by
+     * swapping `wCurPartySpecies` for its `EGG` constant before anything
+     * draws, so the dex number, the name, the types and the dex entry all
+     * come back empty here for the same reason they are blank on screen.
+     */
     val species: SpeciesInfo? get() =
-        if (generation >= 2) Gen2Data.species(speciesId) else Gen1Data.species(speciesId)
+        if (isEgg) null
+        else if (generation >= 2) Gen2Data.species(speciesId) else Gen1Data.species(speciesId)
 
     /**
      * Gen1Recomp spells "not nicknamed" as `nickname == nil` and every display
@@ -52,7 +63,8 @@ class Gen1Pokemon(
      * `src/save_convert/GenSave.lua` around `importedNickname`).
      */
     val nickname: String? get() = raw["nickname"].asString()?.let(LuaText::displayText)
-    val displayName: String get() = nickname ?: species?.displayName ?: speciesId.orEmpty()
+    val displayName: String get() =
+        if (isEgg) EGG_NAME else nickname ?: species?.displayName ?: speciesId.orEmpty()
 
     val level: Int get() = raw["level"].asInt() ?: 1
     val exp: Int get() = raw["exp"].asInt() ?: 0
@@ -70,6 +82,49 @@ class Gen1Pokemon(
      * the field and the app should see it rather than step over it.
      */
     val heldItem: String? get() = raw["item"].asString()?.takeIf { it.isNotBlank() }
+
+    /**
+     * Whether this is an egg rather than a Pokemon.
+     *
+     * Gen1Recomp writes a plain `isEgg` on the record (`src/core/gen2/Breeding.lua`),
+     * and every screen that draws one checks it before it checks the species:
+     * the cartridge shows an egg's pic and nothing else, no name, no level, no
+     * gender and no held item, because the whole point is that you do not know
+     * what is in it. `bills_pc.asm` returns early on `cp EGG` for exactly that
+     * reason. Generation I had no eggs, so this is false there and always was.
+     */
+    val isEgg: Boolean get() = raw["isEgg"].asBoolean() == true
+
+    /**
+     * How many hatch cycles an egg has left, 256 steps each.
+     *
+     * On the cartridge this is the byte happiness lives in for everything
+     * else, counted down by `DoEggStep`; Gen1Recomp keeps it as its own
+     * `eggSteps` field, so that is read first and the happiness byte is the
+     * fallback for a save that kept it where the cartridge had it.
+     */
+    val hatchCycles: Int
+        get() = raw["eggSteps"].asInt() ?: raw["happiness"].asInt() ?: 0
+
+    /**
+     * Whether it is carrying a letter, which is a thing a Generation II
+     * Pokemon can do and a reason it cannot be put in a PC. See [Gen2Mail].
+     */
+    val holdsMail: Boolean get() = Gen2Mail.isMail(heldItem)
+
+    /**
+     * Pokerus, as the status line reports it.
+     *
+     * The stats screen reads one byte: the low nybble is how many days of the
+     * strain are left and the high nybble is which strain it was. Still going
+     * and the STATUS line says #RUS instead of the condition; gone but once
+     * had, and a dot sits beside the Pokemon's name. See `LoadPinkPage` in
+     * `engine/pokemon/stats_screen.asm`.
+     */
+    val pokerusDaysLeft: Int get() = (raw["pokerus"].asInt() ?: 0) and 0x0F
+    val hasPokerus: Boolean get() = pokerusDaysLeft > 0
+    val curedOfPokerus: Boolean
+        get() = !hasPokerus && ((raw["pokerus"].asInt() ?: 0) and 0xF0) != 0
 
     /** OT name and 16-bit trainer id, as `mon.ot` / `mon.otId`. */
     val otName: String? get() = raw["ot"].asString()?.let(LuaText::displayText)
@@ -164,6 +219,9 @@ class Gen1Pokemon(
     }
 
     companion object {
+        /** What the games print in place of a name that has not been earned. */
+        const val EGG_NAME = "EGG"
+
         private val GEN1_BATTLE_STATS =
             listOf(Gen1Stat.ATTACK, Gen1Stat.DEFENSE, Gen1Stat.SPEED, Gen1Stat.SPECIAL)
 

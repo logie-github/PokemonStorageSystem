@@ -474,12 +474,22 @@ class TransferEngine(
      * ("You can't deposit the last POKéMON!"). A save with an empty party is
      * not a state the game can be handed back, so the rule holds here too.
      */
-    private fun constraintForDeposit(save: Gen1RecompSave, location: SaveLocation): String? =
-        when (location) {
+    private fun constraintForDeposit(save: Gen1RecompSave, location: SaveLocation): String? {
+        // The cartridge's own rule, and not a nicety: a letter lives in a
+        // slot of the save rather than on the Pokemon, so one that leaves
+        // the cartridge cannot take it. "There is a #MON holding MAIL.
+        // Please remove the MAIL." — `_PCMonHoldingMailText`, refused by
+        // `BillsPC_CheckMail_PreventBlackout` before the PC will store
+        // anything. See [Gen2Mail].
+        pokemonAt(save, location)?.let {
+            if (it.holdsMail) return "THAT POKéMON IS HOLDING MAIL. REMOVE THE MAIL FIRST."
+        }
+        return when (location) {
             is SaveLocation.Party ->
                 if (save.partyCount <= 1) "YOU CAN'T DEPOSIT THE LAST POKéMON!" else null
             is SaveLocation.Box -> null
         }
+    }
 
     private fun constraintForWithdraw(save: Gen1RecompSave, target: WithdrawTarget): String? =
         when (target) {

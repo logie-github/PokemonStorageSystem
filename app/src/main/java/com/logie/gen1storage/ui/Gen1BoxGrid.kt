@@ -364,6 +364,10 @@ fun Gen1BoxGrid(
                             // The one being carried is not drawn in its old
                             // spot: it is under the finger.
                             if (stored != null && slot != dragFrom && column < revealed) {
+                                // An egg has no species to draw, by design:
+                                // Gen1Pokemon.species is null for one, so the
+                                // spot shows the marker rather than giving
+                                // away what is inside.
                                 FollowerSprite(
                                     stored.pokemon.species?.dexNumber,
                                     followers,

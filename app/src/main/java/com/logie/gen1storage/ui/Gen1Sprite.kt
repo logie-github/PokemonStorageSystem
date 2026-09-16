@@ -43,6 +43,10 @@ import com.logie.gen1storage.sprites.SpriteStore
  * downloaded. Anything else is shown under its own id, unchanged.
  */
 fun Gen1Pokemon.spriteSpeciesId(): String? {
+    // An egg is drawn as an egg. The species is on the record because the
+    // game has to know what will hatch, and showing its picture would give
+    // away the one thing an egg is for.
+    if (isEgg) return Gen2Sprites.EGG_ID
     val id = speciesId ?: return null
     return if (id.equals("UNOWN", ignoreCase = true)) {
         Gen2Sprites.unownFormId(Gen1Stats.unownLetter(dvs))

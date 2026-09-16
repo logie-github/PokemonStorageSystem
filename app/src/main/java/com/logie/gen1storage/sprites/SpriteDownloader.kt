@@ -66,7 +66,8 @@ class SpriteDownloader(private val store: SpriteStore) {
         val gen2SpriteIds = gen2Species.flatMap { id ->
             if (id.equals("UNOWN", ignoreCase = true)) listOf(id) + Gen2Sprites.UNOWN_FORM_IDS
             else listOf(id)
-        }
+            // The egg, which is not a species and is drawn instead of one.
+        } + Gen2Sprites.EGG_ID
         val only = species?.map { it.uppercase() }?.toSet()
         fun speciesFor(set: SpriteSet): List<String> {
             val all = if (set.generation == 2) gen2SpriteIds else gen1Species

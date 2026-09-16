@@ -66,6 +66,12 @@ object Gen2Sprites {
         val repo = set.repo ?: return emptyList()
         val file = set.frontFile ?: return emptyList()
         val upper = speciesId.uppercase()
+        // The egg is drawn once for all three games and the two repositories
+        // file it differently: pokecrystal has it as an ordinary species
+        // folder, pokegold as `egg/egg.png`, and neither has a versioned
+        // name. One address for all three sets rather than a third fallback
+        // name, because it is one picture.
+        if (upper == EGG_ID) return listOf("$CRYSTAL_POKEMON_ROOT/egg/$SHARED_FRONT")
         val unown = upper == "UNOWN" || upper.startsWith("UNOWN_")
         val folder = if (upper == "UNOWN") "unown_a" else gen2SpriteFolder(speciesId)
         val root = "https://raw.githubusercontent.com/$repo/master/gfx/pokemon/$folder"
@@ -77,6 +83,18 @@ object Gen2Sprites {
 
     /** What a species drawn once for both games is filed under. */
     private const val SHARED_FRONT = "front.png"
+
+    /**
+     * The synthetic species id an egg's picture is fetched and cached under.
+     *
+     * Not a real species: the cartridge has an `EGG` constant past the 251
+     * and draws it in place of whatever is inside, which is the whole point
+     * of an egg. See [com.logie.gen1storage.pokemon.Gen1Pokemon.isEgg].
+     */
+    const val EGG_ID = "EGG"
+
+    private const val CRYSTAL_POKEMON_ROOT =
+        "https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/pokemon"
 
     /** Every one of Unown's 26 letter forms, as the synthetic id [unownFormId] builds. */
     val UNOWN_FORM_IDS: List<String> = ('A'..'Z').map { unownFormId(it) }

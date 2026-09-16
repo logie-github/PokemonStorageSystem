@@ -11,6 +11,7 @@ import com.logie.gen1storage.lua.asTable
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stats
+import com.logie.gen1storage.pokemon.Gen2Mail
 
 /**
  * The games this app knows.
@@ -400,6 +401,12 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         if (index !in 1..list.size) return null
         val removed = list.removeAt(index - 1)
         table.setArray(list)
+        // `RemoveMonFromPartyOrBox`'s "Mail time!" tail. A Generation II
+        // save keeps its letters in six structs indexed by party slot, not on
+        // the Pokemon, so taking one out of slot 2 has to move slots 3 to 6
+        // up behind it. Left alone, the next Pokemon along inherits somebody
+        // else's letter. See [Gen2Mail].
+        if (isGen2) Gen2Mail.removePartySlot(root, index)
         return removed.asTable()
     }
 

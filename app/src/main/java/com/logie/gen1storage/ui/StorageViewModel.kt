@@ -1341,12 +1341,33 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * Downloads the Generation I front sprites. Progress is reported after
      * every file so the bar moves steadily rather than in jumps.
      */
+    /**
+     * The sets still worth fetching: every one this app downloads by default,
+     * less any a ROM on this device already draws.
+     *
+     * Importing a cartridge is how a player stops downloading art. The sprite
+     * store asks the ROM before it asks the sprite folder, so a downloaded
+     * copy of a set the ROM covers is a few hundred files fetched to sit on
+     * disk unread. See [RomStore.covers].
+     */
+    private fun setsWorthFetching(): List<SpriteSet> =
+        SpriteSet.downloadable.filterNot { roms.covers(it.id) }
+
     fun downloadSprites() {
         if (spriteJob?.isActive == true) return
         spriteJob = downloadStage("SPRITES") {
             mutable.update { it.copy(prompt = null, spriteProgress = DownloadProgress(0, 1)) }
+            val wanted = setsWorthFetching()
+            if (wanted.isEmpty()) {
+                // Every set is coming out of a cartridge, so there is nothing
+                // to fetch and nothing to report but a finished bar.
+                mutable.update { state ->
+                    state.copy(spriteProgress = DownloadProgress(0, 0, finished = true))
+                }
+                return@downloadStage
+            }
             val result = runCatching {
-                spriteDownloader.download(SpriteSet.downloadable) { progress ->
+                spriteDownloader.download(wanted) { progress ->
                     mutable.update { it.copy(spriteProgress = progress) }
                     showDownload("SPRITES", progress)
                 }
@@ -1625,8 +1646,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     private suspend fun fetchTheHandfulFirst() {
         runCatching { followers.downloadAll(TutorialSamples.DEX_NUMBERS) {} }
-        runCatching {
-            spriteDownloader.download(SpriteSet.downloadable, TutorialSamples.SPECIES) {}
+        setsWorthFetching().takeIf { it.isNotEmpty() }?.let { sets ->
+            runCatching { spriteDownloader.download(sets, TutorialSamples.SPECIES) {} }
         }
         mutable.update {
             it.copy(
@@ -1668,13 +1689,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     // the art is not a choice worth offering. So everything below reads the
     // four as one download.
 
+    /** How many files this device still has any reason to fetch. */
+    private fun downloadTotal(): Int = downloadTotalFor(setsWorthFetching())
+
     /** Everything already fetched, as a share of everything there is. */
     fun downloadedPercent(): Int {
         val have = mutable.value.let {
             it.spritesInstalled + it.criesInstalled + it.followersInstalled + it.trainersInstalled
         }
-        return if (DOWNLOAD_TOTAL <= 0) 0
-        else ((have.coerceAtMost(DOWNLOAD_TOTAL) * 100) / DOWNLOAD_TOTAL)
+        val total = downloadTotal()
+        return if (total <= 0) 0 else ((have.coerceAtMost(total) * 100) / total)
     }
 
     /** How far the download in flight has got, or null when none is. */
@@ -1704,8 +1728,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             maxOf(current.trainersInstalled, current.trainerProgress?.done ?: 0)
         val running = all.any { !it.finished }
         return DownloadProgress(
-            done = done.coerceAtMost(DOWNLOAD_TOTAL),
-            total = DOWNLOAD_TOTAL,
+            done = done.coerceAtMost(downloadTotal()),
+            total = downloadTotal(),
             failed = all.sumOf { it.failed },
             finished = !running,
             error = all.firstNotNullOfOrNull { it.error },
@@ -2562,17 +2586,25 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 private const val DOWNLOAD_FAILURE_FILE = "last-download-failure.txt"
 
 /**
- * Every file the download fetches, counted once.
+ * Every file the download fetches, counted once, for a given list of sprite
+ * sets.
  *
  * The sprite sets, the cries, the follower sheets, and the trainers with the
  * sheets that come down beside them.
+ *
+ * Takes the sets rather than assuming all of them, because a ROM on the
+ * device takes its own set out of the download entirely. Counted with the
+ * rest of it fixed: a player who has imported every cartridge still has the
+ * cries, the followers and the trainer art to fetch, and the bar should
+ * reach a hundred when those land rather than stopping at the share the
+ * sprites would have been.
  */
-private val DOWNLOAD_TOTAL: Int =
+private fun downloadTotalFor(sets: List<SpriteSet>): Int =
     // Each set over the species its own generation has — 151 for the
     // Generation I sets, 251 for Gold, Silver and Crystal — and, once, the
     // shiny colours the three Generation II sets share.
-    SpriteSet.downloadable.sumOf { if (it.generation == 2) Gen2Data.SPECIES_COUNT else 151 } +
-        (if (SpriteSet.downloadable.any { it.generation == 2 }) Gen2Data.SPECIES_COUNT else 0) +
+    sets.sumOf { if (it.generation == 2) Gen2Data.SPECIES_COUNT else 151 } +
+        (if (sets.any { it.generation == 2 }) Gen2Data.SPECIES_COUNT else 0) +
         CryStore.LAST_CRY + FollowerStore.LAST_SHEET +
         TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size + TrainerStore.GEN2_ART.size +
         TrainerStore.GEN2_TRAINER_IDS.size

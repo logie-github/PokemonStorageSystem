@@ -813,10 +813,18 @@ fun StatusScreen(
     // how the cartridge turns them and the only place on this screen a
     // sideways swipe has anything to do.
     var page by remember(pokemon.fingerprint) { mutableIntStateOf(0) }
+    // How many there are to turn: an egg has one screen, a Generation II
+    // Pokémon has the cartridge's three plus this app's dex page, and a
+    // Generation I one has three.
+    val pages = when {
+        pokemon.isEgg -> 1
+        pokemon.generation >= 2 -> GEN2_PAGES
+        else -> PAGES
+    }
     val at = rememberCursorLayer(
         actions.size,
         onSide = { _, button ->
-            page = (page + if (button == GbButton.RIGHT) 1 else PAGES - 1) % PAGES
+            page = (page + if (button == GbButton.RIGHT) 1 else pages - 1) % pages
             true
         },
     ) { index -> actions.getOrNull(index)?.second?.invoke() }

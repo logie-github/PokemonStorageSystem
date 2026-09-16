@@ -122,9 +122,15 @@ object Gen2TradeEvolution {
  * check for an Everstone and five stats to recompute where a Generation I
  * one has neither.
  */
-fun tradeEvolutionOf(pokemon: Gen1Pokemon): String? =
-    if (pokemon.generation >= 2) Gen2TradeEvolution.evolutionOf(pokemon.speciesId, pokemon.heldItem)
-    else Gen1TradeEvolution.evolutionOf(pokemon.speciesId)
+fun tradeEvolutionOf(pokemon: Gen1Pokemon): String? = when {
+    // An egg is not its species yet. `HatchEggs` is the only thing that turns
+    // one into a Pokemon, and a trade machine that evolved the thing inside
+    // the shell would be this app inventing a mechanic the games do not have.
+    pokemon.isEgg -> null
+    pokemon.generation >= 2 ->
+        Gen2TradeEvolution.evolutionOf(pokemon.speciesId, pokemon.heldItem)
+    else -> Gen1TradeEvolution.evolutionOf(pokemon.speciesId)
+}
 
 fun tradeEvolves(pokemon: Gen1Pokemon): Boolean = tradeEvolutionOf(pokemon) != null
 

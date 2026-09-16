@@ -30,6 +30,25 @@ class RomStore(private val directory: File) {
     fun sizeOf(version: RomVersion): Long = file(version).takeIf(File::isFile)?.length() ?: 0L
 
     /**
+     * Whether a downloaded set of front sprites would be redundant, because
+     * a ROM on this device already draws every one of them.
+     *
+     * The whole point of importing a cartridge is that the art comes out of
+     * it: [com.logie.gen1storage.sprites.SpriteStore.load] asks the ROM
+     * before it asks the sprite folder, so a downloaded copy of the same
+     * pictures is bytes fetched to sit on disk unread. Red and Blue drew the
+     * same sprites, so either cartridge covers the pair.
+     */
+    fun covers(setId: String): Boolean = when (setId) {
+        "rb" -> has(RomVersion.RED) || has(RomVersion.BLUE)
+        "yellow" -> has(RomVersion.YELLOW)
+        "gold" -> has(RomVersion.GOLD)
+        "silver" -> has(RomVersion.SILVER)
+        "crystal" -> has(RomVersion.CRYSTAL)
+        else -> false
+    }
+
+    /**
      * Saves [bytes] as [version]'s ROM once it has been confirmed to be one —
      * see [Gen1RomLocator.locate] and [Gen2RomLocator.locate] — and returns
      * whether it was. Nothing is written for bytes this app cannot find its

@@ -4,9 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +53,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.floor
 import kotlin.math.min
+import kotlin.random.Random
 
 /**
  * The first run, hosted.
@@ -161,31 +159,42 @@ fun Gen1Tutorial(
     // in one smooth pull, a signal fading in; contrast arrives in three
     // steps rather than a slide, because a picture does not gradually gain
     // contrast — it is fuzzy and then, a beat later, it very much is not.
-    val billAlpha = remember { Animatable(BILL_STATIC_ALPHA) }
+    var billAlpha by remember { mutableFloatStateOf(BILL_STATIC_ALPHA) }
     var billContrast by remember { mutableFloatStateOf(BILL_MIN_CONTRAST) }
     LaunchedEffect(beat) {
+        val still = !Gen1Motion.moves(Motion.TEXT)
         when {
             current.billStatic -> {
-                billAlpha.snapTo(BILL_STATIC_ALPHA)
                 billContrast = BILL_MIN_CONTRAST
+                if (still) {
+                    billAlpha = BILL_STATIC_ALPHA
+                    return@LaunchedEffect
+                }
+                // A signal that has not caught: he surfaces for a frame and
+                // is gone again, at no rhythm in particular. It runs for as
+                // long as the beat is up, because what he is saying over it
+                // is asking whether the thing is even on.
+                while (true) {
+                    billAlpha = BILL_STATIC_ALPHA * (0.25f + Random.nextFloat())
+                    delay(STATIC_FLICKER_MILLIS.random())
+                }
             }
-            !current.billTunesIn -> {
-                billAlpha.snapTo(1f)
-                billContrast = 1f
-            }
-            !Gen1Motion.moves(Motion.TEXT) -> {
-                billAlpha.snapTo(1f)
+            !current.billTunesIn || still -> {
+                billAlpha = 1f
                 billContrast = 1f
             }
             else -> {
-                // Concurrent rather than one after the other: the fade and
-                // the three jumps land over the same stretch of time, so the
-                // picture is visibly sharpening while it is still growing in.
-                launch { billAlpha.animateTo(1f, tween(BILL_TUNE_IN_MILLIS, easing = LinearEasing)) }
-                repeat(BILL_CONTRAST_STEPS) { step ->
-                    billContrast = (step + 1f) / BILL_CONTRAST_STEPS
-                    delay((BILL_TUNE_IN_MILLIS / BILL_CONTRAST_STEPS).toLong())
+                // Caught in bursts rather than eased up. A picture locking on
+                // snaps to something like itself, loses it, snaps back harder
+                // — and the last drop is the shortest, so it reads as settling
+                // rather than as stopping.
+                BILL_TUNE_IN.forEach { frame ->
+                    billAlpha = frame.alpha
+                    billContrast = frame.contrast
+                    delay(frame.holdMillis)
                 }
+                billAlpha = 1f
+                billContrast = 1f
             }
         }
     }
@@ -236,7 +245,7 @@ fun Gen1Tutorial(
                         horizontalArrangement =
                             if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
                     ) {
-                        BillPortrait(speaking, alpha = billAlpha.value, contrast = billContrast)
+                        BillPortrait(speaking, alpha = billAlpha, contrast = billContrast)
                     }
                     Spacer(Modifier.height(gen1Dp(2)))
                     Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
@@ -458,19 +467,35 @@ private fun loadBill(
 /** How many source pixels the art is across, which is also how tall. */
 private const val BILL_PIXELS = 128
 
-/** How much of him is showing while the connection is dead. Not zero: a
- * picture that has not arrived yet is a faint one, not an absent one. */
-private const val BILL_STATIC_ALPHA = 0.18f
+/** The brightest the dead line ever gets him. Faint by design — but it is
+ * jittered rather than held, or the window is just a grey square. */
+private const val BILL_STATIC_ALPHA = 0.42f
 
 /** How much contrast the picture has while it is dead — none. */
 private const val BILL_MIN_CONTRAST = 0f
 
-/** How long the fade and the three contrast jumps take, together. */
-private const val BILL_TUNE_IN_MILLIS = 900
+/** How long each flicker of the dead line is held. Uneven on purpose: a
+ * steady blink is a cursor, and a cursor is not what this is. */
+private val STATIC_FLICKER_MILLIS = listOf(70L, 110L, 60L, 180L, 90L, 130L)
 
-/** Three jumps, because a signal locking in reads as a few snaps into place
- * rather than a slide — see [Gen1Tutorial]'s opening beat. */
-private const val BILL_CONTRAST_STEPS = 3
+/** One frame of the picture catching. */
+private data class TuneInFrame(val alpha: Float, val contrast: Float, val holdMillis: Long)
+
+/**
+ * The signal locking on, frame by frame.
+ *
+ * Five hundred milliseconds of snapping to the picture and losing it, twice
+ * over, each grab stronger and each drop shorter than the last — which is
+ * what "the connection appears to be a success" is said over.
+ */
+private val BILL_TUNE_IN = listOf(
+    TuneInFrame(0.85f, 0.55f, 70),
+    TuneInFrame(0.20f, 0f, 90),
+    TuneInFrame(1f, 0.80f, 60),
+    TuneInFrame(0.35f, 0.25f, 70),
+    TuneInFrame(1f, 1f, 90),
+    TuneInFrame(0.55f, 0.70f, 45),
+)
 
 /** One thing Bill says, and the screen he says it over. */
 private data class TutorialBeat(

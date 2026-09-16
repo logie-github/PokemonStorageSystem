@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -92,7 +92,18 @@ fun Gen1TypedLines(
 
     Column(
         modifier
-            .onSizeChanged { width = it.width }
+            // The width to wrap inside is the one this window is *offering*,
+            // not the one the text currently fills. Reading the filled size
+            // is a deadlock and was one: the box holds nothing until it has
+            // been paginated, a box holding nothing measures nought across,
+            // and nought is refused as a width to paginate against — so it
+            // stayed empty, and every typed box in the app printed nothing
+            // at all. What is offered is known before there is any text.
+            .layout { measurable, constraints ->
+                if (constraints.hasBoundedWidth) width = constraints.maxWidth
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+            }
             // A box nobody else is driving turns its own pages.
             .then(
                 if (dialogue == null) Modifier.pointerInput(state) {

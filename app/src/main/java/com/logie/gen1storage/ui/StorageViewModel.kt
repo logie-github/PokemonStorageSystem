@@ -1771,16 +1771,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun importRomsFolder(treeUri: Uri) {
         mutable.update { it.copy(busy = true) }
         downloadStage("ROMS") {
-            val outcomes = com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)
+            com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)
             mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
-            val have = outcomes.filter { it.imported }.map { it.version.label }
-            val stillNeed = outcomes.filterNot { it.imported }.map { it.version.label }
-            message(
-                *listOfNotNull(
-                    have.takeIf { it.isNotEmpty() }?.let { "HAVE: ${it.joinToString(", ")}" },
-                    stillNeed.takeIf { it.isNotEmpty() }?.let { "STILL NEED: ${it.joinToString(", ")}" },
-                ).toTypedArray()
-            )
+            // Nothing is said about it here. A window listing what turned up
+            // landed over whatever was on screen, which during the
+            // introduction meant a window over Bill mid-sentence; and the
+            // ROMS drawer already names every cartridge on the device, a row
+            // each, for anyone who wants the list. The introduction reports
+            // it in his own words instead: see [Gen1Tutorial.romsFound].
+            mutable.update { it.copy(busy = false) }
         }
     }
 

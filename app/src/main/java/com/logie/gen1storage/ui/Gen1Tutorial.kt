@@ -94,7 +94,12 @@ fun Gen1Tutorial(
     // Not on the beat that hands the box over: with swipe controls on, the
     // grid turns a tap into a confirm, and that confirm is meant for the
     // Pokemon under the finger rather than for the tour.
-    rememberCursorLayer(1) { if (current.ask == null && !current.handsOver) advance() }
+    // What a tap or an A press means here: finish the line he is typing, then
+    // turn the page, and only once he has nothing left to say does it move
+    // the tour on. See [Gen1Dialogue].
+    val dialogue = rememberGen1Dialogue(beat)
+    fun take() { if (!dialogue.next()) advance() }
+    rememberCursorLayer(1) { if (current.ask == null && !current.handsOver) take() }
 
     // Android's own folder chooser, which is where the permission actually
     // comes from: picking a folder in it is what grants this app access to
@@ -159,7 +164,7 @@ fun Gen1Tutorial(
                 // one. Advancing from that beat is the text box and the arrow
                 // under it, which is where a Game Boy always put it.
                 if (!current.handsOver && current.ask == null) {
-                    Box(Modifier.matchParentSize().tapsTo(beat) { advance() })
+                    Box(Modifier.matchParentSize().tapsTo(beat) { take() })
                 }
             }
             Box {
@@ -176,11 +181,11 @@ fun Gen1Tutorial(
                         val said = remember(beat) {
                             current.linesFor?.invoke(model) ?: current.lines
                         }
-                        Gen1TypedLines(said, onFinished = { speaking = false })
+                        Gen1TypedLines(said, dialogue = dialogue, onFinished = { speaking = false })
                         // Only once he has finished saying it, the way the
                         // cartridge only offers a choice when the box has
                         // stopped printing.
-                        if (!speaking) when (current.ask) {
+                        if (!speaking && !dialogue.more) when (current.ask) {
                             null -> Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End,
@@ -200,7 +205,7 @@ fun Gen1Tutorial(
                 // beat that asks something, where the rows underneath are
                 // what a tap is for.
                 if (current.ask == null) {
-                    Box(Modifier.matchParentSize().tapsTo(beat) { advance() })
+                    Box(Modifier.matchParentSize().tapsTo(beat) { take() })
                 }
             }
         }

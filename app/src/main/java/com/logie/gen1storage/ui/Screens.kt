@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -93,6 +94,21 @@ fun StorageHomeScreen(state: UiState, model: StorageViewModel) {
 
 @Composable
 fun LinkScreen(state: UiState, model: StorageViewModel) {
+    ScreenColumn { item { LinkForm(state, model) } }
+}
+
+/**
+ * The two code fields and the button, without the screen around them.
+ *
+ * Its own composable because the introduction shows this for real rather than
+ * a picture of it (see `TutorialSyncScreen`), and the screen's own list put
+ * the window in something that fills the height — so inside the tour's stage
+ * the frame ran off the bottom of the space it was given and the window
+ * simply had no lower edge. A window that draws its own four sides has to be
+ * measured by its contents, wherever it is put.
+ */
+@Composable
+fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modifier) {
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
     val ready = SyncApi.normalizeCode(first) != null && SyncApi.normalizeCode(second) != null
@@ -100,28 +116,25 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
     // the keyboard's; the button is the cursor's, as it is everywhere else.
     val at = rememberCursorLayer(1) { if (ready && !state.linking) model.link(first, second) }
 
-    ScreenColumn {
-        item {
-            Gen1Frame {
-                GbText("SAVE SYNC")
-            }
+    Column(
+        modifier.wrapContentHeight(),
+        verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+        horizontalAlignment = Gen1Layout.menuSide,
+    ) {
+        Gen1Frame(Modifier.wrapContentWidth()) {
+            GbText("SAVE SYNC")
         }
-        item {
-            Gen1Frame {
-                CodeField("FIRST CODE", first) { first = it }
-                Spacer(Modifier.height(10.dp))
-                CodeField("SECOND CODE", second) { second = it }
-                Spacer(Modifier.height(12.dp))
-                Gen1Button(
-                    if (state.linking) "LINKING..." else "LINK THIS DEVICE",
-                    { model.link(first, second) },
-                    enabled = ready && !state.linking,
-                    selected = at == 0,
-                )
-                if (!ready) {
-                    Spacer(Modifier.height(6.dp))
-                }
-            }
+        Gen1Frame {
+            CodeField("FIRST CODE", first) { first = it }
+            Spacer(Modifier.height(10.dp))
+            CodeField("SECOND CODE", second) { second = it }
+            Spacer(Modifier.height(12.dp))
+            Gen1Button(
+                if (state.linking) "LINKING..." else "LINK THIS DEVICE",
+                { model.link(first, second) },
+                enabled = ready && !state.linking,
+                selected = at == 0,
+            )
         }
     }
 }

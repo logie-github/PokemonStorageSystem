@@ -1,5 +1,17 @@
 package com.logie.gen1storage.ui
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
@@ -29,36 +41,139 @@ fun Gen1TypedLines(
     lines: List<String>,
     modifier: Modifier = Modifier,
     style: TextStyle = Gen1Text,
-    /** Called once the last letter is down, for whatever waits on it. */
+    /**
+     * A handle on this box, for a screen that drives it with its own taps.
+     *
+     * Null and the box says everything it has as fast as it can type it.
+     * Given one, whoever owns the tap can ask for the rest of a page, then
+     * the next page, and be told when there is nothing left — which is how a
+     * tour knows a tap should move it on rather than turn a page.
+     */
+    dialogue: Gen1Dialogue? = null,
+    /** Called once the last letter of the last page is down. */
     onFinished: () -> Unit = {},
 ) {
-    val whole = remember(lines) { lines.sumOf { it.length } }
-    var typed by remember(lines) { mutableIntStateOf(0) }
+    // What a Game Boy does and this did not: a box holds a few lines and then
+    // waits. Eight lines of somebody talking, all arriving at once, is a wall
+    // of text in a window built for three.
+    var width by remember { mutableIntStateOf(0) }
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val pages = remember(lines, width, style, density) {
+        if (width <= 0) listOf(lines.joinToString(" ").trim()).filter { it.isNotEmpty() }
+        else paginate(lines, measurer, style, width)
+    }
 
-    LaunchedEffect(lines) {
+    var page by remember(pages) { mutableIntStateOf(0) }
+    val text = pages.getOrElse(page) { "" }
+    var typed by remember(text) { mutableIntStateOf(0) }
+    val done = typed >= text.length
+    val last = page >= pages.size - 1
+
+    LaunchedEffect(text) {
         // Held still, the line is simply already printed: the words are the
         // graphic here, and reduce motion takes the movement, not the text.
         if (!Gen1Motion.moves(Motion.TEXT)) {
-            typed = whole
-            onFinished()
+            typed = text.length
+            if (last) onFinished()
             return@LaunchedEffect
         }
         typed = 0
-        while (typed < whole) {
+        while (typed < text.length) {
             delay(Gen1Typing.speed.letterMillis)
             typed++
         }
-        onFinished()
+        if (last) onFinished()
     }
 
-    Column(modifier) {
-        var consumed = 0
-        lines.forEach { line ->
-            val shown = (typed - consumed).coerceIn(0, line.length)
-            consumed += line.length
-            TypedLine(line, shown, style)
+    // Taking a tap: finish the page it is on, then turn it, and only say no
+    // once there is nothing left to say.
+    if (dialogue != null) {
+        dialogue.more = !done || !last
+        dialogue.advance = {
+            when {
+                !done -> typed = text.length
+                !last -> page++
+                else -> Unit
+            }
         }
     }
+
+    Column(modifier.onSizeChanged { width = it.width }) {
+        TypedLine(text, typed, style)
+        // The arrow a page that has more behind it ends on, which is the
+        // cartridge's own way of saying a box is not finished with you.
+        if (done && !last) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Gen1BlinkingArrow(style)
+            }
+        }
+    }
+}
+
+/**
+ * A box being talked to from outside, so one tap can mean "go on" and then
+ * mean "I have read it" without the caller knowing where the pages fall.
+ */
+@Stable
+class Gen1Dialogue {
+    /** Whether a tap here would do something. */
+    var more by mutableStateOf(false)
+        internal set
+
+    internal var advance: () -> Unit = {}
+
+    /** Takes a tap. True if the box used it; false if it had nothing left. */
+    fun next(): Boolean {
+        if (!more) return false
+        advance()
+        return true
+    }
+}
+
+@Composable
+fun rememberGen1Dialogue(vararg keys: Any?): Gen1Dialogue =
+    remember(*keys) { Gen1Dialogue() }
+
+/** How many lines of a window a page of dialogue may fill. */
+const val GEN1_DIALOGUE_LINES = 3
+
+/**
+ * The text cut into pages of no more than [GEN1_DIALOGUE_LINES] lines.
+ *
+ * Measured rather than guessed at: how many lines a sentence takes depends on
+ * the width it is given, the size the player has the text at, and the font,
+ * and a character count that was right on one phone would break mid-word on
+ * the next. Words are moved to the next page whole; a single word too long
+ * for a line is left where it is rather than dropped.
+ */
+private fun paginate(
+    lines: List<String>,
+    measurer: TextMeasurer,
+    style: TextStyle,
+    width: Int,
+): List<String> {
+    val whole = lines.joinToString(" ").trim()
+    if (whole.isEmpty()) return emptyList()
+    fun linesOf(text: String): Int =
+        measurer.measure(text, style, constraints = Constraints(maxWidth = width)).lineCount
+
+    if (linesOf(whole) <= GEN1_DIALOGUE_LINES) return listOf(whole)
+
+    val pages = ArrayList<String>()
+    val words = whole.split(" ").filter { it.isNotEmpty() }
+    var current = StringBuilder()
+    words.forEach { word ->
+        val candidate = if (current.isEmpty()) word else "$current $word"
+        if (current.isNotEmpty() && linesOf(candidate) > GEN1_DIALOGUE_LINES) {
+            pages.add(current.toString())
+            current = StringBuilder(word)
+        } else {
+            current = StringBuilder(candidate)
+        }
+    }
+    if (current.isNotEmpty()) pages.add(current.toString())
+    return pages
 }
 
 /** One line, with the part not yet typed drawn in no colour at all. */
@@ -102,8 +217,18 @@ fun Gen1TypedBox(
     after: @Composable ColumnScope.() -> Unit = {},
 ) {
     var finished by remember(lines) { mutableStateOf(false) }
-    Gen1Frame(modifier, opening = true) {
-        Gen1TypedLines(lines, onFinished = { finished = true })
+    val dialogue = rememberGen1Dialogue(lines)
+    Gen1Frame(
+        // A box with more to say is turned by tapping it, and one that has
+        // finished ignores the tap rather than swallowing it.
+        modifier.then(
+            if (dialogue.more) Modifier.pointerInput(dialogue) {
+                detectTapGestures { dialogue.next() }
+            } else Modifier
+        ),
+        opening = true,
+    ) {
+        Gen1TypedLines(lines, dialogue = dialogue, onFinished = { finished = true })
         if (finished) after()
     }
 }

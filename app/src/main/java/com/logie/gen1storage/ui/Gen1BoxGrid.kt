@@ -301,8 +301,10 @@ fun Gen1BoxGrid(
                             detectTapGestures { at ->
                                 if (tapTakesCursor) {
                                     cursorSlot?.let { slot ->
-                                        box.slots.getOrNull(slot)?.pokemon?.species?.dexNumber
-                                            ?.let { dex -> cries?.cry(dex) }
+                                        box.slots.getOrNull(slot)?.pokemon?.let { mon ->
+                                            mon.species?.dexNumber
+                                                ?.let { cries?.cry(it, mon.generation) }
+                                        }
                                     }
                                     whole.confirm()
                                     return@detectTapGestures
@@ -310,8 +312,10 @@ fun Gen1BoxGrid(
                                 slotAt(onGrid(at))?.let {
                                     // It speaks when it is touched, the way the
                                     // sprite on the status screen does.
-                                    box.slots.getOrNull(it)?.pokemon?.species?.dexNumber
-                                        ?.let { dex -> cries?.cry(dex) }
+                                    box.slots.getOrNull(it)?.pokemon?.let { mon ->
+                                        mon.species?.dexNumber
+                                            ?.let { dex -> cries?.cry(dex, mon.generation) }
+                                    }
                                     onTap(it)
                                 }
                             }

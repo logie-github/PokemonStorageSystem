@@ -1580,8 +1580,8 @@ fun CreditsScreen() {
                 item {
                     Credit(
                         "CRIES",
-                        "POKEAPI/CRIES",
-                        "github.com/PokeAPI/cries",
+                        "NOTE DATA FROM PRET,",
+                        "SYNTHESISED ON DEVICE",
                     )
                 }
                 item {

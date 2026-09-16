@@ -321,8 +321,6 @@ data class UiState(
     val loadingAll: Boolean = false,
     val spriteProgress: DownloadProgress? = null,
     val spritesInstalled: Int = 0,
-    val cryProgress: DownloadProgress? = null,
-    val criesInstalled: Int = 0,
     val followerProgress: DownloadProgress? = null,
     val followersInstalled: Int = 0,
     val trainerProgress: DownloadProgress? = null,
@@ -355,7 +353,7 @@ data class UiState(
      * instead of "missing".
      */
     val artProgress: DownloadProgress?
-        get() = listOfNotNull(followerProgress, spriteProgress, trainerProgress, cryProgress)
+        get() = listOfNotNull(followerProgress, spriteProgress, trainerProgress)
             .firstOrNull { !it.finished }
 
     val fetchingArt: Boolean get() = artProgress != null
@@ -376,7 +374,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val spriteDownloader = SpriteDownloader(sprites)
     private var spriteJob: Job? = null
     private val cries = CryStore(application)
-    private var cryJob: Job? = null
     val followers = FollowerStore(application)
     val trainers = TrainerStore(application)
     private var followerJob: Job? = null
@@ -464,7 +461,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     ?.copy(finished = true, error = said) ?: progress
             state.copy(
                 spriteProgress = stop(state.spriteProgress),
-                cryProgress = stop(state.cryProgress),
                 followerProgress = stop(state.followerProgress),
                 trainerProgress = stop(state.trainerProgress),
             )
@@ -488,7 +484,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         shownPercent = progress?.percent?.takeIf { !progress.finished } ?: -1
         if (progress == null || progress.finished) {
             val stillGoing = mutable.value.let {
-                listOfNotNull(it.spriteProgress, it.cryProgress, it.followerProgress, it.trainerProgress)
+                listOfNotNull(it.spriteProgress, it.followerProgress, it.trainerProgress)
                     .any { p -> !p.finished }
             }
             // DOWNLOAD ALL holds it up across all four stages. Between one
@@ -548,7 +544,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
-                criesInstalled = cries.count(),
                 followersInstalled = followers.count(),
                 trainersInstalled = trainers.count(),
             )
@@ -1227,6 +1222,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
+     * Which cartridges are not on the device, by name.
+     *
+     * For the introduction, which says so in a sentence rather than leaving a
+     * window of lists over what somebody is trying to read.
+     */
+    fun romsStillMissing(): List<String> =
+        RomVersion.entries.filterNot { roms.has(it) }.map { it.label }
+
+    /**
      * OPTIONS asking for it again.
      *
      * Back out to the main menu on the way, because the introduction is drawn
@@ -1423,41 +1427,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * none of them ship here and the player fetches the set once rather than
      * waiting on one at a time as each Pokémon is opened.
      */
-    fun downloadCries() {
-        if (cryJob?.isActive == true) return
-        cryJob = downloadStage("CRIES") {
-            mutable.update { it.copy(prompt = null, cryProgress = DownloadProgress(0, 1)) }
-            val result = runCatching {
-                cries.downloadAll { progress ->
-                    mutable.update { it.copy(cryProgress = progress) }
-                    showDownload("CRIES", progress)
-                }
-            }
-            mutable.update { state ->
-                state.copy(
-                    criesInstalled = cries.count(),
-                    cryProgress = result.getOrNull()
-                        ?: DownloadProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
-                )
-            }
-        }
-    }
-
-    fun cancelCryDownload() {
-        cryJob?.cancel()
-        cryJob = null
-        DownloadService.hide(getApplication())
-        mutable.update { it.copy(cryProgress = null, criesInstalled = cries.count()) }
-    }
-
-    fun dismissCryProgress() = mutable.update { it.copy(cryProgress = null) }
+    /**
+     * What the cries cost on disk, which is a cache of this app's own
+     * rendering rather than anything it fetched. See [CryStore].
+     */
+    fun cryBytesOnDisk(): Long = cries.bytesOnDisk()
 
     fun deleteCries() {
         cries.clear()
-        mutable.update { it.copy(criesInstalled = 0, prompt = null) }
+        mutable.update { it.copy(prompt = null) }
     }
-
-    fun cryBytesOnDisk(): Long = cries.bytesOnDisk()
 
     // ------- followers
 
@@ -1668,8 +1647,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             try {
                 downloadSprites()
                 spriteJob?.join()
-                downloadCries()
-                cryJob?.join()
                 downloadFollowers()
                 followerJob?.join()
                 downloadTrainers()
@@ -1695,7 +1672,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     /** Everything already fetched, as a share of everything there is. */
     fun downloadedPercent(): Int {
         val have = mutable.value.let {
-            it.spritesInstalled + it.criesInstalled + it.followersInstalled + it.trainersInstalled
+            it.spritesInstalled + it.followersInstalled + it.trainersInstalled
         }
         val total = downloadTotal()
         return if (total <= 0) 0 else ((have.coerceAtMost(total) * 100) / total)
@@ -1706,7 +1683,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val current = mutable.value
         val all = listOfNotNull(
             current.spriteProgress,
-            current.cryProgress,
             current.followerProgress,
             current.trainerProgress,
         )
@@ -1723,7 +1699,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // running reports each file as it lands, and the three not running
         // report what is already here.
         val done = maxOf(current.spritesInstalled, current.spriteProgress?.done ?: 0) +
-            maxOf(current.criesInstalled, current.cryProgress?.done ?: 0) +
             maxOf(current.followersInstalled, current.followerProgress?.done ?: 0) +
             maxOf(current.trainersInstalled, current.trainerProgress?.done ?: 0)
         val running = all.any { !it.finished }
@@ -1737,12 +1712,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun downloadBytesOnDisk(): Long =
-        sprites.bytesOnDisk() + cries.bytesOnDisk() +
-            followers.bytesOnDisk() + trainers.bytesOnDisk()
+        sprites.bytesOnDisk() + followers.bytesOnDisk() + trainers.bytesOnDisk() +
+            // The cries are this app's own renders rather than a download, but
+            // they are still bytes in its folder and DELETE should take them.
+            cries.bytesOnDisk()
 
     fun cancelDownload() {
         cancelSpriteDownload()
-        cancelCryDownload()
         cancelFollowerDownload()
         cancelTrainerDownload()
     }
@@ -1750,7 +1726,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun dismissDownloadProgress() = mutable.update {
         it.copy(
             spriteProgress = null,
-            cryProgress = null,
             followerProgress = null,
             trainerProgress = null,
         )
@@ -2589,8 +2564,9 @@ private const val DOWNLOAD_FAILURE_FILE = "last-download-failure.txt"
  * Every file the download fetches, counted once, for a given list of sprite
  * sets.
  *
- * The sprite sets, the cries, the follower sheets, and the trainers with the
- * sheets that come down beside them.
+ * The sprite sets, the follower sheets, and the trainers with the sheets that
+ * come down beside them. Not the cries: they are rendered on the device out of
+ * tables that ship in the APK, so there is nothing to fetch. See [CrySynth].
  *
  * Takes the sets rather than assuming all of them, because a ROM on the
  * device takes its own set out of the download entirely. Counted with the
@@ -2605,6 +2581,6 @@ private fun downloadTotalFor(sets: List<SpriteSet>): Int =
     // shiny colours the three Generation II sets share.
     sets.sumOf { if (it.generation == 2) Gen2Data.SPECIES_COUNT else 151 } +
         (if (sets.any { it.generation == 2 }) Gen2Data.SPECIES_COUNT else 0) +
-        CryStore.LAST_CRY + FollowerStore.LAST_SHEET +
+        FollowerStore.LAST_SHEET +
         TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size + TrainerStore.GEN2_ART.size +
         TrainerStore.GEN2_TRAINER_IDS.size

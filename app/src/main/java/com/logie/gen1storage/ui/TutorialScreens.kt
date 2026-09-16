@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,20 +55,26 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
         dealt.snapTo(1f)
         dealt.animateTo(0f, tween(DEAL_MILLIS, easing = LinearEasing))
     }
-    Gen1TrainerCard(
-        remote = remote,
-        save = save,
-        title = "CARD 1",
-        sprites = model.sprites,
-        trainers = model.trainers,
-        trainerSprite = null,
-        spriteRevision = spriteRevision,
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer { translationY = dealt.value * size.height },
-        inserted = true,
-        full = true,
-    )
+    // The card as the shelf draws it, not the full-size one a long press
+    // opens. Full size gives the badges their own line and the lead its own
+    // portrait, and in a stage with a screen's worth of height to fill that
+    // came out as a card two thirds of the way down the phone with a hole in
+    // the middle of it. Wrapped in its own height so nothing stretches it.
+    Box(Modifier.fillMaxWidth().wrapContentHeight()) {
+        Gen1TrainerCard(
+            remote = remote,
+            save = save,
+            title = "CARD 1",
+            sprites = model.sprites,
+            trainers = model.trainers,
+            trainerSprite = null,
+            spriteRevision = spriteRevision,
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationY = dealt.value * size.height },
+            inserted = true,
+        )
+    }
 }
 
 /** A Pokémon on its way across, as [Gen1TransferScene] draws one. */

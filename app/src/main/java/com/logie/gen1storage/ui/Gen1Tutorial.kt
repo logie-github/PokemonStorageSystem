@@ -173,7 +173,10 @@ fun Gen1Tutorial(
                     }
                     Spacer(Modifier.height(gen1Dp(2)))
                     Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
-                        Gen1TypedLines(current.lines, onFinished = { speaking = false })
+                        val said = remember(beat) {
+                            current.linesFor?.invoke(model) ?: current.lines
+                        }
+                        Gen1TypedLines(said, onFinished = { speaking = false })
                         // Only once he has finished saying it, the way the
                         // cartridge only offers a choice when the box has
                         // stopped printing.
@@ -363,6 +366,14 @@ private data class TutorialBeat(
     /** A beat that waits on an answer rather than on a tap. */
     val ask: TutorialAsk? = null,
     /**
+     * A line worked out when the beat opens rather than written in advance.
+     *
+     * For the one that reports what the folder held: what he says depends on
+     * what turned up, and it is said in a sentence rather than left as a
+     * window of lists over the top of him.
+     */
+    val linesFor: ((StorageViewModel) -> List<String>)? = null,
+    /**
      * Whether this is the beat with SAVE SYNC live on it, which moves itself
      * along the moment a pair of codes is accepted.
      *
@@ -401,6 +412,29 @@ private enum class TutorialAsk {
  * wanting a lecture about one, and every screen named here is a screen the
  * player is about to be standing on anyway.
  */
+/**
+ * What he says once the folder has been looked in.
+ *
+ * Three answers, because three things can have happened, and none of them is
+ * a list of version names in a window over his head. A missing cartridge is
+ * named when it is the only one, because then the player can go and get it;
+ * past that, naming five is a wall of text and "a few" is the useful fact.
+ */
+private fun romsFound(model: StorageViewModel): List<String> {
+    val missing = model.romsStillMissing()
+    return when {
+        missing.isEmpty() -> listOf("BILL: Lovely. Your ROMs have been found.")
+        missing.size == 1 -> listOf(
+            "BILL: Good. I see that one is missing, be sure to import " +
+                "${missing.single()} later."
+        )
+        else -> listOf(
+            "BILL: I see that a few are missing. The system won't display " +
+                "correctly without these, so be sure to import them later."
+        )
+    }
+}
+
 private fun tutorialBeats(): List<TutorialBeat> = listOf(
     TutorialBeat(
         listOf(
@@ -427,6 +461,10 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         ask = TutorialAsk.ROMS,
     ),
     TutorialBeat(
+        emptyList(),
+        linesFor = ::romsFound,
+    ),
+    TutorialBeat(
         listOf(
             "BILL: This is your trainer card. Insert it and the PC opens that " +
                 "save. Your party, your boxes, your items."
@@ -447,11 +485,21 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: And these are your boxes. Six hundred spaces, and everything " +
-                "you send lands here. Go on, give one a tap."
+            "BILL: There's much more space than you'll usually have. Rather " +
+                "than multiple boxes, you have one shared box. I'm sure the " +
+                "Pokemon enjoy being together like this."
         ),
         stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
         sound = SoundEffect.SELECT,
+        handsOver = true,
+    ),
+    TutorialBeat(
+        listOf(
+            "BILL: Viewing your box will allow you to send Pokemon back to " +
+                "the PC, but will also let you check their stats and see " +
+                "which moves they've learned."
+        ),
+        stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
         handsOver = true,
     ),
     TutorialBeat(

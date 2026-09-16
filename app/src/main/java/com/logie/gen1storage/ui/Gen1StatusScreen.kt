@@ -108,7 +108,7 @@ fun Gen1StatusScreen(
     // again when something unrelated recomposes.
     val cries = LocalGen1Audio.current
     LaunchedEffect(pokemon.fingerprint, speaks) {
-        if (speaks) cries?.cry(pokemon.species?.dexNumber)
+        if (speaks) cries?.cry(pokemon.species?.dexNumber, pokemon.generation)
     }
 
     Row(modifier.fillMaxSize().padding(gen1Dp(4))) {
@@ -132,7 +132,7 @@ fun Gen1StatusScreen(
                     store,
                     revision = spriteRevision,
                     onLongPress = onSpriteLongPress,
-                    onTap = { cries?.cry(pokemon.species?.dexNumber) },
+                    onTap = { cries?.cry(pokemon.species?.dexNumber, pokemon.generation) },
                     shiny = pokemon.isShiny,
                 )
             }

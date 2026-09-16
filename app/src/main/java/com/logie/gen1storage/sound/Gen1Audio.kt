@@ -19,10 +19,10 @@ import java.util.Collections
 /**
  * Everything the app plays: the Pokémon cries and the interface's own sounds.
  *
- * The interface's sound effects are this project's own work and ship with it.
- * The cries are not: they are the games' recordings, so one is fetched on first
- * use and kept on the device the way the sprites are, and nothing of theirs is
- * distributed here.
+ * Both are this project's own work and ship with it. The cries used to be
+ * downloaded recordings; they are now synthesised here out of pret's note
+ * data through a model of the Game Boy's sound channels, so nothing is
+ * fetched and nothing of anybody's recordings is distributed. See [CrySynth].
  *
  * [SoundPool] rather than MediaPlayer because these are short one-shots: it
  * keeps decoded samples in memory and starts them immediately. Loading is
@@ -99,16 +99,21 @@ class Gen1Audio(private val context: Context) {
      * than cutting the previous one off is what makes tapping a sprite twice
      * sound like two cries instead of one interrupted one.
      */
-    fun cry(dexNumber: Int?) {
+    fun cry(dexNumber: Int?, generation: Int = 1) {
         if (dexNumber == null) return
-        samples["$dexNumber"]?.let { sample ->
+        // A Pokemon out of a Generation II save cries its own game's cry, and
+        // the first hundred and fifty-one have one in each: same dex number,
+        // different note data.
+        val key = "$generation/$dexNumber"
+        samples[key]?.let { sample ->
             scope.launch { soundAfterTheLast(sample) }
             return
         }
         scope.launch {
-            val file = runCatching { cries.fetch(dexNumber) }.getOrNull() ?: return@launch
+            val file = runCatching { cries.render(dexNumber, generation) }.getOrNull()
+                ?: return@launch
             val id = runCatching { pool.load(file.path, 1) }.getOrNull() ?: return@launch
-            samples["$dexNumber"] = id
+            samples[key] = id
             pending.add(id)
         }
     }

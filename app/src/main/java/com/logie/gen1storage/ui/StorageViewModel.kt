@@ -1791,10 +1791,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * Imports every ROM [RomFolderImporter] can find and name under
      * [treeUri], a folder the player picked with the system's own chooser
      * rather than one file at a time.
+     *
+     * Returns the [Job] doing the work, for a caller that has to know when it
+     * is actually done rather than only that it was asked for — the
+     * introduction's own ROMS beat reports what turned up, and reporting it
+     * before the import has run would just be reading last run's answer.
      */
-    fun importRomsFolder(treeUri: Uri) {
+    fun importRomsFolder(treeUri: Uri): Job {
         mutable.update { it.copy(busy = true) }
-        downloadStage("ROMS") {
+        return downloadStage("ROMS") {
             com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)
             mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
             // Nothing is said about it here. A window listing what turned up

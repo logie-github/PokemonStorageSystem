@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.logie.gen1storage.gen1recomp.GameVersion
+import com.logie.gen1storage.sound.LocalGen1Audio
+import com.logie.gen1storage.sound.SoundEffect
 import kotlinx.coroutines.delay
 
 /**
@@ -106,6 +108,15 @@ fun TutorialTransferScreen(model: StorageViewModel, spriteRevision: Int) {
             run++
         }
     }
+    // The arrival chime, once a loop rather than once for the whole beat: a
+    // beat somebody lingers on used to play a Pokemon landing in the PC two
+    // or three times over with nothing to say so, which is a demonstration
+    // quietly going out of sync with what it is demonstrating.
+    val audio = LocalGen1Audio.current
+    LaunchedEffect(run) {
+        delay(TRANSFER_SOUND_DELAY_MILLIS)
+        audio?.play(SoundEffect.TRANSFER)
+    }
     key(run) { Gen1TransferScene(scene, model.sprites, spriteRevision) }
 }
 
@@ -132,6 +143,14 @@ fun TutorialViewBoxesScreen(model: StorageViewModel, spriteRevision: Int) {
             at = (at + 1) % occupied
         }
     }
+    // SWIPE CONTROLS is the app's default, and under it a tap on the grid
+    // never reaches this screen's own [onTap] at all — Gen1BoxGrid reads it as
+    // pressing A on whatever the cursor is already on and answers through the
+    // shared cursor stack instead (see Gen1Cursor.confirm). With no layer of
+    // its own pushed here, that press used to find nobody home: the bracket
+    // just kept walking, on the one setting nearly every first run actually
+    // has.
+    rememberCursorLayer(1) { taken = true }
     Column(Modifier.fillMaxSize()) {
         Gen1Frame(
             Modifier.wrapContentWidth(),
@@ -160,6 +179,10 @@ private const val DEAL_MILLIS = 220
 
 /** How often the transfer runs itself again while that beat is up. */
 private const val REPLAY_MILLIS = 4_200L
+
+/** Long enough for the ball to open and the Pokemon to finish growing, so
+ * the chime lands on the arrival rather than ahead of it. */
+private const val TRANSFER_SOUND_DELAY_MILLIS = 1_400L
 
 /** How long the bracket rests on each Pokemon as it walks the box. */
 private const val STEP_MILLIS = 620L

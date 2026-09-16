@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,14 +112,30 @@ fun Gen1Tutorial(
 
     // Android's own folder chooser, which is where the permission actually
     // comes from: picking a folder in it is what grants this app access to
-    // it. Whatever comes back — a folder, or a player who changed their mind
-    // — the tour carries on; the import runs behind it and says what it found
-    // in a window of its own.
+    // it. A player who changed their mind moves the tour straight on; one who
+    // picked a folder waits for the import to actually finish first — the
+    // next beat is Bill reading back what turned up, and read a beat early
+    // that is always "nothing", because the import has not run yet.
+    // Set the moment a folder comes back and never cleared: the beat is gone
+    // once the import finishes, so nothing needs to turn this off again. It
+    // exists so the two rows below can be pulled the instant that happens —
+    // otherwise a slow folder leaves them sitting there answerable a second
+    // time, and a second "FIND THE FOLDER" mid-import is not a tap this beat
+    // is built to take twice.
+    var romsImporting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val pickRomsFolder = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
-        if (uri != null) model.importRomsFolder(uri)
-        advance()
+        if (uri == null) {
+            advance()
+        } else {
+            romsImporting = true
+            scope.launch {
+                model.importRomsFolder(uri).join()
+                advance()
+            }
+        }
     }
 
     // Codes accepted is an answer, so the tour does not also need to be told.
@@ -236,7 +253,10 @@ fun Gen1Tutorial(
                                 horizontalArrangement = Arrangement.End,
                             ) { Gen1BlinkingArrow() }
 
-                            TutorialAsk.ROMS -> Gen1ChoiceRows(
+                            // Pulled the moment a folder comes back, rather
+                            // than left up for however long that folder takes
+                            // to read — see romsImporting above.
+                            TutorialAsk.ROMS -> if (!romsImporting) Gen1ChoiceRows(
                                 listOf(
                                     "FIND THE FOLDER" to { pickRomsFolder.launch(null) },
                                     "NOT NOW" to { advance() },
@@ -595,10 +615,9 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
                 "game and turns up in your PC the next time you sync."
         ),
         stage = { model, revision -> TutorialTransferScreen(model, revision) },
-        sound = SoundEffect.TRANSFER,
-        // Long enough for the ball to open and the Pokemon to finish growing,
-        // so the sound lands on the arrival rather than ahead of it.
-        soundAfterMillis = 1_400L,
+        // No beat-level sound here: the scene itself replays every few
+        // seconds for as long as this beat is up, and it plays its own
+        // arrival chime on each loop — see [TutorialTransferScreen].
     ),
     TutorialBeat(
         listOf(

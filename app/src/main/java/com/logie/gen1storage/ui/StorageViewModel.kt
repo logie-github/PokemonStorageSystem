@@ -1692,6 +1692,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             setsWorthFetching().takeIf { it.isNotEmpty() }?.let { sets ->
                 runCatching { spriteDownloader.download(sets, TutorialSamples.SPECIES) { half(50, it) } }
             }
+            // Preload trainer sprites for the tutorial: Red and the Gen2 player sprites
+            runCatching {
+                trainers.load(TrainerStore.PLAYER)
+                trainers.load(TrainerStore.GEN2_PLAYER_MALE)
+                trainers.load(TrainerStore.GEN2_PLAYER_FEMALE)
+            }
         } finally {
             mutable.update {
                 it.copy(

@@ -124,9 +124,18 @@ fun Gen1Tutorial(
     val dialogue = rememberGen1Dialogue(beat, connecting)
     fun take() {
         if (connecting) return
-        if (!dialogue.next()) advance()
+        // Turning his page always works. Only the moving-on is withheld: a
+        // beat that asks something is answered by its rows, and those are not
+        // offered until he has finished asking — so a question longer than the
+        // box had a page to turn that nothing on screen could turn, and the
+        // tour stopped dead on it.
+        if (dialogue.next()) return
+        if (current.ask != null) return
+        advance()
     }
-    rememberCursorLayer(1) { if (current.ask == null && !current.handsOver) take() }
+    rememberCursorLayer(1) {
+        if (dialogue.more || (current.ask == null && !current.handsOver)) take()
+    }
 
     // Android's own folder chooser, which is where the permission actually
     // comes from: picking a folder in it is what grants this app access to
@@ -255,7 +264,7 @@ fun Gen1Tutorial(
                 // Pokemon poked there answers exactly as it would in the real
                 // one. Advancing from that beat is the text box and the arrow
                 // under it, which is where a Game Boy always put it.
-                if (!current.handsOver && current.ask == null) {
+                if (!current.handsOver && (current.ask == null || dialogue.more)) {
                     Box(Modifier.matchParentSize().tapsTo(beat to connecting) { take() })
                 }
             }
@@ -278,7 +287,15 @@ fun Gen1Tutorial(
                             if (connecting) emptyList()
                             else current.linesFor?.invoke(model) ?: current.lines
                         }
-                        Gen1TypedLines(said, dialogue = dialogue, onFinished = { speaking = false })
+                        Gen1TypedLines(
+                            said,
+                            dialogue = dialogue,
+                            // The box he talks out of is one size from the
+                            // first beat to the last: three lines of room and
+                            // the arrow's row under them.
+                            holdLines = GEN1_DIALOGUE_LINES + 1,
+                            onFinished = { speaking = false },
+                        )
                         // Only once he has finished saying it, the way the
                         // cartridge only offers a choice when the box has
                         // stopped printing.
@@ -304,7 +321,10 @@ fun Gen1Tutorial(
                 // hands the box over they are the only way on. Lifted for a
                 // beat that asks something, where the rows underneath are
                 // what a tap is for.
-                if (current.ask == null) {
+                // Still there while he is part-way through asking: the rows
+                // only arrive once the question is fully out, and until then
+                // the tap is what gets the rest of it out.
+                if (current.ask == null || dialogue.more) {
                     Box(Modifier.matchParentSize().tapsTo(beat to connecting) { take() })
                 }
             }
@@ -644,6 +664,31 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         billTunesIn = true,
         connected = true,
     ),
+    // What the thing actually is, before a word about how to work it. A tour
+    // that opens on "press this to do that" is a manual; somebody meeting the
+    // Storage System for the first time wants to know what it is for.
+    TutorialBeat(
+        listOf(
+            "BILL: So. This is the Storage System — the same one sitting in " +
+                "every POKEMON CENTER, except this one is in your pocket " +
+                "rather than bolted to a desk in my cottage."
+        ),
+    ),
+    TutorialBeat(
+        listOf(
+            "BILL: One box, and every one of your games can reach it. RED, " +
+                "BLUE, YELLOW, GOLD, SILVER, CRYSTAL — it makes no difference " +
+                "which one a Pokemon was caught in. It can be stored here, " +
+                "and it can be sent back out to any of the others."
+        ),
+    ),
+    TutorialBeat(
+        listOf(
+            "BILL: Six hundred spaces, and nothing is lost on the way in. " +
+                "Nicknames, moves, the numbers nobody is supposed to know " +
+                "about — it comes back out the same Pokemon that went in."
+        ),
+    ),
     TutorialBeat(
         listOf(
             "BILL: First, your games. Put your sync codes in and the PC can " +
@@ -656,8 +701,8 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: One more permission and we're set. Can you find your ROMs " +
-                "folder for me?"
+            "BILL: By the way, in order to have visual data for your Pokemon, " +
+                "could you help me find your ROMs folder?"
         ),
         ask = TutorialAsk.ROMS,
     ),

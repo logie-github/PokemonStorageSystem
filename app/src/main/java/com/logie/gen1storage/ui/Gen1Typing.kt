@@ -2,8 +2,10 @@ package com.logie.gen1storage.ui
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.input.pointer.pointerInput
@@ -21,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
@@ -51,6 +54,17 @@ fun Gen1TypedLines(
      * page.
      */
     dialogue: Gen1Dialogue? = null,
+    /**
+     * How many lines of room to hold open, whatever is currently in the box.
+     *
+     * Null and the box is as tall as the page inside it, which is what a
+     * caption in the corner wants. Given a number it is always exactly that
+     * tall: a window that grew a row when he said a longer sentence and shrank
+     * again on the next one is the one thing a Game Boy's text box never did.
+     * Count the arrow's row in the number — it is pinned to the bottom of the
+     * room held here rather than added under it.
+     */
+    holdLines: Int? = null,
     /** Called once the last letter of the last page is down. */
     onFinished: () -> Unit = {},
 ) {
@@ -90,7 +104,10 @@ fun Gen1TypedLines(
         if (state.onLastPage) onFinished()
     }
 
-    Column(
+    // The arrow a page with more behind it ends on, which is how the cartridge
+    // says a box is not finished with you.
+    val arrow = state.pageIsDown && !state.onLastPage
+    Box(
         modifier
             // The width to wrap inside is the one this window is *offering*,
             // not the one the text currently fills. Reading the filled size
@@ -104,6 +121,16 @@ fun Gen1TypedLines(
                 val placeable = measurable.measure(constraints)
                 layout(placeable.width, placeable.height) { placeable.place(0, 0) }
             }
+            // Held open at a set height where one was asked for, so the window
+            // is the same window from the first sentence to the last. The
+            // width goes with it: the arrow belongs in the corner of the box
+            // rather than at the end of whatever was said.
+            .then(
+                if (holdLines == null) Modifier
+                else Modifier
+                    .fillMaxWidth()
+                    .height(with(LocalDensity.current) { style.lineHeight.toDp() } * holdLines)
+            )
             // A box nobody else is driving turns its own pages.
             .then(
                 if (dialogue == null) Modifier.pointerInput(state) {
@@ -111,13 +138,21 @@ fun Gen1TypedLines(
                 } else Modifier
             )
     ) {
-        TypedLine(state.text, state.typed, style)
-        // The arrow a page with more behind it ends on, which is how the
-        // cartridge says a box is not finished with you.
-        if (state.pageIsDown && !state.onLastPage) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Gen1BlinkingArrow(style)
+        Column {
+            TypedLine(state.text, state.typed, style)
+            // With no room held there is nothing to sit the arrow against, so
+            // it goes on a row of its own under the text, as it always did.
+            if (holdLines == null && arrow) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Gen1BlinkingArrow(style)
+                }
             }
+        }
+        // And where room *is* held, it sits in the floor of it — the corner of
+        // the window, where the cartridge always put it, rather than wandering
+        // up the box behind a shorter page.
+        if (holdLines != null && arrow) {
+            Box(Modifier.align(Alignment.BottomEnd)) { Gen1BlinkingArrow(style) }
         }
     }
 }

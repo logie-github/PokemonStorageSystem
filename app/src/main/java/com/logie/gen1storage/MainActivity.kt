@@ -311,7 +311,12 @@ private fun StorageApp(model: StorageViewModel) {
             // and nothing at all once it has. Every screen draws gaps while
             // a first run is fetching, and this is the app saying why rather
             // than leaving someone to work it out from the question marks.
-            state.artProgress?.let { LoadingStrip(it.percent) }
+            // Never while the introduction is up. A new player is being shown
+            // round the machine, and a bar ticking along over his head is the
+            // app asking them to watch it fetch files instead — the
+            // introduction shows the one fetch it actually waits on and
+            // nothing else. See [Gen1Tutorial].
+            if (!showTutorial) state.artProgress?.let { LoadingStrip(it.percent) }
             Box(Modifier.weight(1f)) {
                 if (showTutorial) {
                     Gen1Tutorial(state, model, onFinished = model::finishTutorial)

@@ -70,6 +70,13 @@ import kotlin.random.Random
  * see [TutorialScreens.kt]. Those screens are behind glass, except the box,
  * which is handed over to be poked while he is stood next to it.
  *
+ * It holds for one thing and one thing only: the handful of pictures it is
+ * about to put on screen, which fills a bar from nought to a hundred before
+ * he says a word. Everything else the app fetches — the other two hundred and
+ * fifty followers, the other fifteen hundred sprites — lands behind him and is
+ * never reported until the tour is over, here or in the header. See
+ * [UiState.openingProgress].
+ *
  * One beat asks rather than tells: Android grants a folder to an app when
  * somebody picks it in the system's own chooser, so the permission the app
  * needs to read a player's cartridge dumps is a question Bill asks, not a
@@ -90,6 +97,16 @@ fun Gen1Tutorial(
     val current = beats[beat.coerceIn(beats.indices)]
     val audio = LocalGen1Audio.current
 
+    // The line is not up yet.
+    //
+    // Nothing of the tour happens until the opening fetch has filled: he says
+    // nothing, the box stays empty, and a tap means nothing either. The bar is
+    // the only thing on screen doing anything, which is the honest version of
+    // what is happening — and the moment it lands he starts, over a window
+    // that says so. Everything the app fetches after that is fetched behind
+    // him, unreported, until the tour is over.
+    val connecting = !state.openingProgress.finished
+
     fun advance() {
         if (beat + 1 >= beats.size) onFinished() else beat++
     }
@@ -104,8 +121,11 @@ fun Gen1Tutorial(
     // What a tap or an A press means here: finish the line he is typing, then
     // turn the page, and only once he has nothing left to say does it move
     // the tour on. See [Gen1Dialogue].
-    val dialogue = rememberGen1Dialogue(beat)
-    fun take() { if (!dialogue.next()) advance() }
+    val dialogue = rememberGen1Dialogue(beat, connecting)
+    fun take() {
+        if (connecting) return
+        if (!dialogue.next()) advance()
+    }
     rememberCursorLayer(1) { if (current.ask == null && !current.handsOver) take() }
 
     // Android's own folder chooser, which is where the permission actually
@@ -149,7 +169,7 @@ fun Gen1Tutorial(
     // Whether his line is still arriving. He moves in time with his own
     // speech and holds still once it is down, which is the whole of what
     // separates a portrait from a talking one.
-    var speaking by remember(beat) { mutableStateOf(true) }
+    var speaking by remember(beat, connecting) { mutableStateOf(true) }
 
     // The picture, coming in. He opens on a dead line — transparent, flat,
     // no contrast to it at all — and it clears the moment the connection
@@ -161,10 +181,13 @@ fun Gen1Tutorial(
     // contrast — it is fuzzy and then, a beat later, it very much is not.
     var billAlpha by remember { mutableFloatStateOf(BILL_STATIC_ALPHA) }
     var billContrast by remember { mutableFloatStateOf(BILL_MIN_CONTRAST) }
-    LaunchedEffect(beat) {
+    LaunchedEffect(beat, connecting) {
         val still = !Gen1Motion.moves(Motion.TEXT)
         when {
-            current.billStatic -> {
+            // The dead line covers the wait as well as the beat that follows
+            // it: he is flickering away behind the bar for as long as it takes
+            // to fill, which is what a connection not yet made looks like.
+            connecting || current.billStatic -> {
                 billContrast = BILL_MIN_CONTRAST
                 if (still) {
                     billAlpha = BILL_STATIC_ALPHA
@@ -203,7 +226,8 @@ fun Gen1Tutorial(
     // when it is used for real. The transfer's waits for the Pokemon to
     // actually land, because a confirmation heard before the thing it
     // confirms is worse than none.
-    LaunchedEffect(beat) {
+    LaunchedEffect(beat, connecting) {
+        if (connecting) return@LaunchedEffect
         val effect = current.sound ?: return@LaunchedEffect
         if (current.soundAfterMillis > 0) delay(current.soundAfterMillis)
         audio?.play(effect)
@@ -213,19 +237,16 @@ fun Gen1Tutorial(
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val stage = current.stage
-                // Whichever set is landing: the first run fetches the box's
-                // art and then the sprites, and the bar reports the one that
-                // is actually running rather than sitting at nothing until
-                // its own stage comes round.
-                val progress = state.artProgress
                 when {
+                    // The bar, while there is one to watch, and nothing else
+                    // on screen competing with it.
+                    connecting -> ConnectingWindow(state.openingProgress.percent)
                     stage != null -> stage(model, state.spriteRevision)
-                    // The opening beat has no screen to show and is the one
-                    // the art is still landing behind, so the empty stage is
-                    // where the download reports itself. Only here: once the
-                    // tour moves on, what the app is fetching in the
-                    // background is the app's own business.
-                    beat == 0 && progress != null -> ConnectingWindow(progress.percent)
+                    // And once it has landed, the same window saying so, for
+                    // the two beats he spends talking about the connection.
+                    // What the app fetches from here on is the app's own
+                    // business and is never put on screen during the tour.
+                    current.connected -> ConnectingWindow(null)
                 }
                 // A pane over the demo that takes every touch, so a tap on it
                 // means what a tap anywhere else means. Lifted for the beat
@@ -235,7 +256,7 @@ fun Gen1Tutorial(
                 // one. Advancing from that beat is the text box and the arrow
                 // under it, which is where a Game Boy always put it.
                 if (!current.handsOver && current.ask == null) {
-                    Box(Modifier.matchParentSize().tapsTo(beat) { take() })
+                    Box(Modifier.matchParentSize().tapsTo(beat to connecting) { take() })
                 }
             }
             Box {
@@ -249,14 +270,19 @@ fun Gen1Tutorial(
                     }
                     Spacer(Modifier.height(gen1Dp(2)))
                     Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
-                        val said = remember(beat) {
-                            current.linesFor?.invoke(model) ?: current.lines
+                        // Empty until the line is up. The box is there — he is
+                        // there, flickering — but there is nothing coming down
+                        // it yet, and a greeting typed over a bar that has not
+                        // filled is the app talking to itself.
+                        val said = remember(beat, connecting) {
+                            if (connecting) emptyList()
+                            else current.linesFor?.invoke(model) ?: current.lines
                         }
                         Gen1TypedLines(said, dialogue = dialogue, onFinished = { speaking = false })
                         // Only once he has finished saying it, the way the
                         // cartridge only offers a choice when the box has
                         // stopped printing.
-                        if (!speaking && !dialogue.more) when (current.ask) {
+                        if (!connecting && !speaking && !dialogue.more) when (current.ask) {
                             null -> Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End,
@@ -279,7 +305,7 @@ fun Gen1Tutorial(
                 // beat that asks something, where the rows underneath are
                 // what a tap is for.
                 if (current.ask == null) {
-                    Box(Modifier.matchParentSize().tapsTo(beat) { take() })
+                    Box(Modifier.matchParentSize().tapsTo(beat to connecting) { take() })
                 }
             }
         }
@@ -299,18 +325,23 @@ private fun Modifier.tapsTo(key: Any?, action: () -> Unit): Modifier =
     pointerInput(key) { detectTapGestures { action() } }
 
 /**
- * The sprite sheets landing, while Bill talks over them.
+ * The line coming up, and then the line being up.
  *
- * This is what the first run used to be *instead* of the app — a window and a
- * bar, with everything else held shut behind it. It is the same window, now
- * sat in the space the introduction is not using, and nothing waits on it.
+ * Given a percentage it is the machine dialling: the one bar the introduction
+ * ever shows, and the one thing it waits for. Given null it is the answer —
+ * a window saying the connection is made, which is what he then spends two
+ * beats being pleased about. Nothing after that is ever reported here.
  */
 @Composable
-private fun ConnectingWindow(percent: Int) {
+private fun ConnectingWindow(percent: Int?) {
     Gen1Frame(
         Modifier.wrapContentWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
     ) {
+        if (percent == null) {
+            GbText("CONNECTION STARTED.")
+            return@Gen1Frame
+        }
         GbText("CONNECTING TO THE")
         GbText("POKéMON STORAGE SYSTEM...")
         Spacer(Modifier.height(12.dp))
@@ -537,6 +568,12 @@ private data class TutorialBeat(
      * [billStatic]; everywhere after that the picture has simply arrived.
      */
     val billTunesIn: Boolean = false,
+    /**
+     * Whether the window saying the connection is made stands behind this
+     * beat. The two he spends on the connection itself; after that he is
+     * talking about screens, and each of those brings its own.
+     */
+    val connected: Boolean = false,
 )
 
 /**
@@ -596,6 +633,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     TutorialBeat(
         listOf("BILL: Hello? Can you hear me? Is this thing turned on?"),
         billStatic = true,
+        connected = true,
     ),
     TutorialBeat(
         listOf(
@@ -604,6 +642,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
                 "connection appears to be a success."
         ),
         billTunesIn = true,
+        connected = true,
     ),
     TutorialBeat(
         listOf(

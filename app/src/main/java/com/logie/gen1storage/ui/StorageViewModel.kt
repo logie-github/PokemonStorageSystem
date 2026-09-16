@@ -348,6 +348,21 @@ data class UiState(
     val followersInstalled: Int = 0,
     val trainerProgress: DownloadProgress? = null,
     val trainersInstalled: Int = 0,
+    /**
+     * The opening fetch: the handful of pictures the introduction itself puts
+     * on screen, which is the only art anybody is waiting on.
+     *
+     * The introduction holds behind this and nothing else. Everything after it
+     * — two hundred and fifty followers, fifteen hundred sprites — lands while
+     * Bill talks over the top of it and is never reported on screen until the
+     * tour is done, because a bar creeping along under a conversation is the
+     * app telling a new player to watch the loading rather than the thing it
+     * has gone to the trouble of showing them.
+     *
+     * Finished from the start on any run that already has the art, so a replay
+     * of the introduction opens straight onto him.
+     */
+    val openingProgress: DownloadProgress = DownloadProgress(0, 0, finished = true),
     /** This app's own item PC. */
     val items: List<ItemStack> = emptyList(),
     /** Bumped whenever sprites change, so drawn sprites re-read the store. */
@@ -543,8 +558,17 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // wearing its own greens and browns beside them.
         trainers.gbcFollowsPalette = settings.gbcFollowsPalette
         applySpriteTint(GbPalette.fromId(settings.paletteId))
+        // Settled here rather than when the download starts, because the
+        // introduction is drawn before that: a first frame that found nothing
+        // waiting would let Bill open his mouth and then be overtaken by the
+        // bar a moment later.
+        val installedSprites = sprites.installedSets().sumOf { set -> sprites.countIn(set) }
+        val installedFollowers = followers.count()
+        val bareInstall = installedSprites == 0 && installedFollowers == 0
         mutable.update {
             it.copy(
+                openingProgress =
+                    if (bareInstall) DownloadProgress(0, 1) else DownloadProgress(0, 0, finished = true),
                 storage = storage.state(),
                 items = itemStorage.state(),
                 linked = credentials.isLinked,
@@ -1643,21 +1667,40 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * fetched anyway: it skips what is already on disk, so nothing is
      * downloaded twice.
      *
-     * Quietly. It reports no progress and holds nothing up — a bar that
-     * filled, reset to nothing and filled again would say less than one that
-     * simply starts when the real run does.
+     * This is the one fetch anybody watches, and [UiState.openingProgress] is
+     * it: nought to a hundred across both halves — the followers, then the
+     * fronts — so the bar means "the introduction is nearly ready" rather than
+     * "some proportion of an archive". It finishes whatever happens, a dead
+     * network included, because a tour held behind a download that is never
+     * coming is an app that does not open.
      */
     private suspend fun fetchTheHandfulFirst() {
-        runCatching { followers.downloadAll(TutorialSamples.DEX_NUMBERS) {} }
-        setsWorthFetching().takeIf { it.isNotEmpty() }?.let { sets ->
-            runCatching { spriteDownloader.download(sets, TutorialSamples.SPECIES) {} }
+        fun report(percent: Int) = mutable.update {
+            it.copy(openingProgress = DownloadProgress(percent.coerceIn(0, 100), 100))
         }
-        mutable.update {
-            it.copy(
-                followersInstalled = followers.count(),
-                spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
-                spriteRevision = it.spriteRevision + 1,
-            )
+        // Half the bar each. The second half is the one that can be empty —
+        // a cartridge on the device covers its own fronts — and a half that
+        // has nothing to do simply passes through.
+        fun half(from: Int, progress: DownloadProgress) {
+            val share = if (progress.total <= 0) 50 else (progress.done * 50) / progress.total
+            report(from + share)
+        }
+        try {
+            report(0)
+            runCatching { followers.downloadAll(TutorialSamples.DEX_NUMBERS) { half(0, it) } }
+            report(50)
+            setsWorthFetching().takeIf { it.isNotEmpty() }?.let { sets ->
+                runCatching { spriteDownloader.download(sets, TutorialSamples.SPECIES) { half(50, it) } }
+            }
+        } finally {
+            mutable.update {
+                it.copy(
+                    followersInstalled = followers.count(),
+                    spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
+                    spriteRevision = it.spriteRevision + 1,
+                    openingProgress = DownloadProgress(100, 100, finished = true),
+                )
+            }
         }
     }
 

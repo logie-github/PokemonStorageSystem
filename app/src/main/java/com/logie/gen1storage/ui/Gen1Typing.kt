@@ -44,66 +44,66 @@ fun Gen1TypedLines(
     /**
      * A handle on this box, for a screen that drives it with its own taps.
      *
-     * Null and the box says everything it has as fast as it can type it.
-     * Given one, whoever owns the tap can ask for the rest of a page, then
-     * the next page, and be told when there is nothing left — which is how a
-     * tour knows a tap should move it on rather than turn a page.
+     * Null and the box takes its own: a tap on it finishes the line and then
+     * turns the page. Given one, whoever owns the tap can ask for the rest of
+     * a page, then the next page, and be told when there is nothing left —
+     * which is how a tour knows a tap should move it on rather than turn a
+     * page.
      */
     dialogue: Gen1Dialogue? = null,
     /** Called once the last letter of the last page is down. */
     onFinished: () -> Unit = {},
 ) {
+    val state = dialogue ?: remember { Gen1Dialogue() }
     // What a Game Boy does and this did not: a box holds a few lines and then
     // waits. Eight lines of somebody talking, all arriving at once, is a wall
     // of text in a window built for three.
     var width by remember { mutableIntStateOf(0) }
     val measurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val pages = remember(lines, width, style, density) {
-        if (width <= 0) listOf(lines.joinToString(" ").trim()).filter { it.isNotEmpty() }
-        else paginate(lines, measurer, style, width)
+
+    // Paginated in an effect rather than during composition. Everything here
+    // writes to state something else reads in the same frame, and a write
+    // during composition invalidates the frame that is writing it — which is
+    // a box that retypes its first line for ever.
+    LaunchedEffect(lines, width, style) {
+        if (width <= 0) return@LaunchedEffect
+        state.reset(paginate(lines, measurer, style, width))
     }
 
-    var page by remember(pages) { mutableIntStateOf(0) }
-    val text = pages.getOrElse(page) { "" }
-    var typed by remember(text) { mutableIntStateOf(0) }
-    val done = typed >= text.length
-    val last = page >= pages.size - 1
-
-    LaunchedEffect(text) {
+    LaunchedEffect(state, state.pages, state.page) {
+        val text = state.text
         // Held still, the line is simply already printed: the words are the
         // graphic here, and reduce motion takes the movement, not the text.
         if (!Gen1Motion.moves(Motion.TEXT)) {
-            typed = text.length
-            if (last) onFinished()
+            state.typed = text.length
+            if (state.onLastPage) onFinished()
             return@LaunchedEffect
         }
-        typed = 0
-        while (typed < text.length) {
+        state.typed = 0
+        while (state.typed < text.length) {
             delay(Gen1Typing.speed.letterMillis)
-            typed++
+            // A tap may have finished the page underneath this loop, which is
+            // what `next` does, and then there is nothing left to type.
+            if (state.typed >= text.length) break
+            state.typed++
         }
-        if (last) onFinished()
+        if (state.onLastPage) onFinished()
     }
 
-    // Taking a tap: finish the page it is on, then turn it, and only say no
-    // once there is nothing left to say.
-    if (dialogue != null) {
-        dialogue.more = !done || !last
-        dialogue.advance = {
-            when {
-                !done -> typed = text.length
-                !last -> page++
-                else -> Unit
-            }
-        }
-    }
-
-    Column(modifier.onSizeChanged { width = it.width }) {
-        TypedLine(text, typed, style)
-        // The arrow a page that has more behind it ends on, which is the
-        // cartridge's own way of saying a box is not finished with you.
-        if (done && !last) {
+    Column(
+        modifier
+            .onSizeChanged { width = it.width }
+            // A box nobody else is driving turns its own pages.
+            .then(
+                if (dialogue == null) Modifier.pointerInput(state) {
+                    detectTapGestures { state.next() }
+                } else Modifier
+            )
+    ) {
+        TypedLine(state.text, state.typed, style)
+        // The arrow a page with more behind it ends on, which is how the
+        // cartridge says a box is not finished with you.
+        if (state.pageIsDown && !state.onLastPage) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Gen1BlinkingArrow(style)
             }
@@ -112,21 +112,51 @@ fun Gen1TypedLines(
 }
 
 /**
- * A box being talked to from outside, so one tap can mean "go on" and then
- * mean "I have read it" without the caller knowing where the pages fall.
+ * A box of dialogue, and where it has got to.
+ *
+ * Held out here rather than inside the composable so that one tap can mean
+ * "go on" and then mean "I have read it" without whoever owns the tap knowing
+ * where the pages fall. Every field is snapshot state written from effects and
+ * from [next], never during composition: [more] is a read, so a screen can ask
+ * it while it is drawing.
  */
 @Stable
 class Gen1Dialogue {
-    /** Whether a tap here would do something. */
-    var more by mutableStateOf(false)
-        internal set
 
-    internal var advance: () -> Unit = {}
+    internal var pages by mutableStateOf<List<String>>(emptyList())
+        private set
+    internal var page by mutableIntStateOf(0)
+        private set
+    internal var typed by mutableIntStateOf(0)
 
-    /** Takes a tap. True if the box used it; false if it had nothing left. */
+    internal val text: String get() = pages.getOrElse(page) { "" }
+
+    /** Whether the page on screen has finished printing. */
+    internal val pageIsDown: Boolean get() = typed >= text.length
+
+    internal val onLastPage: Boolean get() = page >= pages.size - 1
+
+    /** Whether a tap here would do anything. */
+    val more: Boolean get() = !pageIsDown || !onLastPage
+
+    internal fun reset(newPages: List<String>) {
+        // A remeasure that comes out the same is not a new thing to say. The
+        // pages are the key the typing runs off, so setting them to an equal
+        // list would clear what has been printed without starting it again.
+        if (newPages == pages) return
+        pages = newPages
+        page = 0
+        typed = 0
+    }
+
+    /**
+     * Takes a tap: finishes the line being printed, then turns the page.
+     * False once there is nothing left, so the caller can use it for whatever
+     * a tap means after that.
+     */
     fun next(): Boolean {
         if (!more) return false
-        advance()
+        if (!pageIsDown) typed = text.length else page++
         return true
     }
 }
@@ -144,8 +174,8 @@ const val GEN1_DIALOGUE_LINES = 3
  * Measured rather than guessed at: how many lines a sentence takes depends on
  * the width it is given, the size the player has the text at, and the font,
  * and a character count that was right on one phone would break mid-word on
- * the next. Words are moved to the next page whole; a single word too long
- * for a line is left where it is rather than dropped.
+ * the next. Words move to the next page whole; a single word too long for a
+ * line is left where it is rather than dropped.
  */
 private fun paginate(
     lines: List<String>,

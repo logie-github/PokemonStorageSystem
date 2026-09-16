@@ -36,6 +36,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -111,10 +114,19 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
 fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modifier) {
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
+    // Taken back if either code is edited after the question has been asked,
+    // because then it is a different pair and the answer was about the old one.
+    var declined by remember { mutableStateOf(false) }
+
     val ready = SyncApi.normalizeCode(first) != null && SyncApi.normalizeCode(second) != null
-    // One thing to take on this screen once both codes are in. The fields are
-    // the keyboard's; the button is the cursor's, as it is everywhere else.
-    val at = rememberCursorLayer(1) { if (ready && !state.linking) model.link(first, second) }
+    val asking = ready && !declined && !state.linking
+
+    // The second field, so the first can hand the keyboard over the moment it
+    // is full. A code is exactly eight digits and there is nothing else to do
+    // in that box afterwards, so making somebody reach for the next one is
+    // asking them to do the app's work.
+    val secondField = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     Column(
         modifier.wrapContentHeight(),
@@ -125,22 +137,81 @@ fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modif
             GbText("SAVE SYNC")
         }
         Gen1Frame {
-            CodeField("FIRST CODE", first) { first = it }
+            CodeField("FIRST CODE", first) { text ->
+                val wasFull = SyncApi.normalizeCode(first) != null
+                first = text
+                declined = false
+                // On the eighth digit, and only as it arrives: jumping every
+                // time a full code is touched would take the keyboard away
+                // from somebody correcting the last digit of it.
+                if (!wasFull && SyncApi.normalizeCode(text) != null) {
+                    runCatching { secondField.requestFocus() }
+                }
+            }
             Spacer(Modifier.height(10.dp))
-            CodeField("SECOND CODE", second) { second = it }
+            CodeField(
+                "SECOND CODE",
+                second,
+                focusRequester = secondField,
+            ) { text ->
+                second = text
+                declined = false
+                // Sixteen digits in and there is nothing left to type, so the
+                // keyboard goes rather than sitting over the question.
+                if (SyncApi.normalizeCode(text) != null) keyboard?.hide()
+            }
             Spacer(Modifier.height(12.dp))
-            Gen1Button(
-                if (state.linking) "LINKING..." else "LINK THIS DEVICE",
-                { model.link(first, second) },
-                enabled = ready && !state.linking,
-                selected = at == 0,
-            )
+            // Both codes in, so the machine asks rather than waiting to be
+            // told. Asked here, in the window the codes were typed into,
+            // rather than in a window over the top of it: this screen is also
+            // shown inside the introduction, where an overlay would land on
+            // Bill mid-sentence.
+            if (asking) {
+                GbText("PROCEED WITH LINK?")
+                Spacer(Modifier.height(6.dp))
+                Gen1ChoiceRows(
+                    listOf(
+                        "YES" to { model.link(first, second) },
+                        "NO" to { declined = true },
+                    )
+                )
+            } else {
+                LinkWaitingRow(state, ready, declined) { model.link(first, second) }
+            }
         }
     }
 }
 
+/**
+ * What the window shows while it is still waiting for something.
+ *
+ * Its own cursor layer, because the question above it has one of its own and
+ * two layers alive at once would leave the A button on whichever was pushed
+ * last rather than on what is actually on screen.
+ */
 @Composable
-private fun CodeField(label: String, value: String, onChange: (String) -> Unit) {
+private fun LinkWaitingRow(
+    state: UiState,
+    ready: Boolean,
+    declined: Boolean,
+    onLink: () -> Unit,
+) {
+    val at = rememberCursorLayer(1) { if (ready && !state.linking) onLink() }
+    Gen1Button(
+        if (state.linking) "LINKING..." else "LINK THIS DEVICE",
+        onLink,
+        enabled = ready && !state.linking && declined,
+        selected = at == 0,
+    )
+}
+
+@Composable
+private fun CodeField(
+    label: String,
+    value: String,
+    focusRequester: FocusRequester? = null,
+    onChange: (String) -> Unit,
+) {
     GbText(label, style = Gen1TextSmall)
     Spacer(Modifier.height(4.dp))
     OutlinedTextField(
@@ -159,7 +230,9 @@ private fun CodeField(label: String, value: String, onChange: (String) -> Unit) 
             unfocusedIndicatorColor = Gen1Palette.Shadow,
             cursorColor = Gen1Palette.Ink,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
     )
 }
 

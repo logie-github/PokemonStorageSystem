@@ -439,7 +439,7 @@ private fun BoxHead(
             } else {
                 Gen1Sprite(
                     pokemon.spriteSpeciesId(),
-                    stored.provenance.gameVersion,
+                    stored.spriteGameVersionId,
                     sprites,
                     revision = spriteRevision,
                     sizeInPixels = HEAD_SPRITE_PIXELS,

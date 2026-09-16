@@ -1,5 +1,6 @@
 package com.logie.gen1storage.storage
 
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.asInt
 import com.logie.gen1storage.lua.asString
@@ -97,6 +98,30 @@ data class StoredPokemon(
     val timeCapsule: TimeCapsule.Record? = null,
 ) {
     val pokemon: Gen1Pokemon get() = Gen1Pokemon(data, generation)
+
+    /**
+     * Which game's sprite art to draw this Pokémon under.
+     *
+     * Ordinarily the game it was deposited from — [provenance]'s
+     * `gameVersion`, which never changes once a Pokémon is in the PC. A Time
+     * Capsule crossing is the one thing that leaves that stale: the record
+     * still names the Generation I cartridge it left, but [generation] has
+     * moved to II and the species field it is drawn from is spelled
+     * Generation II's way wherever the two differ — MR_MIME becomes
+     * MR__MIME — a spelling Generation I's own sprite sets have never heard.
+     * Once the recorded game's generation no longer matches this Pokémon's
+     * own, the art follows the Pokémon forward instead of staying where it
+     * was deposited from.
+     */
+    val spriteGameVersionId: String?
+        get() {
+            val recorded = GameVersion.fromId(provenance.gameVersion)
+            return when {
+                recorded == null || recorded.generation == generation -> provenance.gameVersion
+                generation == 2 -> GameVersion.GOLD.id
+                else -> provenance.gameVersion
+            }
+        }
 
     /** Whether this one is mid-move and cannot be sent anywhere else. */
     val inFlight: Boolean get() = noteId != null

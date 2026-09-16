@@ -1036,7 +1036,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun cardImage(uid: String): Bitmap? {
         val stored = storage.get(uid) ?: return null
         val sprite = stored.pokemon.speciesId
-            ?.let { sprites.load(it, stored.provenance.gameVersion) }
+            ?.let { sprites.load(it, stored.spriteGameVersionId) }
             ?.asAndroidBitmap()
         return runCatching {
             PokemonCardImage.render(
@@ -1168,7 +1168,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         fromSpeciesId = from,
                         toSpeciesId = to,
                         name = name,
-                        gameVersionId = stored.provenance.gameVersion,
+                        gameVersionId = stored.spriteGameVersionId,
                         toDexNumber = if (generation >= 2) Gen2Data.species(to)?.dexNumber
                         else Gen1Data.species(to)?.dexNumber,
                     ),
@@ -1996,7 +1996,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     transferScene = lead?.let { stored ->
                         TransferScene(
                             speciesId = stored.pokemon.speciesId,
-                            gameVersionId = stored.provenance.gameVersion,
+                            gameVersionId = stored.spriteGameVersionId,
                             name = if (uids.size == 1) stored.pokemon.displayName.uppercase()
                             else "${uids.size} POKéMON",
                             destination = loaded.save?.trainerName?.uppercase() ?: "THE SAVE",
@@ -2403,7 +2403,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 transferScene = stored?.let { gone ->
                     TransferScene(
                         speciesId = gone.pokemon.speciesId,
-                        gameVersionId = gone.provenance.gameVersion,
+                        gameVersionId = gone.spriteGameVersionId,
                         name = name,
                         destination = "",
                         motion = TransferMotion.RELEASE,

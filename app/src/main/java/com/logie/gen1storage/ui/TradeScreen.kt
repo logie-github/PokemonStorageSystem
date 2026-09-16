@@ -76,7 +76,7 @@ fun TradeScreen(state: UiState, model: StorageViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Gen1Sprite(
                         speciesId = stored.pokemon.spriteSpeciesId(),
-                        gameVersionId = stored.provenance.gameVersion,
+                        gameVersionId = stored.spriteGameVersionId,
                         store = model.sprites,
                         revision = state.spriteRevision,
                         sizeInPixels = ROW_SPRITE_PIXELS,

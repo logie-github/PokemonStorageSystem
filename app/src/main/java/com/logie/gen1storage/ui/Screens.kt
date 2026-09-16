@@ -410,7 +410,7 @@ fun StorageSystemScreen(
             what = what,
             where = loaded.trainerName.uppercase(),
             speciesId = first?.pokemon?.speciesId,
-            gameVersionId = first?.provenance?.gameVersion,
+            gameVersionId = first?.spriteGameVersionId,
             motion = TransferMotion.OUT,
             alsoSpeciesIds = uids.drop(1).mapNotNull {
                 state.storage.find(it)?.second?.pokemon?.speciesId
@@ -786,13 +786,13 @@ private fun previewOf(
         PcMode.VIEW -> {
             val here = box?.slots?.getOrNull(index)
             pokemon = here?.pokemon
-            gameVersionId = here?.provenance?.gameVersion
+            gameVersionId = here?.spriteGameVersionId
             held = here?.provenance
         }
         PcMode.WITHDRAW -> {
             val here = stored.getOrNull(index)
             pokemon = here?.pokemon
-            gameVersionId = here?.provenance?.gameVersion
+            gameVersionId = here?.spriteGameVersionId
             held = here?.provenance
         }
         PcMode.DEPOSIT -> {
@@ -850,7 +850,7 @@ fun StatusScreen(
     }
     // A stored Pokémon is shown in the art of the game it was deposited from.
     val gameVersionId = if (key == null) {
-        state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.provenance?.gameVersion
+        state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.spriteGameVersionId
     } else {
         state.remote(key)?.version?.id
     }

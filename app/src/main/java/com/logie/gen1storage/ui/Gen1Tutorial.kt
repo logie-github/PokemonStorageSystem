@@ -130,7 +130,7 @@ fun Gen1Tutorial(
         // box had a page to turn that nothing on screen could turn, and the
         // tour stopped dead on it.
         if (dialogue.next()) return
-        if (current.ask != null) return
+        if (current.ask != null || current.asksForCodes) return
         advance()
     }
     rememberCursorLayer(1) {

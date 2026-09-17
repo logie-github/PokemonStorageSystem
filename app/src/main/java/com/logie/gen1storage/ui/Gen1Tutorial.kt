@@ -111,16 +111,19 @@ fun Gen1Tutorial(
         if (beat + 1 >= beats.size) onFinished() else beat++
     }
 
-    // The A button, and nothing else: no rows to run down, so the cursor's
-    // only job here is to take the next beat the same way a tap does. A beat
-    // that asks something puts its own rows on top of this layer, and those
-    // are then what A takes.
-    // Not on the beat that hands the box over: with swipe controls on, the
-    // grid turns a tap into a confirm, and that confirm is meant for the
-    // Pokemon under the finger rather than for the tour.
-    // What a tap or an A press means here: finish the line he is typing, then
-    // turn the page, and only once he has nothing left to say does it move
-    // the tour on. See [Gen1Dialogue].
+    // What a tap means here: finish the line he is typing, then turn the page,
+    // and only once he has nothing left to say does it move the tour on. See
+    // [Gen1Dialogue].
+    //
+    // The panes below are the only thing listening for it. There used to be a
+    // cursor layer here as well, taking the A button the gesture layer makes
+    // out of a tap on open ground — and that is two listeners for one tap.
+    // [Gen1Gestures] fires A from the Initial pass, which reaches an ancestor
+    // before its children, so the pane's own consume came too late to stop
+    // it: every tap on the ground beside the box turned two pages at once,
+    // and Bill lost a whole page of what he was saying between each one he
+    // showed. With the layer gone, A finds nothing to confirm and the pane
+    // does the work, wherever the tap lands.
     val dialogue = rememberGen1Dialogue(beat, connecting)
     fun take() {
         if (connecting) return
@@ -132,9 +135,6 @@ fun Gen1Tutorial(
         if (dialogue.next()) return
         if (current.ask != null || current.asksForCodes) return
         advance()
-    }
-    rememberCursorLayer(1) {
-        if (dialogue.more || (current.ask == null && !current.handsOver)) take()
     }
 
     // Android's own folder chooser, which is where the permission actually

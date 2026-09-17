@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.sound.LocalGen1Audio
-import com.logie.gen1storage.sound.SoundEffect
 import kotlinx.coroutines.delay
 
 /**
@@ -82,8 +81,8 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
 /** A Pokémon on its way across, as [Gen1TransferScene] draws one. */
 @Composable
 fun TutorialTransferScreen(model: StorageViewModel, spriteRevision: Int) {
+    val travelling = remember { TutorialSamples.travelling().pokemon }
     val scene = remember {
-        val travelling = TutorialSamples.travelling().pokemon
         TransferScene(
             speciesId = travelling.speciesId,
             gameVersionId = GameVersion.RED.id,
@@ -108,14 +107,14 @@ fun TutorialTransferScreen(model: StorageViewModel, spriteRevision: Int) {
             run++
         }
     }
-    // The arrival chime, once a loop rather than once for the whole beat: a
-    // beat somebody lingers on used to play a Pokemon landing in the PC two
-    // or three times over with nothing to say so, which is a demonstration
-    // quietly going out of sync with what it is demonstrating.
+    // PIKACHU's own cry, once — on `Unit` rather than on `run`, so it is
+    // heard the moment he lands and never again for as long as the beat
+    // stays up. A cry repeating every few seconds on a loop reads as him
+    // being startled on a timer rather than as him arriving.
     val audio = LocalGen1Audio.current
-    LaunchedEffect(run) {
+    LaunchedEffect(Unit) {
         delay(TRANSFER_SOUND_DELAY_MILLIS)
-        audio?.play(SoundEffect.TRANSFER)
+        audio?.cry(travelling.species?.dexNumber, travelling.generation)
     }
     key(run) { Gen1TransferScene(scene, model.sprites, spriteRevision) }
 }

@@ -2,8 +2,8 @@ package com.logie.gen1storage.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -28,9 +28,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
 
 /**
  * A card's own corner, cut in a staircase rather than a curve.
@@ -173,44 +176,76 @@ fun Gen1CardWallet(
                     translationX = dragPx
                     rotationZ = (dragPx / tiltRange * MAX_TILT_DEGREES).coerceIn(-MAX_TILT_DEGREES, MAX_TILT_DEGREES)
                 }
-                .pointerInput(current) {
-                    detectTapGestures(
-                        onTap = { onConfirm(current) },
-                        onLongPress = { onHold(current) },
-                    )
-                }
+                // Tap, hold and drag are read in one place rather than by two
+                // detectors racing over the same finger. A card is the rare
+                // thing that is both pressed and dragged, and picking one out
+                // of a wallet starts with a finger resting on it — which a
+                // separate long-press detector called a hold and used to
+                // answer by opening the card that was about to be dragged.
                 .pointerInput(current, count) {
-                    detectDragGestures(
-                        onDragEnd = {
-                            val width = size.width.toFloat().coerceAtLeast(1f)
-                            val threshold = width * FLING_FRACTION
-                            val goNext = dragPx <= -threshold && current + 1 < count
-                            val goPrev = dragPx >= threshold && current > 0
-                            val target = when {
-                                goNext -> -width
-                                goPrev -> width
-                                else -> 0f
+                    val slop = viewConfiguration.touchSlop
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var from = 0f
+                        val opening = withTimeoutOrNull(HOLD_MILLIS) {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: return@withTimeoutOrNull CardGesture.GONE
+                                if (!change.pressed) return@withTimeoutOrNull CardGesture.TAPPED
+                                val moved = change.position - down.position
+                                if (abs(moved.x) > slop || abs(moved.y) > slop) {
+                                    from = moved.x
+                                    change.consume()
+                                    return@withTimeoutOrNull CardGesture.DRAGGED
+                                }
                             }
-                            scope.launch {
-                                val settle = Animatable(dragPx)
-                                settle.animateTo(target, tween(SETTLE_MILLIS)) { dragPx = value }
-                                if (goNext) onMove(current + 1) else if (goPrev) onMove(current - 1)
-                            }
-                        },
-                        onDragCancel = {
-                            scope.launch {
-                                val settle = Animatable(dragPx)
-                                settle.animateTo(0f, tween(SETTLE_MILLIS)) { dragPx = value }
-                            }
-                        },
-                    ) { change, amount ->
-                        change.consume()
-                        dragPx += amount.x
+                            @Suppress("UNREACHABLE_CODE")
+                            CardGesture.GONE
+                        }
+                        when (opening) {
+                            CardGesture.TAPPED -> return@awaitEachGesture onConfirm(current)
+                            CardGesture.GONE -> return@awaitEachGesture
+                            // Still down and still where it started once the
+                            // timer is up: held rather than thrown.
+                            null -> return@awaitEachGesture onHold(current)
+                            CardGesture.DRAGGED -> Unit
+                        }
+
+                        dragPx = from
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            dragPx += change.positionChange().x
+                            change.consume()
+                        }
+
+                        val width = size.width.toFloat().coerceAtLeast(1f)
+                        val threshold = width * FLING_FRACTION
+                        val goNext = dragPx <= -threshold && current + 1 < count
+                        val goPrev = dragPx >= threshold && current > 0
+                        val target = when {
+                            goNext -> -width
+                            goPrev -> width
+                            else -> 0f
+                        }
+                        scope.launch {
+                            val settle = Animatable(dragPx)
+                            settle.animateTo(target, tween(SETTLE_MILLIS)) { dragPx = value }
+                            if (goNext) onMove(current + 1) else if (goPrev) onMove(current - 1)
+                        }
                     }
                 },
         )
     }
 }
+
+/** What a finger on the front card turned out to be doing. */
+private enum class CardGesture { TAPPED, DRAGGED, GONE }
+
+/** How long a finger has to rest before it is holding rather than dragging. */
+private const val HOLD_MILLIS = 500L
 
 /** How many cards peek out behind the front one. */
 private const val PEEK_CARDS = 2

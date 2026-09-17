@@ -109,6 +109,17 @@ sealed interface Screen {
          * interruption partway through one.
          */
         val thenOpenStorage: Boolean = false,
+        /**
+         * Which face of the PC the choice opens on.
+         *
+         * DEPOSIT asks for a card when there is none in the machine, and used
+         * to forget that it had: picking one put the card in and dropped the
+         * player back at the PC's own menu, so the thing they pressed DEPOSIT
+         * to do had to be started over. Worse where the card they picked had
+         * nothing boxed and two others did — DEPOSIT sent them straight back
+         * to the shelf, and the trip went round in a circle.
+         */
+        val then: PcMode = PcMode.MENU,
     ) : Screen
     /**
      * The status screen. A null [key] means the Pokémon is in this app's PC and
@@ -974,13 +985,27 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * silently pointing at a playthrough the player has moved on from is worse
      * than asking again.
      */
-    fun chooseCart(key: String, thenOpenStorage: Boolean = false) = selectSave(key) {
+    fun chooseCart(
+        key: String,
+        thenOpenStorage: Boolean = false,
+        then: PcMode = PcMode.MENU,
+    ) = selectSave(key) {
         // Arriving at the PC with a card just inserted starts at its menu, the
-        // same as walking up to it does. See [pcMode].
-        if (thenOpenStorage) pcMode = PcMode.MENU
+        // same as walking up to it does — unless the card was asked for by
+        // something that was already underway, which opens on that instead.
+        // See [pcMode] and [Screen.ChooseCart.then].
+        if (thenOpenStorage) pcMode = then
         mutable.update { state ->
             val stack = state.stack.dropLastWhile { it is Screen.ChooseCart }
-            val next = if (thenOpenStorage) stack + Screen.Storage else stack
+            // The PC is where the card was asked for as often as not, and
+            // pushing a second copy of it over the first left the way out
+            // going nowhere: BACK said SEE YA! and landed on the PC again,
+            // so leaving took two goes and a goodbye that was not meant.
+            val next = when {
+                !thenOpenStorage -> stack
+                stack.lastOrNull() == Screen.Storage -> stack
+                else -> stack + Screen.Storage
+            }
             state.copy(stack = next.ifEmpty { listOf(Screen.Home) })
         }
     }

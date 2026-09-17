@@ -56,6 +56,8 @@ fun ChooseCartScreen(
     game: String?,
     sendUids: List<String> = emptyList(),
     thenOpenStorage: Boolean = false,
+    /** Which face of the PC picking a card opens on. See [Screen.ChooseCart.then]. */
+    then: PcMode = PcMode.MENU,
 ) {
     val sending = sendUids.isNotEmpty()
     // The lead Pokémon is in the save itself; the account's summary carries
@@ -75,10 +77,10 @@ fun ChooseCartScreen(
     val columns = if (isUnfolded()) 2 else 1
     val chooseSave: (RemoteSave) -> Unit = { remote ->
         if (sending) model.chooseWithdrawSave(sendUids, remote.key)
-        else model.chooseCart(remote.key, thenOpenStorage)
+        else model.chooseCart(remote.key, thenOpenStorage, then)
     }
     val choose: (TitleCardArt) -> Unit = { card ->
-        model.replace(Screen.ChooseCart(card.version.id, sendUids, thenOpenStorage))
+        model.replace(Screen.ChooseCart(card.version.id, sendUids, thenOpenStorage, then))
     }
     // Whichever of the two things on this screen is the one to take: the games
     // until one is picked and shown to have saves, the saves after that. The
@@ -97,9 +99,13 @@ fun ChooseCartScreen(
     // then being offered the card that was wanted all along. The shelf still
     // narrows to one game when one is pressed.
     val listed = if (pickingGame) state.saves else saves(state, game)
-    // The wallet only ever replaces the list of one game's cards; the shelf
-    // above it is unaffected either way.
-    val walletMode = !pickingGame && state.cardWallet
+    // The wallet replaces the list of cards wherever that list is drawn —
+    // one game's or the whole account's. It used to stand in only for a
+    // single game's, which is the one case a player rarely reaches: the PC
+    // asks for a card with no game named, so the common way in showed the
+    // old flat list and the wallet looked as though it had never been built.
+    // The shelf above is unaffected either way.
+    val walletMode = state.cardWallet && listed.isNotEmpty()
     // One layer over both, which is what `grid` is for: the games are its
     // grid and the cards below are the rows under it, so a swipe down off the
     // shelf lands on the first card instead of stopping dead at the shelf.
@@ -108,6 +114,9 @@ fun ChooseCartScreen(
     // two columns the flat list lays out.
     val cursorLayer = rememberCursorLayerHandle(
         count = if (pickingGame) shelf.size + listed.size else listed.size,
+        // The shelf keeps its own shape whatever is under it: below the grid
+        // the cursor steps one card at a time regardless of this, which is
+        // exactly how a hand of cards is walked anyway.
         columns = when {
             pickingGame -> across
             walletMode -> listed.size.coerceAtLeast(1)
@@ -198,12 +207,20 @@ fun ChooseCartScreen(
             Gen1CardWallet(
                 count = saves.size,
                 at = atCard,
-                onMove = { cursorLayer.index = it },
+                // The cards sit under the shelf in one shared cursor while
+                // every game's are listed together, so where the hand is and
+                // where the cursor is are the same spot counted from
+                // different places.
+                onMove = { cursorLayer.index = if (pickingGame) shelf.size + it else it },
                 onConfirm = { index -> saves.getOrNull(index)?.let(chooseSave) },
                 onHold = { index ->
                     saves.getOrNull(index)?.let { model.open(Screen.TrainerCard(it.key)) }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                // Whatever the shelf above has left, and the card centred in
+                // it: the hand does not scroll, so it has to be given a
+                // bounded space rather than allowed to run off the bottom of
+                // a short screen.
+                modifier = Modifier.fillMaxWidth().weight(1f),
             ) { index, pixelRounded, cardModifier ->
                 saves.getOrNull(index)?.let { remote ->
                     TrainerCardArt(

@@ -275,7 +275,17 @@ fun StorageSystemScreen(
     // finished. So the order the player sees is the animation, then what it
     // did, then the PC's own menu waiting underneath — rather than the menu
     // reappearing behind a Pokémon still on its way out.
+    //
+    // Keyed on the count having actually moved rather than on the count
+    // itself: a LaunchedEffect runs when it enters composition as well as
+    // when its key changes, and this screen enters composition every time it
+    // is returned to. So arriving at the PC with something already underway —
+    // DEPOSIT having just been sent to the shelf for a card, and come back
+    // with one — landed on the menu with the list closed before it ever drew.
+    var settled by remember { mutableStateOf(state.transfers) }
     LaunchedEffect(state.transfers) {
+        if (state.transfers == settled) return@LaunchedEffect
+        settled = state.transfers
         marked = emptySet()
         chosen = null
         gridSlot = null
@@ -459,7 +469,11 @@ fun StorageSystemScreen(
         onDeposit = {
             refusal = null
             when {
-                needsCart -> model.open(Screen.ChooseCart(null, thenOpenStorage = true))
+                needsCart ->
+                    model.open(
+                        Screen.ChooseCart(null, thenOpenStorage = true, then = PcMode.DEPOSIT)
+                    )
+
                 (box?.freeSlots ?: 0) <= 0 -> refusal = "Oops! This Box is full of POKéMON."
                 // Nothing boxed on the card in the machine, and exactly one
                 // other card with something to send: that is the card meant,
@@ -469,7 +483,9 @@ fun StorageSystemScreen(
                     model.selectSave(boxedElsewhere.single()) { model.pcMode = PcMode.DEPOSIT }
 
                 depositRows.isEmpty() && boxedElsewhere.size > 1 ->
-                    model.open(Screen.ChooseCart(null, thenOpenStorage = true))
+                    model.open(
+                        Screen.ChooseCart(null, thenOpenStorage = true, then = PcMode.DEPOSIT)
+                    )
 
                 else -> model.pcMode = PcMode.DEPOSIT
             }

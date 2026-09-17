@@ -418,6 +418,7 @@ private fun ScreenContent(
                 screen.game,
                 screen.sendUids,
                 screen.thenOpenStorage,
+                screen.then,
             )
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)

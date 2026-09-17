@@ -163,14 +163,6 @@ fun ChooseCartScreen(
             return@Column
         }
 
-        // Said once, above the cards themselves: a Generation II card holds
-        // Generation II Pokemon, and the only way one of this app's
-        // Generation I Pokemon reaches it is the TIME CAPSULE.
-        if (GameVersion.fromId(showing)?.generation == 2) {
-            Notice("GEN II. USE THE TIME CAPSULE TO SEND ONE ON.")
-            Spacer(Modifier.height(gen1Dp(3)))
-        }
-
         if (sending) {
             Notice("Send to whose card?")
             Spacer(Modifier.height(gen1Dp(4)))

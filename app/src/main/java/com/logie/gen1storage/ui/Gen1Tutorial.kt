@@ -762,6 +762,16 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         handsOver = true,
     ),
     TutorialBeat(
+        listOf(
+            "BILL: Two more things worth knowing. TRADE evolves a Pokémon the " +
+                "way trading always has, and the TIME CAPSULE sends one on from " +
+                "an older game into a newer one.",
+            "BILL: Both are right there in the PC's own menu, whenever you need " +
+                "them."
+        ),
+        stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
+    ),
+    TutorialBeat(
         listOf("BILL: That's everything! Thank you for testing the mobile Pokémon Storage System."),
         sound = SoundEffect.LOG_OFF,
     ),

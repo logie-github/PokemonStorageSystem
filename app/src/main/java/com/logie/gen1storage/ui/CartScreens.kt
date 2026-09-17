@@ -216,6 +216,10 @@ fun ChooseCartScreen(
                 onHold = { index ->
                     saves.getOrNull(index)?.let { model.open(Screen.TrainerCard(it.key)) }
                 },
+                // The fan is read by colour, the way the shelf above it is.
+                tint = { index ->
+                    paletteFor(saves.getOrNull(index)?.version?.id)
+                },
                 // Whatever the shelf above has left, and the card centred in
                 // it: the hand does not scroll, so it has to be given a
                 // bounded space rather than allowed to run off the bottom of

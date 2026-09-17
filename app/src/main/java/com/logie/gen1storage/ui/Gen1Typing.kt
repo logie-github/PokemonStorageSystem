@@ -222,6 +222,13 @@ const val GEN1_DIALOGUE_LINES = 3
  * and a character count that was right on one phone would break mid-word on
  * the next. Words move to the next page whole; a single word too long for a
  * line is left where it is rather than dropped.
+ *
+ * Each entry in [lines] is its own thing being said and always opens its own
+ * page, even when it would fit on the tail of the one before it. Joining them
+ * first and rewrapping the result as one continuous ribbon of text used to
+ * let a short line's last few words share a page with the next line's first
+ * few — a sentence ending and a fresh one beginning back to back in the same
+ * box, mid-page, which reads as one run-on thought instead of two.
  */
 private fun paginate(
     lines: List<String>,
@@ -229,26 +236,30 @@ private fun paginate(
     style: TextStyle,
     width: Int,
 ): List<String> {
-    val whole = lines.joinToString(" ").trim()
-    if (whole.isEmpty()) return emptyList()
     fun linesOf(text: String): Int =
         measurer.measure(text, style, constraints = Constraints(maxWidth = width)).lineCount
 
-    if (linesOf(whole) <= GEN1_DIALOGUE_LINES) return listOf(whole)
-
     val pages = ArrayList<String>()
-    val words = whole.split(" ").filter { it.isNotEmpty() }
-    var current = StringBuilder()
-    words.forEach { word ->
-        val candidate = if (current.isEmpty()) word else "$current $word"
-        if (current.isNotEmpty() && linesOf(candidate) > GEN1_DIALOGUE_LINES) {
-            pages.add(current.toString())
-            current = StringBuilder(word)
-        } else {
-            current = StringBuilder(candidate)
+    lines.forEach { line ->
+        val whole = line.trim()
+        if (whole.isEmpty()) return@forEach
+        if (linesOf(whole) <= GEN1_DIALOGUE_LINES) {
+            pages.add(whole)
+            return@forEach
         }
+        val words = whole.split(" ").filter { it.isNotEmpty() }
+        var current = StringBuilder()
+        words.forEach { word ->
+            val candidate = if (current.isEmpty()) word else "$current $word"
+            if (current.isNotEmpty() && linesOf(candidate) > GEN1_DIALOGUE_LINES) {
+                pages.add(current.toString())
+                current = StringBuilder(word)
+            } else {
+                current = StringBuilder(candidate)
+            }
+        }
+        if (current.isNotEmpty()) pages.add(current.toString())
     }
-    if (current.isNotEmpty()) pages.add(current.toString())
     return pages
 }
 

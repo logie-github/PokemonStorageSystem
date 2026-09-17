@@ -248,8 +248,18 @@ class TrainerStore(private val directory: File) {
         // Left connected on purpose: a disconnect here costs the next file a
         // whole handshake, and there are forty-five of them from one host.
         if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-        val bytes = connection.inputStream.use { it.readBytes() }
+        val bytes = runCatching { connection.inputStream.use { it.readBytes() } }.getOrNull()
+            ?: return null
         if (bytes.isEmpty()) return null
+        // A dropped connection does not always throw — some paths just hand
+        // back what arrived before the socket closed, which used to land on
+        // disk looking like a trainer: a real file, a real name, and a
+        // truncated picture, because IHDR (and so the bounds check below)
+        // sits near the front of a PNG and decodes fine long before the
+        // pixel data run out. The server's declared length is the one thing
+        // that says how much there was supposed to be.
+        val expectedLength = connection.contentLengthLong
+        if (expectedLength > 0 && bytes.size.toLong() != expectedLength) return null
 
         // It must be the shape this expects before it lands, so a proxy's
         // error page cannot sit on disk looking like a trainer.

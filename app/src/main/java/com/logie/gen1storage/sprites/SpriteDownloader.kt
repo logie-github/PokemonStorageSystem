@@ -205,7 +205,19 @@ class SpriteDownloader(private val store: SpriteStore) {
         // the pool for the next one.
         val bytes =
             if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-            else connection.inputStream.use { it.readBytes() }
+            else runCatching { connection.inputStream.use { it.readBytes() } }.getOrNull()
+                ?: return null
+        // A connection dropped mid-transfer does not always surface as a
+        // thrown IOException — some paths hand back whatever arrived before
+        // the socket closed and call it EOF. That used to land in the sprite
+        // folder looking downloaded: a real file, a real name, the first few
+        // rows of a real picture, and noise or blank space for the rest of
+        // it, because a truncated PNG can still decode as far as it goes.
+        // The server's own Content-Length is the one thing that says how
+        // much there was supposed to be, so a short read against it is
+        // refused here rather than trusted to bounds-only decoding later.
+        val expected = connection.contentLengthLong
+        if (expected > 0 && bytes.size.toLong() != expected) return null
         return bytes.takeIf { it.isNotEmpty() }
     }
 

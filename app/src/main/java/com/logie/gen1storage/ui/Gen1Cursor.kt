@@ -268,6 +268,9 @@ class Gen1WindowBounds {
     /** Windows that do something of their own with a hold. */
     private val holds = mutableStateMapOf<Any, Rect>()
 
+    /** Windows that do something of their own with a drag. */
+    private val swipeClaims = mutableStateMapOf<Any, Rect>()
+
     fun set(owner: Any, rect: Rect) {
         bounds[owner] = rect
     }
@@ -275,10 +278,15 @@ class Gen1WindowBounds {
     fun forget(owner: Any) {
         bounds.remove(owner)
         holds.remove(owner)
+        swipeClaims.remove(owner)
     }
 
     fun setHold(owner: Any, rect: Rect) {
         holds[owner] = rect
+    }
+
+    fun setSwipeClaim(owner: Any, rect: Rect) {
+        swipeClaims[owner] = rect
     }
 
     fun isFreeSpace(point: Offset): Boolean = bounds.values.none { it.contains(point) }
@@ -292,6 +300,17 @@ class Gen1WindowBounds {
      */
     fun isHoldClaimed(point: Offset): Boolean = holds.values.any { it.contains(point) }
 
+    /**
+     * Whether something under [point] reads a drag itself, rather than as
+     * the D-pad SWIPE CONTROLS turns any drag into elsewhere.
+     *
+     * The wallet's own cards are the one thing a finger drags directly
+     * rather than steps with: [Gen1Gestures] consumes anything past its
+     * swipe threshold the moment it sees one, wherever it starts, so
+     * without this a card never saw more than about twenty pixels of a
+     * drag before the gesture became a D-pad LEFT and the card sprang back.
+     */
+    fun isSwipeClaimed(point: Offset): Boolean = swipeClaims.values.any { it.contains(point) }
 }
 
 val LocalGen1WindowBounds = staticCompositionLocalOf { Gen1WindowBounds() }
@@ -306,6 +325,20 @@ fun Modifier.gen1HoldRegion(): Modifier {
     val owner = remember { Any() }
     DisposableEffect(registry, owner) { onDispose { registry.forget(owner) } }
     return onGloballyPositioned { registry.setHold(owner, it.boundsInRoot()) }
+}
+
+/**
+ * Marks this window as handling its own drag, so SWIPE CONTROLS' D-pad
+ * conversion leaves a finger moving across it alone. A plain tap here still
+ * reaches the cursor exactly as it does anywhere else; only a drag past the
+ * swipe threshold is left unconsumed for this window's own gesture detector.
+ */
+@Composable
+fun Modifier.gen1SwipeRegion(): Modifier {
+    val registry = LocalGen1WindowBounds.current
+    val owner = remember { Any() }
+    DisposableEffect(registry, owner) { onDispose { registry.forget(owner) } }
+    return onGloballyPositioned { registry.setSwipeClaim(owner, it.boundsInRoot()) }
 }
 
 

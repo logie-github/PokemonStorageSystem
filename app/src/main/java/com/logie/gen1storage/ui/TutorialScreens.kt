@@ -60,13 +60,24 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
     // opens. Full size gives the badges their own line and the lead its own
     // portrait, and in a stage with a screen's worth of height to fill that
     // came out as a card two thirds of the way down the phone with a hole in
-    // the middle of it. Wrapped in its own height so nothing stretches it —
-    // but the width stays full: the card decides beside-the-badges versus
-    // stacked-above-them by how wide it is given, the same as any other
-    // trainer card in the app, and narrowing it here was what shrank the
-    // portrait down to the stacked layout's small corner sprite instead of
-    // the full-height one beside the badge case.
-    Box(Modifier.fillMaxWidth().wrapContentHeight(), contentAlignment = Alignment.Center) {
+    // the middle of it: the card's "beside the badges" branch fills the gap
+    // between the name and the badge case with a weighted Spacer, and a
+    // plain wrapContentHeight() only relaxes the *minimum* height passed
+    // down, not the maximum — so that Spacer still measured against the
+    // stage's own large bounded height and expanded to fill it. The card
+    // list this same composable draws in never shows this, because a
+    // LazyColumn item is measured with an infinite max height, under which a
+    // weighted child collapses instead of expanding; unbounded = true asks
+    // for that identical infinite-height measurement here. The width stays
+    // full: the card decides beside-the-badges versus stacked-above-them by
+    // how wide it is given, the same as any other trainer card in the app,
+    // and narrowing it here was what shrank the portrait down to the stacked
+    // layout's small corner sprite instead of the full-height one beside the
+    // badge case.
+    Box(
+        Modifier.fillMaxWidth().wrapContentHeight(unbounded = true),
+        contentAlignment = Alignment.Center,
+    ) {
         Gen1TrainerCard(
             remote = remote,
             save = save,

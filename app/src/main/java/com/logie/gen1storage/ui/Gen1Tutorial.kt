@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -242,9 +245,30 @@ fun Gen1Tutorial(
         audio?.play(effect)
     }
 
+    // Short of room — a pane of a split screen, most often — the stage used
+    // to be squeezed by weight(1f) into whatever was left after Bill and his
+    // box took their fixed share, and a stage with less room than its content
+    // needs does not shrink to fit: it simply draws past the bottom of the
+    // box it was given, over whatever comes after it in the column. That
+    // was Bill and his own box, which is what "he is under the box" was —
+    // not that he had moved, but that the stage had overrun him.
+    //
+    // Scrolling instead of squeezing: the stage keeps its natural size, Bill
+    // stays exactly where he always stands, and anything that still does not
+    // fit is a swipe away rather than lost under something else.
+    val short = isShort()
     Box(Modifier.fillMaxSize().gen1Ground().padding(gen1Dp(4))) {
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .then(if (short) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+        ) {
+            Box(
+                Modifier
+                    .then(if (short) Modifier.wrapContentHeight() else Modifier.weight(1f))
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
                 val stage = current.stage
                 when {
                     // The bar, while there is one to watch, and nothing else
@@ -274,30 +298,22 @@ fun Gen1Tutorial(
                     Box(Modifier.matchParentSize().tapsTo(beat to connecting) { take() })
                 }
             }
-            // He steps out of the way in a pane of a split screen, on the one
-            // beat whose screen is there to be used rather than looked at.
-            // His square is a quarter of the display and the box under it is
-            // four lines whatever happens; in half a phone's height the two
-            // of them leave the stage so little that the column overflows and
-            // the box is drawn over the very code fields it is asking for.
-            // Nothing is lost by going: the codes beat is moved on by linking
-            // or by NOT NOW, both of them on the form itself, so there is no
-            // page here to turn and nothing of his to miss.
-            //
-            // Only that beat. Everywhere else the box is the only way on, and
-            // a tour with no text and nothing to tap is a tour that stops.
-            if (!(isShort() && current.asksForCodes)) Box {
+            // Bill and his box, always, in the same spot they always stand:
+            // the fixed section under the stage, portrait above the box. What
+            // used to change here on a short screen was which of them drew at
+            // all — the fix for the stage overrunning them was to make the
+            // stage scroll instead, above, so nothing here needs to move or
+            // disappear to make room for it.
+            Box {
                 Column {
-                    if (!isShort()) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement =
-                                if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
-                        ) {
-                            BillPortrait(speaking, alpha = billAlpha, contrast = billContrast)
-                        }
-                        Spacer(Modifier.height(gen1Dp(2)))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement =
+                            if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
+                    ) {
+                        BillPortrait(speaking, alpha = billAlpha, contrast = billContrast)
                     }
+                    Spacer(Modifier.height(gen1Dp(2)))
                     Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
                         // Empty until the line is up. The box is there — he is
                         // there, flickering — but there is nothing coming down

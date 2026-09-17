@@ -38,12 +38,25 @@ object TheGame {
 
     private const val SCHEME = "gen1recomp++"
 
-    /** The installed one, if any is. */
+    /**
+     * The installed one, if any is.
+     *
+     * The two known ids are checked first, since that covers a straight
+     * install of a release or of an unmodified checkout without asking
+     * Android to resolve anything. A checkout built with `gradle.properties`
+     * pointed at some other id — a rename, a fork, a player's own local
+     * build — carries an applicationId neither name matches, so what
+     * actually decides "is the game here" is resolving this app's own
+     * launch link: whatever answers it is Gen1Recomp, under whatever id it
+     * was built with.
+     */
     fun installedPackage(context: Context): String? {
         val packages = context.packageManager
-        return PACKAGES.firstOrNull { name ->
+        PACKAGES.firstOrNull { name ->
             runCatching { packages.getPackageInfo(name, 0) }.isSuccess
-        }
+        }?.let { return it }
+        val probe = Intent(Intent.ACTION_VIEW, Uri.Builder().scheme(SCHEME).authority("launch").build())
+        return runCatching { packages.resolveActivity(probe, 0)?.activityInfo?.packageName }.getOrNull()
     }
 
     fun isInstalled(context: Context): Boolean = installedPackage(context) != null

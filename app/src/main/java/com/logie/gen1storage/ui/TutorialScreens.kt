@@ -68,12 +68,13 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
     // list this same composable draws in never shows this, because a
     // LazyColumn item is measured with an infinite max height, under which a
     // weighted child collapses instead of expanding; unbounded = true asks
-    // for that identical infinite-height measurement here. The width stays
-    // full: the card decides beside-the-badges versus stacked-above-them by
-    // how wide it is given, the same as any other trainer card in the app,
-    // and narrowing it here was what shrank the portrait down to the stacked
-    // layout's small corner sprite instead of the full-height one beside the
-    // badge case.
+    // for that identical infinite-height measurement here.
+    //
+    // Held to the same width as a card on the shelf, which is what it is a
+    // picture of. Given the whole of an opened screen it ran the width of the
+    // display and read as a page rather than as a card — [gen1MaxWidth] is
+    // the cap every other window in the app is drawn to, and the shelf's own
+    // two-column layout lands on the same half.
     Box(
         Modifier.fillMaxWidth().wrapContentHeight(unbounded = true),
         contentAlignment = Alignment.Center,
@@ -87,6 +88,7 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
             trainerSprite = com.logie.gen1storage.sprites.TrainerStore.PLAYER,
             spriteRevision = spriteRevision,
             modifier = Modifier
+                .gen1MaxWidth()
                 .fillMaxWidth()
                 .graphicsLayer { translationY = dealt.value * size.height },
             inserted = true,

@@ -264,7 +264,13 @@ fun Gen1Tutorial(
                 // Pokemon poked there answers exactly as it would in the real
                 // one. Advancing from that beat is the text box and the arrow
                 // under it, which is where a Game Boy always put it.
-                if (!current.handsOver && (current.ask == null || dialogue.more)) {
+                // While he still has a page to turn the pane is there whatever
+                // the beat is, the demo beats included: turning his page is
+                // what a tap means until he has finished, and a beat that
+                // handed the demo over early left the ground beside it doing
+                // nothing at all. It lifts the moment he is done, and then
+                // the demo is the player's.
+                if (dialogue.more || (!current.handsOver && current.ask == null)) {
                     Box(Modifier.matchParentSize().tapsTo(beat to connecting) { take() })
                 }
             }

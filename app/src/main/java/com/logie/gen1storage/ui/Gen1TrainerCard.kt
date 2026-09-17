@@ -244,6 +244,14 @@ private fun Portrait(
         // enough to read as standing with them rather than as a second
         // portrait, and never a smeared one.
         val leadSide = with(density) { (((scale + 1) / 2) * ART_PIXELS).toDp() }
+        // And nothing at all where half of him is still the whole of him. The
+        // smallest whole multiple this art has is its own size, so on a card
+        // drawn at one times — the shelf's, beside another card — the lead
+        // came out exactly as big as the trainer and was laid over him in the
+        // corner, the two of them reading as one torn picture rather than as
+        // somebody standing with their Pokémon. A trainer alone is what the
+        // card has always been able to be.
+        val showLead = lead != null && scale >= 2
 
         Box(Modifier.size(side).align(Alignment.BottomCenter)) {
             if (trainerSprite != null) {
@@ -256,7 +264,7 @@ private fun Portrait(
                     cutout = true,
                 )
             }
-            if (lead != null) {
+            if (showLead && lead != null) {
                 Gen1Sprite(
                     speciesId = lead.spriteSpeciesId(),
                     gameVersionId = gameVersionId,

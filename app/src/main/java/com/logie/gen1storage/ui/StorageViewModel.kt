@@ -926,7 +926,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun selectSave(key: String, onReady: (String) -> Unit = {}) = viewModelScope.launch {
         val remote = mutable.value.remote(key) ?: return@launch message("THAT SAVE IS GONE.")
-        if (mutable.value.loaded[key] != null) {
+        // Cached is only good while it is at the revision the account
+        // reports. Any cache hit used to short-circuit this outright, so a
+        // cartridge read once early on — before anything was deposited into
+        // its in-game PC box, say — stayed that stale copy for the rest of
+        // the session: reselecting it never looked at the account again, so
+        // DEPOSIT went on reading boxes as they were at the first look,
+        // however long ago that was and however much has changed on the
+        // cartridge since. [loadAllSaves] already gets this right; this is
+        // the same check.
+        if (mutable.value.loaded[key]?.rev == remote.rev) {
             mutable.update { it.copy(activeSaveKey = key, prompt = null) }
             onReady(key)
             return@launch

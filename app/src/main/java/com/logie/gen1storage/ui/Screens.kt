@@ -1175,7 +1175,7 @@ enum class OptionsDrawer(val label: String) {
     LAYOUT("LAYOUT"),
     DOWNLOADS("DOWNLOADS"),
     ROMS("ROMS"),
-    SAVES("SAVES"),
+    SAVES("SAVE SYNC"),
     ABOUT("ABOUT"),
 }
 

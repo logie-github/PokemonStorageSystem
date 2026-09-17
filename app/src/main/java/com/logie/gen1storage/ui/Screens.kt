@@ -320,6 +320,17 @@ fun StorageSystemScreen(
         }
     }
 
+    // Cards with something in their boxes that this one does not have.
+    //
+    // DEPOSIT reads the card in the machine and nothing else, which is right —
+    // a transfer takes from one cartridge — but a player looking at another
+    // card's boxes has no way of knowing that. The list simply came up empty,
+    // with "There are no POKéMON here." over a card that plainly had some.
+    // So the card that does have them goes in instead.
+    val boxedElsewhere = state.saves.map { it.key }.filter { key ->
+        key != state.activeSaveKey && (state.save(key)?.save?.storedCount ?: 0) > 0
+    }
+
     /** The label a group starts under, or null once that group is open. */
     fun depositHeader(index: Int): String? {
         val row = depositRows[index]
@@ -448,8 +459,18 @@ fun StorageSystemScreen(
         onDeposit = {
             refusal = null
             when {
-                needsCart -> model.open(Screen.ChooseCart(null))
+                needsCart -> model.open(Screen.ChooseCart(null, thenOpenStorage = true))
                 (box?.freeSlots ?: 0) <= 0 -> refusal = "Oops! This Box is full of POKéMON."
+                // Nothing boxed on the card in the machine, and exactly one
+                // other card with something to send: that is the card meant,
+                // so it goes in and the list opens on it. Several of them and
+                // there is a real question, which is the shelf's to ask.
+                depositRows.isEmpty() && boxedElsewhere.size == 1 ->
+                    model.selectSave(boxedElsewhere.single()) { model.pcMode = PcMode.DEPOSIT }
+
+                depositRows.isEmpty() && boxedElsewhere.size > 1 ->
+                    model.open(Screen.ChooseCart(null, thenOpenStorage = true))
+
                 else -> model.pcMode = PcMode.DEPOSIT
             }
         },

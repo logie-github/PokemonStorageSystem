@@ -308,6 +308,7 @@ data class UiState(
     val currentStorageBox: Int = StorageLayout.THE_BOX,
     val showAllSaves: Boolean = false,
     val showAllItems: Boolean = false,
+    val cardWallet: Boolean = true,
     /** The [GbPalette] id everything is drawn through. */
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
@@ -587,6 +588,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 linked = credentials.isLinked,
                 showAllSaves = settings.showAllSaves,
                 showAllItems = settings.showAllItems,
+                cardWallet = settings.cardWallet,
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
@@ -1403,6 +1405,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.showAllSaves = enabled
         mutable.update { it.copy(showAllSaves = enabled) }
         if (enabled) loadAllSaves()
+    }
+
+    /** Trainer cards as a wallet a finger drags through, rather than a list. */
+    fun setCardWallet(enabled: Boolean) {
+        settings.cardWallet = enabled
+        mutable.update { it.copy(cardWallet = enabled) }
     }
 
     /**

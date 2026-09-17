@@ -188,6 +188,19 @@ data class EvolutionScene(
     val gameVersionId: String?,
     /** The cry to play when it arrives, by Pokédex number. */
     val toDexNumber: Int?,
+    /**
+     * The art the "after" sprite is drawn from, once it is not [gameVersionId]
+     * any more. Null for a trade evolution, where the before and after are two
+     * different Pokémon out of the one cartridge. Set for a Time Capsule
+     * crossing, where they are the one Pokémon out of two different games'
+     * drawings of it — Generation I's on the way in, Generation II's on the
+     * way out.
+     */
+    val toGameVersionId: String? = null,
+    /** What the window says while the trade is running. */
+    val captionWhile: String = "EVOLVING $name",
+    /** What the window says once it has landed. */
+    val captionAfter: String = "$name EVOLVED!",
 )
 
 /** The transfer a status screen was opened from, and can finish. */
@@ -1111,15 +1124,47 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * reason it can be offered at all.
      */
     fun carryForward(uid: String) = viewModelScope.launch {
+        val current = mutable.value
         val stored = storage.get(uid)
         if (stored == null) {
             message("THAT POKéMON IS NOT IN THE PC.")
             return@launch
         }
         val name = stored.pokemon.displayName.uppercase()
-        mutable.update { it.copy(busy = true, prompt = null) }
+
+        // The cartridges never gave the Time Capsule an animation of its own —
+        // crossing over was the ordinary link-trade sequence, the same cable
+        // and the same ball any other trade used, just with a cartridge on
+        // each end that spoke a different generation. This app is both ends of
+        // that cable already (see [tradeEvolve]), so the same scene draws it:
+        // Generation I's picture of the Pokémon going out, Generation II's
+        // coming back — nothing evolved, only the art it left in changed.
+        if (current.tradeAnimation && current.moves(Motion.TRADE)) {
+            val fromSpecies = stored.pokemon.speciesId
+            val toSpecies = fromSpecies?.let { Gen2Data.idOf(it) }
+            mutable.update {
+                it.copy(
+                    busy = true,
+                    prompt = null,
+                    evolutionScene = EvolutionScene(
+                        fromSpeciesId = fromSpecies,
+                        toSpeciesId = toSpecies,
+                        name = name,
+                        gameVersionId = stored.spriteGameVersionId,
+                        toGameVersionId = GameVersion.GOLD.id,
+                        toDexNumber = Gen2Data.species(toSpecies)?.dexNumber,
+                        captionWhile = "$name IS GOING",
+                        captionAfter = "$name CAME THROUGH!",
+                    ),
+                )
+            }
+            delay(EVOLUTION_SCENE_MILLIS)
+        } else {
+            mutable.update { it.copy(busy = true, prompt = null) }
+        }
+
         val record = storage.carryForward(uid)
-        mutable.update { it.copy(busy = false, storage = storage.state()) }
+        mutable.update { it.copy(busy = false, evolutionScene = null, storage = storage.state()) }
         if (record == null) {
             message("$name COULD NOT GO ON.")
             return@launch

@@ -1692,17 +1692,25 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             setsWorthFetching().takeIf { it.isNotEmpty() }?.let { sets ->
                 runCatching { spriteDownloader.download(sets, TutorialSamples.SPECIES) { half(50, it) } }
             }
-            // Preload trainer sprites for the tutorial: Red and the Gen2 player sprites
-            runCatching {
-                trainers.load(TrainerStore.PLAYER)
-                trainers.load(TrainerStore.GEN2_PLAYER_MALE)
-                trainers.load(TrainerStore.GEN2_PLAYER_FEMALE)
+            // The player's own trainer card art, ahead of the tutorial that puts
+            // one on screen. [TrainerStore.load] only ever reads what is
+            // already on disk — nothing is there yet on a bare install — so
+            // this has to be [TrainerStore.fetch], which pulls the file from
+            // pokered (or pokecrystal, for the Generation II pics) the same
+            // way [downloadTrainers] does for the rest of the set.
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    trainers.fetch(TrainerStore.PLAYER)
+                    trainers.fetch(TrainerStore.GEN2_PLAYER_MALE)
+                    trainers.fetch(TrainerStore.GEN2_PLAYER_FEMALE)
+                }
             }
         } finally {
             mutable.update {
                 it.copy(
                     followersInstalled = followers.count(),
                     spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
+                    trainersInstalled = trainers.count(),
                     spriteRevision = it.spriteRevision + 1,
                     openingProgress = DownloadProgress(100, 100, finished = true),
                 )

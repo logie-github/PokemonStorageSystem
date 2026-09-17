@@ -655,7 +655,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: Ahh, there we go. It appears the connection to the Pokémon " +
+            "BILL: Ahh, there we go. The connection to the Pokémon " +
                 "Storage System appears to be a success!"
         ),
         billTunesIn = true,

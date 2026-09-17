@@ -654,6 +654,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             mutable.update { it.copy(prompt = null) }
             return true
         }
+        // A list open over the PC is a window on it, and B closes the window
+        // it is standing in before it walks the stack — the same order the
+        // prompt above takes. Without this, backing out of DEPOSIT, WITHDRAW
+        // or the box left the machine altogether and said SEE YA! on the way,
+        // and a list that came up empty had no CANCEL row to close instead:
+        // "There are no POKéMON here." could only be answered by leaving.
+        if (current.screen == Screen.Storage && pcMode != PcMode.MENU) {
+            pcMode = PcMode.MENU
+            return true
+        }
         if (current.stack.size <= 1) return false
         // Leaving the storage system is what the cartridge says SEE YA! to —
         // `BillsPCMenu`'s exit, verbatim. Only on the way out of the PC

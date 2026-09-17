@@ -135,7 +135,15 @@ fun LinkForm(
     val secondField = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
-    val gen1RecompInstalled = remember { TheGame.isInstalled(context) }
+    // Split screen is where this screen is most used and least able to fit:
+    // the game is in the other pane with the codes on it, and this pane is
+    // half a phone tall. Everything that is not the codes and the button that
+    // takes them comes off, because with them on screen the fields themselves
+    // were pushed off the top of the pane and could not be typed into. The
+    // title is Bill's line above it or the row that opened this, and the way
+    // into the game is the other half of the screen already.
+    val short = isShort()
+    val gen1RecompInstalled = remember { TheGame.isInstalled(context) } && !short
 
     // Every choice here on one layer, in the order they are drawn.
     //
@@ -162,8 +170,10 @@ fun LinkForm(
         verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
         horizontalAlignment = Gen1Layout.menuSide,
     ) {
-        Gen1Frame(Modifier.wrapContentWidth()) {
-            GbText("SAVE SYNC")
+        if (!short) {
+            Gen1Frame(Modifier.wrapContentWidth()) {
+                GbText("SAVE SYNC")
+            }
         }
         // These two codes are Gen1Recomp's own, read off its own screen — split
         // this app and Gen1Recomp side by side first (Recents, then drag), and

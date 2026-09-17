@@ -270,14 +270,23 @@ fun Gen1Tutorial(
             }
             Box {
                 Column {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement =
-                            if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
-                    ) {
-                        BillPortrait(speaking, alpha = billAlpha, contrast = billContrast)
+                    // He goes in a pane of a split screen. His square is a
+                    // quarter of the display and the box under it is four
+                    // lines whatever happens, which between them leave a half
+                    // height window nothing to put the screen he is talking
+                    // about in — and on the beat asking for sync codes that
+                    // screen is the one thing there to use. What he is saying
+                    // is still said; it is the picture of him that goes.
+                    if (!isShort()) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement =
+                                if (Gen1Layout.windowsOnRight) Arrangement.End else Arrangement.Start,
+                        ) {
+                            BillPortrait(speaking, alpha = billAlpha, contrast = billContrast)
+                        }
+                        Spacer(Modifier.height(gen1Dp(2)))
                     }
-                    Spacer(Modifier.height(gen1Dp(2)))
                     Gen1Frame(Modifier.fillMaxWidth(), opening = true) {
                         // Empty until the line is up. The box is there — he is
                         // there, flickering — but there is nothing coming down

@@ -60,7 +60,12 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
     // opens. Full size gives the badges their own line and the lead its own
     // portrait, and in a stage with a screen's worth of height to fill that
     // came out as a card two thirds of the way down the phone with a hole in
-    // the middle of it. Wrapped in its own height so nothing stretches it.
+    // the middle of it. Wrapped in its own height so nothing stretches it —
+    // but the width stays full: the card decides beside-the-badges versus
+    // stacked-above-them by how wide it is given, the same as any other
+    // trainer card in the app, and narrowing it here was what shrank the
+    // portrait down to the stacked layout's small corner sprite instead of
+    // the full-height one beside the badge case.
     Box(Modifier.fillMaxWidth().wrapContentHeight(), contentAlignment = Alignment.Center) {
         Gen1TrainerCard(
             remote = remote,
@@ -71,7 +76,7 @@ fun TutorialTrainerCardScreen(model: StorageViewModel, spriteRevision: Int) {
             trainerSprite = com.logie.gen1storage.sprites.TrainerStore.PLAYER,
             spriteRevision = spriteRevision,
             modifier = Modifier
-                .wrapContentWidth()
+                .fillMaxWidth()
                 .graphicsLayer { translationY = dealt.value * size.height },
             inserted = true,
         )

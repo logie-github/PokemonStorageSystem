@@ -213,10 +213,10 @@ private const val STEP_MILLIS = 620L
  * stage over rather than covering it.
  */
 @Composable
-fun TutorialSyncScreen(model: StorageViewModel, onSkip: (() -> Unit)? = null) {
+fun TutorialSyncScreen(model: StorageViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     // The form rather than the screen: the screen is a list that fills the
     // height it is given, and in a stage that is most of a phone the window
     // ran off the bottom without its lower edge.
-    LinkForm(state, model, Modifier.fillMaxWidth(), onSkip = onSkip)
+    LinkForm(state, model, Modifier.fillMaxWidth())
 }

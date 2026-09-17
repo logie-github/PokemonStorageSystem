@@ -112,13 +112,7 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
  * measured by its contents, wherever it is put.
  */
 @Composable
-fun LinkForm(
-    state: UiState,
-    model: StorageViewModel,
-    modifier: Modifier = Modifier,
-    /** A way past this without linking, for the tour. Null where there is none. */
-    onSkip: (() -> Unit)? = null,
-) {
+fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modifier) {
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
     // Taken back if either code is edited after the question has been asked,
@@ -142,19 +136,11 @@ fun LinkForm(
     // title is Bill's line above it, or the row that opened this.
     val short = isShort()
 
-    // Both choices here on one layer, in the order they are drawn: with SWIPE
-    // CONTROLS on a tap is the A button and A takes whatever the cursor is on
-    // — see [gen1Clickable] — so a button the cursor cannot reach is a button
-    // that cannot be pressed at all.
-    val linkAt = 0
-    val skipAt = if (onSkip != null) 1 else -1
-    val cursor = rememberCursorLayerHandle(maxOf(linkAt, skipAt) + 1) { index ->
-        when (index) {
-            linkAt -> if (ready && !state.linking) model.link(first, second)
-            skipAt -> onSkip?.invoke()
-        }
-    }
-    val at = cursor.at
+    // The one choice here, on the cursor: with SWIPE CONTROLS on a tap is the
+    // A button and A takes whatever the cursor is on — see [gen1Clickable] —
+    // so a button the cursor cannot reach is a button that cannot be pressed
+    // at all.
+    val at = rememberCursorLayer(1) { if (ready && !state.linking) model.link(first, second) }
 
     Column(
         modifier.wrapContentHeight(),
@@ -211,14 +197,8 @@ fun LinkForm(
                     if (state.linking) "LINKING..." else "LINK THIS DEVICE",
                     { model.link(first, second) },
                     enabled = ready && !state.linking && declined,
-                    selected = at == linkAt,
+                    selected = at == 0,
                 )
-            }
-            // The way out for somebody who has not got their codes to hand.
-            // Only the tour offers one: everywhere else this screen was opened
-            // on purpose and backing out of it is the BACK row.
-            if (onSkip != null && !asking) {
-                Gen1Button("NOT NOW", onSkip, selected = at == skipAt)
             }
         }
     }

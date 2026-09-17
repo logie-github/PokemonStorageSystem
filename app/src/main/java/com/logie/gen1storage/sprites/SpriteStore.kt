@@ -230,16 +230,22 @@ class SpriteStore(
         val file = fileFor(set, speciesId)
         if (!file.isFile) return null
 
+        val bytes = runCatching { file.readBytes() }.getOrNull()
+        if (bytes == null || !isCompletePng(bytes)) {
+            // A file the bulk downloader treats as "already have it" the
+            // moment it exists on disk at all — it never re-checks
+            // completeness, so a cartridge cached from before a download was
+            // made to reject a short read stayed exactly this broken forever.
+            // Deleted here instead, so has() reports it missing and the next
+            // download actually replaces it, rather than skipping it as done.
+            file.delete()
+            return null
+        }
         val full = runCatching {
-            BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
         }.getOrNull() ?: run {
-            // A file that no longer decodes is one this app cannot draw
-            // anyway — cached from before the download itself was made to
-            // reject a short read, most likely. Deleted rather than left
-            // sitting there failing the same way forever, so the next fetch
-            // gets a clean shot at replacing it.
             file.delete()
             return null
         }

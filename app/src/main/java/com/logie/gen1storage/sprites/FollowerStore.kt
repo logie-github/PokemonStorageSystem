@@ -75,15 +75,22 @@ class FollowerStore(private val directory: File) {
         memory[key]?.let { return it }
 
         val source = file(dexNumber).takeIf { it.isFile } ?: return null
+        val bytes = runCatching { source.readBytes() }.getOrNull()
+        if (bytes == null || !isCompletePng(bytes)) {
+            // fetch() treats "the file exists" as "already have it" and
+            // never re-checks completeness, so a sheet cached from before a
+            // download was made to reject a short read stayed exactly this
+            // broken forever. Deleted here so the next fetch actually
+            // replaces it instead of skipping it as done.
+            source.delete()
+            return null
+        }
         val sheet = runCatching {
-            BitmapFactory.decodeFile(source.path, BitmapFactory.Options().apply {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
                 inScaled = false
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
         }.getOrNull() ?: run {
-            // Cached from before fetch rejected a short read, most likely -
-            // deleted rather than left failing the same way forever, so the
-            // next fetch gets a clean shot at replacing it.
             source.delete()
             return null
         }
@@ -126,6 +133,10 @@ class FollowerStore(private val directory: File) {
         // check below and land on disk looking complete.
         val expectedLength = connection.contentLengthLong
         if (expectedLength > 0 && bytes.size.toLong() != expectedLength) return null
+        // Content-Length is not always sent (chunked responses carry none at
+        // all), so the file's own structure is checked too: an IEND-less tail
+        // means the transfer was cut short regardless of what the header said.
+        if (!isCompletePng(bytes)) return null
 
         // Confirm it decodes to the sheet this expects before it lands, so a
         // proxy's error page cannot sit on disk looking like a Pokémon.

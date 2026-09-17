@@ -161,6 +161,11 @@ class SpriteDownloader(private val store: SpriteStore) {
         // species and one for the handful drawn once for both games; see
         // [Gen2Sprites.urls].
         var bytes = addresses.firstNotNullOfOrNull { read(it) } ?: return false
+        // Checked on the raw download, before Gen2Sprites.firstFrame below:
+        // that function re-encodes whatever pixels it is handed into a fresh,
+        // structurally valid PNG, so a truncated source would still pass a
+        // check made after it ran.
+        if (!isCompletePng(bytes)) return false
 
         if (set.generation == 2) {
             // The colours the cartridge showed are the file's own palette, in

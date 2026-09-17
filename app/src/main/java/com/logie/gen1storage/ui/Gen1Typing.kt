@@ -11,9 +11,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
@@ -30,6 +27,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import kotlinx.coroutines.delay
+import kotlin.math.floor
 
 /**
  * Text that arrives a letter at a time, the way the games print it.
@@ -73,15 +71,36 @@ fun Gen1TypedLines(
     // waits. Eight lines of somebody talking, all arriving at once, is a wall
     // of text in a window built for three.
     var width by remember { mutableIntStateOf(0) }
-    val measurer = rememberTextMeasurer()
+
+    // How many characters fit across, counted rather than measured.
+    //
+    // This face advances every glyph by a whole em — see the note on
+    // [Gen1FontFamily] — so the columns are simply the width over the type
+    // size, and the wrap can be worked out from the string alone.
+    //
+    // It used to ask a TextMeasurer instead, and that is what was dropping
+    // half of what Bill said. A measurer resolves a font synchronously and
+    // falls back to the platform's own the moment the resource font is not
+    // loaded yet, while the Text beside it waits for the real one and draws
+    // with it. The fallback is proportional, so it fitted about twice as many
+    // characters on a line as the box really holds: pages came out around six
+    // lines long, the three that did not fit were cut off by the line cap
+    // below, and the tour jumped from "IT WORKS ON THE SAME" to "REGION."
+    // Worst of all it only happened before the font was cached, which is to
+    // say on the opening beats and nowhere else.
+    val density = LocalDensity.current
+    val columns = remember(width, style.fontSize, density) {
+        val em = with(density) { style.fontSize.toPx() }
+        if (em <= 0f || width <= 0) 0 else floor(width / em).toInt()
+    }
 
     // Paginated in an effect rather than during composition. Everything here
     // writes to state something else reads in the same frame, and a write
     // during composition invalidates the frame that is writing it — which is
     // a box that retypes its first line for ever.
-    LaunchedEffect(lines, width, style) {
-        if (width <= 0) return@LaunchedEffect
-        state.reset(paginate(lines, measurer, style, width))
+    LaunchedEffect(lines, columns) {
+        if (columns <= 0) return@LaunchedEffect
+        state.reset(paginate(lines, columns))
     }
 
     LaunchedEffect(state, state.pages, state.page) {
@@ -230,20 +249,12 @@ const val GEN1_DIALOGUE_LINES = 3
  * few — a sentence ending and a fresh one beginning back to back in the same
  * box, mid-page, which reads as one run-on thought instead of two.
  */
-private fun paginate(
-    lines: List<String>,
-    measurer: TextMeasurer,
-    style: TextStyle,
-    width: Int,
-): List<String> {
-    fun linesOf(text: String): Int =
-        measurer.measure(text, style, constraints = Constraints(maxWidth = width)).lineCount
-
+internal fun paginate(lines: List<String>, columns: Int): List<String> {
     val pages = ArrayList<String>()
     lines.forEach { line ->
         val whole = line.trim()
         if (whole.isEmpty()) return@forEach
-        if (linesOf(whole) <= GEN1_DIALOGUE_LINES) {
+        if (wrappedLineCount(whole, columns) <= GEN1_DIALOGUE_LINES) {
             pages.add(whole)
             return@forEach
         }
@@ -251,7 +262,7 @@ private fun paginate(
         var current = StringBuilder()
         words.forEach { word ->
             val candidate = if (current.isEmpty()) word else "$current $word"
-            if (current.isNotEmpty() && linesOf(candidate) > GEN1_DIALOGUE_LINES) {
+            if (current.isNotEmpty() && wrappedLineCount(candidate, columns) > GEN1_DIALOGUE_LINES) {
                 pages.add(current.toString())
                 current = StringBuilder(word)
             } else {
@@ -261,6 +272,40 @@ private fun paginate(
         if (current.isNotEmpty()) pages.add(current.toString())
     }
     return pages
+}
+
+/**
+ * How many lines [text] wraps to in a box [columns] characters across.
+ *
+ * Greedy, the way every renderer wraps: a word goes on the current line while
+ * it and the space before it still fit, and starts a new one when it does
+ * not. A word longer than the whole line is broken where it runs out of room
+ * rather than dropped, which is what the renderer does with one too.
+ */
+internal fun wrappedLineCount(text: String, columns: Int): Int {
+    if (columns <= 0) return 1
+    var lines = 1
+    var filled = 0
+    text.split(" ").filter { it.isNotEmpty() }.forEach { word ->
+        if (word.length > columns) {
+            if (filled > 0) {
+                lines++
+                filled = 0
+            }
+            val rows = (word.length + columns - 1) / columns
+            lines += rows - 1
+            filled = word.length - (rows - 1) * columns
+            return@forEach
+        }
+        val needed = if (filled == 0) word.length else filled + 1 + word.length
+        if (needed <= columns) {
+            filled = needed
+        } else {
+            lines++
+            filled = word.length
+        }
+    }
+    return lines
 }
 
 /** One line, with the part not yet typed drawn in no colour at all. */

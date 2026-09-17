@@ -1731,7 +1731,7 @@ fun CreditsScreen() {
                 item { Spacer(Modifier.height(gen1Dp(4))) }
                 item {
                     Column {
-                        GbText("POKEMON")
+                        GbText("POKéMON")
                         Spacer(Modifier.height(gen1Dp(2)))
                         LEGAL.forEach { paragraph ->
                             GbText(paragraph, style = Gen1TextSmall)

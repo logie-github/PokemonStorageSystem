@@ -694,7 +694,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
             "BILL: First, in order to sync your app with the storage system " +
                 "you'll need to register your Trainer Card. Enter the sync code " +
                 "found on your PC. Save Sync will connect your record and you'll " +
-                "be able to store your pokemon!",
+                "be able to store your Pokémon!",
             "BILL: Think of it like registering another destination on the " +
                 "Pokémon transfer network. Once that's done, the system will " +
                 "know where your Pokémon should be sent."

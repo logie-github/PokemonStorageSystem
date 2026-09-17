@@ -129,16 +129,8 @@ fun Gen1Tutorial(
         // offered until he has finished asking — so a question longer than the
         // box had a page to turn that nothing on screen could turn, and the
         // tour stopped dead on it.
-        //
-        // The same blip the cartridge plays on every A press through text,
-        // whichever this tap did: finished the line, turned the page, or
-        // moved him on to the next beat.
-        if (dialogue.next()) {
-            audio?.play(SoundEffect.CURSOR)
-            return
-        }
+        if (dialogue.next()) return
         if (current.ask != null) return
-        audio?.play(SoundEffect.CURSOR)
         advance()
     }
     rememberCursorLayer(1) {

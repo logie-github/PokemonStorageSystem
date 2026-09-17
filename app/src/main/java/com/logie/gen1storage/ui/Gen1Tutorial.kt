@@ -268,15 +268,20 @@ fun Gen1Tutorial(
                     Box(Modifier.matchParentSize().tapsTo(beat to connecting) { take() })
                 }
             }
-            Box {
+            // He steps out of the way in a pane of a split screen, on the one
+            // beat whose screen is there to be used rather than looked at.
+            // His square is a quarter of the display and the box under it is
+            // four lines whatever happens; in half a phone's height the two
+            // of them leave the stage so little that the column overflows and
+            // the box is drawn over the very code fields it is asking for.
+            // Nothing is lost by going: the codes beat is moved on by linking
+            // or by NOT NOW, both of them on the form itself, so there is no
+            // page here to turn and nothing of his to miss.
+            //
+            // Only that beat. Everywhere else the box is the only way on, and
+            // a tour with no text and nothing to tap is a tour that stops.
+            if (!(isShort() && current.asksForCodes)) Box {
                 Column {
-                    // He goes in a pane of a split screen. His square is a
-                    // quarter of the display and the box under it is four
-                    // lines whatever happens, which between them leave a half
-                    // height window nothing to put the screen he is talking
-                    // about in — and on the beat asking for sync codes that
-                    // screen is the one thing there to use. What he is saying
-                    // is still said; it is the picture of him that goes.
                     if (!isShort()) {
                         Row(
                             Modifier.fillMaxWidth(),

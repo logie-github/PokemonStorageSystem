@@ -1591,10 +1591,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     // ------- trainers
 
     /** Downloads the trainer battle sprites a trainer card's portrait uses. */
-    fun downloadTrainers() {
+    /**
+     * @param dismissPrompt Clears whatever prompt is up when the download
+     * starts - right for the menu row that asks "download everything?" and
+     * wrong for the TRAINER picker's own quiet catch-up fetch, which is
+     * itself a prompt: left at its default this closed the very picker that
+     * triggered it the instant a tap opened it, which read as the app
+     * crashing rather than as a fetch starting behind it.
+     */
+    fun downloadTrainers(dismissPrompt: Boolean = true) {
         if (trainerJob?.isActive == true) return
         trainerJob = downloadStage("TRAINERS") {
-            mutable.update { it.copy(prompt = null, trainerProgress = DownloadProgress(0, 1)) }
+            mutable.update {
+                it.copy(
+                    prompt = if (dismissPrompt) null else it.prompt,
+                    trainerProgress = DownloadProgress(0, 1),
+                )
+            }
             val result = runCatching {
                 trainers.downloadAll { progress ->
                     mutable.update { it.copy(trainerProgress = progress) }

@@ -2006,7 +2006,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 // call every time the picker opens: downloadTrainers skips
                 // whatever is already on disk and only reaches the network
                 // for what is actually missing.
-                LaunchedEffect(Unit) { model.downloadTrainers() }
+                LaunchedEffect(Unit) { model.downloadTrainers(dismissPrompt = false) }
                 TrainerSpritePicker(
                     chosen = model.trainerSprite(prompt.key),
                     store = model.trainers,

@@ -1692,6 +1692,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 followerJob?.join()
                 downloadSprites()
                 spriteJob?.join()
+                // Left out of a first run before now, which is why a trainer
+                // card's TRAINER picker came up a column of blank rows for
+                // anyone who had never gone looking for DOWNLOAD ALL in
+                // OPTIONS: every Pokémon this app draws is fetched up front,
+                // and a trainer is the same kind of art.
+                downloadTrainers()
+                trainerJob?.join()
             } finally {
                 holdingDownloadService = false
                 runCatching { DownloadService.hide(getApplication()) }

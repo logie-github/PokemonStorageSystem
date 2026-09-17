@@ -1999,15 +1999,24 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 onCancel = model::dismissPrompt,
             )
 
-            is Prompt.ChooseTrainerSprite -> TrainerSpritePicker(
-                chosen = model.trainerSprite(prompt.key),
-                store = model.trainers,
-                revision = state.spriteRevision,
-                version = state.remote(prompt.key)?.version,
-                female = state.save(prompt.key)?.save?.isFemale == true,
-                onChoose = { model.setTrainerSprite(prompt.key, it) },
-                onCancel = model::dismissPrompt,
-            )
+            is Prompt.ChooseTrainerSprite -> {
+                // A trainer this app has not fetched yet is a blank row here
+                // rather than a picture, and a player should never have to go
+                // find DOWNLOAD ALL in OPTIONS to make one appear. Cheap to
+                // call every time the picker opens: downloadTrainers skips
+                // whatever is already on disk and only reaches the network
+                // for what is actually missing.
+                LaunchedEffect(Unit) { model.downloadTrainers() }
+                TrainerSpritePicker(
+                    chosen = model.trainerSprite(prompt.key),
+                    store = model.trainers,
+                    revision = state.spriteRevision,
+                    version = state.remote(prompt.key)?.version,
+                    female = state.save(prompt.key)?.save?.isFemale == true,
+                    onChoose = { model.setTrainerSprite(prompt.key, it) },
+                    onCancel = model::dismissPrompt,
+                )
+            }
 
             is Prompt.ChooseSpriteSet -> SpriteSetPicker(
                 speciesId = prompt.speciesId,

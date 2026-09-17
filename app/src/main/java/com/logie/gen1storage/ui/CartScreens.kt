@@ -89,19 +89,34 @@ fun ChooseCartScreen(
     // Six across with the room for it, two rows of three without: a card is
     // a picture worth seeing, and a sixth of a folded phone is a thumbnail.
     val across = if (isUnfolded()) shelf.size else 3
+    // Every card on the account until a game is named, rather than only the
+    // one the cursor happens to be standing over. Naming a game was a step
+    // that had to be taken before any card could be taken at all, and for an
+    // account with a handful of cards there was never a question in it —
+    // picking Silver meant walking the shelf to SILVER, pressing it, and only
+    // then being offered the card that was wanted all along. The shelf still
+    // narrows to one game when one is pressed.
+    val listed = if (pickingGame) state.saves else saves(state, game)
+    // One layer over both, which is what `grid` is for: the games are its
+    // grid and the cards below are the rows under it, so a swipe down off the
+    // shelf lands on the first card instead of stopping dead at the shelf.
     val cursor = rememberCursorLayer(
-        count = if (pickingGame) shelf.size else saves(state, game).size,
+        count = if (pickingGame) shelf.size + listed.size else listed.size,
         columns = if (pickingGame) across else columns,
+        grid = if (pickingGame) shelf.size else Int.MAX_VALUE,
     ) { index ->
-        if (pickingGame) shelf.getOrNull(index)?.let(choose)
-        else saves(state, game).getOrNull(index)?.let(chooseSave)
+        when {
+            !pickingGame -> listed.getOrNull(index)?.let(chooseSave)
+            index < shelf.size -> shelf.getOrNull(index)?.let(choose)
+            else -> listed.getOrNull(index - shelf.size)?.let(chooseSave)
+        }
     }
-    // The cards under the shelf follow the cursor rather than waiting for it
-    // to be pressed: running along the shelf shows each game's trainer cards
-    // as it is reached, which is what the row of games is for. Once a game is
-    // taken the cursor drops into that game's list and the shelf holds still.
-    val showing = if (pickingGame) shelf.getOrNull(cursor)?.version?.id else game
-    val saves = saves(state, showing)
+    // Where the cursor is among the cards, or -1 while it is still up on the
+    // shelf. The rows below the grid are single file, so they are drawn that
+    // way as well while every game's cards are listed together.
+    val atCard = if (pickingGame) cursor - shelf.size else cursor
+    val listColumns = if (pickingGame) 1 else columns
+    val saves = listed
 
     Column(
         Modifier
@@ -169,8 +184,8 @@ fun ChooseCartScreen(
         }
 
         val scroll = rememberLazyListState()
-        LaunchedEffect(cursor, columns, pickingGame) {
-            if (!pickingGame) scroll.scrollToRow(cursor / columns) else scroll.scrollToRow(0)
+        LaunchedEffect(atCard, listColumns) {
+            scroll.scrollToRow((atCard / listColumns).coerceAtLeast(0))
         }
         LazyColumn(
             state = scroll,
@@ -181,7 +196,7 @@ fun ChooseCartScreen(
             // either rule on its own.
             userScrollEnabled = !LocalGen1Swipe.current,
         ) {
-            items(saves.chunked(columns)) { row ->
+            items(saves.chunked(listColumns)) { row ->
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
@@ -193,13 +208,13 @@ fun ChooseCartScreen(
                             slot = index + 1,
                             state = state,
                             model = model,
-                            cursor = !pickingGame && cursor == index,
+                            cursor = atCard == index,
                             loaded = !sending && state.activeSaveKey == remote.key,
                             onChoose = { chooseSave(remote) },
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(listColumns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -401,6 +416,12 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
 
     ScreenColumn {
         item {
+            // The card itself is the way in, because putting it in the machine
+            // is what somebody opening a card came to do: it was one row of a
+            // four-row menu under it, and reaching the card at all already
+            // took a tap on the shelf. Everything else it can be told stays
+            // in the menu, where it is still named rather than hidden behind
+            // a gesture.
             Gen1TrainerCard(
                 remote = remote,
                 save = state.save(key)?.save,
@@ -409,7 +430,9 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
                 trainers = model.trainers,
                 trainerSprite = chosen,
                 spriteRevision = state.spriteRevision,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .gen1Clickable { model.chooseCart(key, thenOpenStorage = true) },
                 inserted = state.activeSaveKey == key,
                 full = true,
             )

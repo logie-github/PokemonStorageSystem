@@ -36,4 +36,32 @@ class PngIntegrityTest {
     fun `too short to hold an IEND chunk at all fails`() {
         assertFalse(isCompletePng(ByteArray(4)))
     }
+
+    /**
+     * The gap the tail-only check had: same length, same closing IEND, one
+     * byte wrong in the middle. A dropped-and-resent packet or a proxy
+     * rewriting a chunk boundary leaves exactly this shape, and it is what
+     * decoded to a clean top and static further down.
+     */
+    @Test
+    fun `a byte corrupted in the middle of a chunk fails, even with a valid tail`() {
+        val corrupted = completePng.copyOf()
+        corrupted[45] = (corrupted[45] + 1).toByte()
+        assertFalse(isCompletePng(corrupted))
+    }
+
+    @Test
+    fun `a byte corrupted in IHDR fails too`() {
+        val corrupted = completePng.copyOf()
+        corrupted[20] = (corrupted[20] + 1).toByte()
+        assertFalse(isCompletePng(corrupted))
+    }
+
+    @Test
+    fun `a declared chunk length past the end of the file fails`() {
+        val corrupted = completePng.copyOf()
+        // IDAT's own length field, at offset 33..36.
+        corrupted[36] = 0x7F
+        assertFalse(isCompletePng(corrupted))
+    }
 }

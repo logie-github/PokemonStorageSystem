@@ -314,21 +314,25 @@ fun Gen1Tutorial(
                             // first beat to the last: three lines of room and
                             // the arrow's row under them.
                             holdLines = GEN1_DIALOGUE_LINES + 1,
+                            // The arrow saying there is another beat behind
+                            // this one, drawn in that held row rather than on
+                            // one of its own. Added underneath, it made the
+                            // window a line taller the instant he stopped
+                            // typing — the same box, two heights.
+                            arrowWhenDone = current.ask == null,
                             onFinished = { speaking = false },
                         )
                         // Only once he has finished saying it, the way the
                         // cartridge only offers a choice when the box has
                         // stopped printing.
-                        if (!connecting && !speaking && !dialogue.more) when (current.ask) {
-                            null -> Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
-                            ) { Gen1BlinkingArrow() }
-
-                            // Pulled the moment a folder comes back, rather
-                            // than left up for however long that folder takes
-                            // to read — see romsImporting above.
-                            TutorialAsk.ROMS -> if (!romsImporting) Gen1ChoiceRows(
+                        //
+                        // Pulled the moment a folder comes back, rather than
+                        // left up for however long that folder takes to read —
+                        // see romsImporting above.
+                        if (!connecting && !speaking && !dialogue.more &&
+                            current.ask == TutorialAsk.ROMS && !romsImporting
+                        ) {
+                            Gen1ChoiceRows(
                                 listOf(
                                     "FIND THE FOLDER" to { pickRomsFolder.launch(null) },
                                     "NOT NOW" to { advance() },

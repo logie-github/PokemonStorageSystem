@@ -99,15 +99,11 @@ fun Gen1DialogueBox(
 ) {
     var finished by remember(lines) { mutableStateOf(false) }
     Gen1Frame(modifier.fillMaxWidth(), opening = true) {
-        Gen1TypedLines(lines, onFinished = { finished = true })
-        if (finished) {
-            if (more) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Gen1BlinkingArrow()
-                }
-            }
-            actions()
-        }
+        // The arrow goes in the room the box already holds for it. On a row of
+        // its own under the text it grew the window by a line the moment the
+        // last letter landed.
+        Gen1TypedLines(lines, arrowWhenDone = more, onFinished = { finished = true })
+        if (finished) actions()
     }
 }
 

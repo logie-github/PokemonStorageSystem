@@ -67,6 +67,14 @@ fun Gen1TypedLines(
      * for now and nothing should: that is the jumping.
      */
     holdLines: Int? = GEN1_DIALOGUE_LINES + 1,
+    /**
+     * Whether to keep the arrow up once there is nothing left to say, for a
+     * box whose next tap moves on rather than turning a page.
+     *
+     * Drawn in the room already held for it rather than by the caller, so the
+     * window is the same height finished as it was mid-sentence.
+     */
+    arrowWhenDone: Boolean = false,
     /** Called once the last letter of the last page is down. */
     onFinished: () -> Unit = {},
 ) {
@@ -129,7 +137,16 @@ fun Gen1TypedLines(
 
     // The arrow a page with more behind it ends on, which is how the cartridge
     // says a box is not finished with you.
-    val arrow = state.pageIsDown && !state.onLastPage
+    //
+    // [arrowWhenDone] is the other reason to draw one: the box has said all it
+    // has to say and what comes next is a screen away rather than a page. It
+    // belongs in the same corner, and it matters that it is drawn here rather
+    // than by the caller. A caller that adds its own row under this one adds a
+    // row to the window, so the box stood one line taller from the moment the
+    // last letter landed than it had been the whole time it was typing — which
+    // is the growing this holds a set number of lines to prevent.
+    val done = state.pageIsDown && state.onLastPage && state.pages.isNotEmpty()
+    val arrow = (state.pageIsDown && !state.onLastPage) || (arrowWhenDone && done)
     Box(
         modifier
             // The width to wrap inside is the one this window is *offering*,

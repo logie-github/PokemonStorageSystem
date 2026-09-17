@@ -289,7 +289,12 @@ private fun TypedLine(line: String, shown: Int, style: TextStyle) {
             }
         }
     }
-    GbText(text, style = style)
+    // paginate() promises every page fits in GEN1_DIALOGUE_LINES, but nothing
+    // before this held it to that: a page it got wrong by even one line had
+    // nothing stopping it drawing straight past the box's own fixed height,
+    // which is a held-open window with no floor. Capped here as well, so a
+    // misjudged split reads as ellipsis rather than as running off the window.
+    GbText(text, style = style, maxLines = GEN1_DIALOGUE_LINES)
 }
 
 /**

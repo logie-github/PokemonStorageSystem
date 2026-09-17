@@ -97,12 +97,22 @@ fun ChooseCartScreen(
     // then being offered the card that was wanted all along. The shelf still
     // narrows to one game when one is pressed.
     val listed = if (pickingGame) state.saves else saves(state, game)
+    // The wallet only ever replaces the list of one game's cards; the shelf
+    // above it is unaffected either way.
+    val walletMode = !pickingGame && state.cardWallet
     // One layer over both, which is what `grid` is for: the games are its
     // grid and the cards below are the rows under it, so a swipe down off the
     // shelf lands on the first card instead of stopping dead at the shelf.
-    val cursor = rememberCursorLayer(
+    // In the wallet the cards are a single hand rather than a column of rows,
+    // so LEFT and RIGHT have to walk the whole hand rather than the one or
+    // two columns the flat list lays out.
+    val cursorLayer = rememberCursorLayerHandle(
         count = if (pickingGame) shelf.size + listed.size else listed.size,
-        columns = if (pickingGame) across else columns,
+        columns = when {
+            pickingGame -> across
+            walletMode -> listed.size.coerceAtLeast(1)
+            else -> columns
+        },
         grid = if (pickingGame) shelf.size else Int.MAX_VALUE,
     ) { index ->
         when {
@@ -111,6 +121,7 @@ fun ChooseCartScreen(
             else -> listed.getOrNull(index - shelf.size)?.let(chooseSave)
         }
     }
+    val cursor = cursorLayer.at
     // Where the cursor is among the cards, or -1 while it is still up on the
     // shelf. The rows below the grid are single file, so they are drawn that
     // way as well while every game's cards are listed together.
@@ -183,38 +194,64 @@ fun ChooseCartScreen(
             Spacer(Modifier.height(gen1Dp(4)))
         }
 
-        val scroll = rememberLazyListState()
-        LaunchedEffect(atCard, listColumns) {
-            scroll.scrollToRow((atCard / listColumns).coerceAtLeast(0))
-        }
-        LazyColumn(
-            state = scroll,
-            verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
-            // With swipes on the list follows the cursor and nothing else: a
-            // drag that both scrolls and steps does neither predictably, and
-            // one list that dragged while the rest did not was worse than
-            // either rule on its own.
-            userScrollEnabled = !LocalGen1Swipe.current,
-        ) {
-            items(saves.chunked(listColumns)) { row ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
-                ) {
-                    row.forEach { remote ->
-                        val index = saves.indexOf(remote)
-                        TrainerCardRow(
-                            remote = remote,
-                            slot = index + 1,
-                            state = state,
-                            model = model,
-                            cursor = atCard == index,
-                            loaded = !sending && state.activeSaveKey == remote.key,
-                            onChoose = { chooseSave(remote) },
-                            modifier = Modifier.weight(1f),
-                        )
+        if (walletMode) {
+            Gen1CardWallet(
+                count = saves.size,
+                at = atCard,
+                onMove = { cursorLayer.index = it },
+                onConfirm = { index -> saves.getOrNull(index)?.let(chooseSave) },
+                onHold = { index ->
+                    saves.getOrNull(index)?.let { model.open(Screen.TrainerCard(it.key)) }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { index, pixelRounded, cardModifier ->
+                saves.getOrNull(index)?.let { remote ->
+                    TrainerCardArt(
+                        remote = remote,
+                        slot = index + 1,
+                        state = state,
+                        model = model,
+                        cursor = false,
+                        loaded = !sending && state.activeSaveKey == remote.key,
+                        modifier = cardModifier,
+                        pixelRounded = pixelRounded,
+                    )
+                }
+            }
+        } else {
+            val scroll = rememberLazyListState()
+            LaunchedEffect(atCard, listColumns) {
+                scroll.scrollToRow((atCard / listColumns).coerceAtLeast(0))
+            }
+            LazyColumn(
+                state = scroll,
+                verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+                // With swipes on the list follows the cursor and nothing else: a
+                // drag that both scrolls and steps does neither predictably, and
+                // one list that dragged while the rest did not was worse than
+                // either rule on its own.
+                userScrollEnabled = !LocalGen1Swipe.current,
+            ) {
+                items(saves.chunked(listColumns)) { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+                    ) {
+                        row.forEach { remote ->
+                            val index = saves.indexOf(remote)
+                            TrainerCardRow(
+                                remote = remote,
+                                slot = index + 1,
+                                state = state,
+                                model = model,
+                                cursor = atCard == index,
+                                loaded = !sending && state.activeSaveKey == remote.key,
+                                onChoose = { chooseSave(remote) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        repeat(listColumns - row.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    repeat(listColumns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -346,8 +383,14 @@ private const val CURSOR_STRIP_PIXELS = 6
  * money, a time and a row of badges — so it is what the shelf holds now. A
  * hold opens the card at full size, where it can also be renamed.
  */
+/**
+ * The card's own art and facts, with nothing about how it is picked up.
+ *
+ * Shared by the flat list, which wires a tap and a hold onto it, and the
+ * wallet, which wires a drag onto it instead.
+ */
 @Composable
-private fun TrainerCardRow(
+private fun TrainerCardArt(
     remote: RemoteSave,
     slot: Int,
     state: UiState,
@@ -356,8 +399,9 @@ private fun TrainerCardRow(
     cursor: Boolean,
     /** Whether this is the card already in the machine. */
     loaded: Boolean,
-    onChoose: () -> Unit,
     modifier: Modifier,
+    /** Drawn in the wallet's chunky-pixel rounded frame instead of the cartridge's own. */
+    pixelRounded: Boolean = false,
 ) {
     val title = remember(remote.key, state.cartRevision) { model.cartName(remote.key) }
         ?.uppercase() ?: "CARD $slot"
@@ -371,6 +415,33 @@ private fun TrainerCardRow(
             model.trainerSprite(remote.key)
         },
         spriteRevision = state.spriteRevision,
+        modifier = modifier,
+        cursor = cursor,
+        inserted = loaded,
+        pixelRounded = pixelRounded,
+    )
+}
+
+@Composable
+private fun TrainerCardRow(
+    remote: RemoteSave,
+    slot: Int,
+    state: UiState,
+    model: StorageViewModel,
+    /** Where the cursor is. */
+    cursor: Boolean,
+    /** Whether this is the card already in the machine. */
+    loaded: Boolean,
+    onChoose: () -> Unit,
+    modifier: Modifier,
+) {
+    TrainerCardArt(
+        remote = remote,
+        slot = slot,
+        state = state,
+        model = model,
+        cursor = cursor,
+        loaded = loaded,
         modifier = modifier
             .gen1HoldRegion()
             .pointerInput(remote.key) {
@@ -379,8 +450,6 @@ private fun TrainerCardRow(
                     onLongPress = { model.open(Screen.TrainerCard(remote.key)) },
                 )
             },
-        cursor = cursor,
-        inserted = loaded,
     )
 }
 

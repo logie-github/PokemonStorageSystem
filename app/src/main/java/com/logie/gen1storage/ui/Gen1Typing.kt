@@ -55,14 +55,18 @@ fun Gen1TypedLines(
     /**
      * How many lines of room to hold open, whatever is currently in the box.
      *
-     * Null and the box is as tall as the page inside it, which is what a
-     * caption in the corner wants. Given a number it is always exactly that
-     * tall: a window that grew a row when he said a longer sentence and shrank
-     * again on the next one is the one thing a Game Boy's text box never did.
-     * Count the arrow's row in the number — it is pinned to the bottom of the
-     * room held here rather than added under it.
+     * A page and the arrow's row under it, always, which is the size every
+     * text box in this app is: a window that grows a row for a longer
+     * sentence and shrinks again on the next one is the one thing a Game
+     * Boy's text box never did, and it is the whole of what made the boxes
+     * here jump about between one message and the next. Count the arrow's
+     * row in the number — it is pinned to the bottom of the room held here
+     * rather than added under it.
+     *
+     * Null leaves the box as tall as whatever is in it, which nothing asks
+     * for now and nothing should: that is the jumping.
      */
-    holdLines: Int? = null,
+    holdLines: Int? = GEN1_DIALOGUE_LINES + 1,
     /** Called once the last letter of the last page is down. */
     onFinished: () -> Unit = {},
 ) {

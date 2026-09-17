@@ -112,7 +112,13 @@ fun LinkScreen(state: UiState, model: StorageViewModel) {
  * measured by its contents, wherever it is put.
  */
 @Composable
-fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modifier) {
+fun LinkForm(
+    state: UiState,
+    model: StorageViewModel,
+    modifier: Modifier = Modifier,
+    /** A way past this without linking, for the tour. Null where there is none. */
+    onSkip: (() -> Unit)? = null,
+) {
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
     // Taken back if either code is edited after the question has been asked,
@@ -131,6 +137,26 @@ fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modif
     val context = LocalContext.current
     val gen1RecompInstalled = remember { TheGame.isInstalled(context) }
 
+    // Every choice here on one layer, in the order they are drawn.
+    //
+    // With SWIPE CONTROLS on a tap is the A button and A takes whatever the
+    // cursor is on — see [gen1Clickable] — so a button the cursor cannot
+    // reach is a button that cannot be pressed at all. OPEN GEN1RECOMP was
+    // exactly that: tapping it confirmed the only row there was, the link
+    // below, which does nothing until both codes are in. The screen simply
+    // sat there.
+    val openAt = if (gen1RecompInstalled) 0 else -1
+    val linkAt = if (gen1RecompInstalled) 1 else 0
+    val skipAt = if (onSkip != null) linkAt + 1 else -1
+    val cursor = rememberCursorLayerHandle(maxOf(linkAt, skipAt) + 1) { index ->
+        when (index) {
+            openAt -> TheGame.open(context)
+            linkAt -> if (ready && !state.linking) model.link(first, second)
+            skipAt -> onSkip?.invoke()
+        }
+    }
+    val at = cursor.at
+
     Column(
         modifier.wrapContentHeight(),
         verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
@@ -145,7 +171,11 @@ fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modif
         // this one, so the codes stay in view while they are typed in below.
         if (gen1RecompInstalled) {
             Gen1Frame {
-                Gen1Button("OPEN GEN1RECOMP", onClick = { TheGame.open(context) })
+                Gen1Button(
+                    "OPEN GEN1RECOMP",
+                    onClick = { TheGame.open(context) },
+                    selected = at == openAt,
+                )
             }
         }
         Gen1Frame {
@@ -188,33 +218,21 @@ fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modif
                     )
                 )
             } else {
-                LinkWaitingRow(state, ready, declined) { model.link(first, second) }
+                Gen1Button(
+                    if (state.linking) "LINKING..." else "LINK THIS DEVICE",
+                    { model.link(first, second) },
+                    enabled = ready && !state.linking && declined,
+                    selected = at == linkAt,
+                )
+            }
+            // The way out for somebody who has not got their codes to hand.
+            // Only the tour offers one: everywhere else this screen was opened
+            // on purpose and backing out of it is the BACK row.
+            if (onSkip != null && !asking) {
+                Gen1Button("NOT NOW", onSkip, selected = at == skipAt)
             }
         }
     }
-}
-
-/**
- * What the window shows while it is still waiting for something.
- *
- * Its own cursor layer, because the question above it has one of its own and
- * two layers alive at once would leave the A button on whichever was pushed
- * last rather than on what is actually on screen.
- */
-@Composable
-private fun LinkWaitingRow(
-    state: UiState,
-    ready: Boolean,
-    declined: Boolean,
-    onLink: () -> Unit,
-) {
-    val at = rememberCursorLayer(1) { if (ready && !state.linking) onLink() }
-    Gen1Button(
-        if (state.linking) "LINKING..." else "LINK THIS DEVICE",
-        onLink,
-        enabled = ready && !state.linking && declined,
-        selected = at == 0,
-    )
 }
 
 @Composable

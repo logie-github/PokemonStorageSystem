@@ -250,7 +250,7 @@ fun Gen1Tutorial(
                     // The bar, while there is one to watch, and nothing else
                     // on screen competing with it.
                     connecting -> ConnectingWindow(state.openingProgress.percent)
-                    stage != null -> stage(model, state.spriteRevision)
+                    stage != null -> stage(model, state.spriteRevision) { advance() }
                     // And once it has landed, the same window saying so, for
                     // the two beats he spends talking about the connection.
                     // What the app fetches from here on is the app's own
@@ -557,7 +557,12 @@ private val BILL_TUNE_IN = listOf(
 /** One thing Bill says, and the screen he says it over. */
 private data class TutorialBeat(
     val lines: List<String>,
-    val stage: (@Composable (StorageViewModel, Int) -> Unit)? = null,
+    /**
+     * The screen this beat is about, handed the way on as well: a beat that
+     * cannot be moved along by a tap needs something on the screen itself
+     * that does it. Only the one asking for codes takes it.
+     */
+    val stage: (@Composable (StorageViewModel, Int, () -> Unit) -> Unit)? = null,
     /** The app's own sound for whatever this beat is about. */
     val sound: SoundEffect? = null,
     /** How long to wait before it, for a beat whose screen takes a moment. */
@@ -699,7 +704,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
                 "Pokémon transfer network. Once that's done, the system will " +
                 "know where your Pokémon should be sent."
         ),
-        stage = { model, _ -> TutorialSyncScreen(model) },
+        stage = { model, _, moveOn -> TutorialSyncScreen(model, onSkip = moveOn) },
         handsOver = true,
         asksForCodes = true,
     ),
@@ -723,7 +728,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
                 "journey, any items they brought with them items, and any other " +
                 "relevant data."
         ),
-        stage = { model, revision -> TutorialTrainerCardScreen(model, revision) },
+        stage = { model, revision, _ -> TutorialTrainerCardScreen(model, revision) },
         sound = SoundEffect.SAVE,
     ),
     TutorialBeat(
@@ -733,7 +738,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
                 "syncs, the save sync will move the Pokémon out of its current " +
                 "box and into the Storage System."
         ),
-        stage = { model, revision -> TutorialTransferScreen(model, revision) },
+        stage = { model, revision, _ -> TutorialTransferScreen(model, revision) },
         // No beat-level sound here: the scene itself replays every few
         // seconds for as long as this beat is up, and it plays its own
         // arrival chime on each loop — see [TutorialTransferScreen].
@@ -746,7 +751,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
                 "Here, all six hundred spaces are kept together.",
             "BILL: I believe the Pokémon prefer the extra company."
         ),
-        stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
+        stage = { model, revision, _ -> TutorialViewBoxesScreen(model, revision) },
         sound = SoundEffect.SELECT,
         handsOver = true,
     ),
@@ -758,7 +763,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
                 "make sure you're sending the right Pokémon before you transfer " +
                 "it back out."
         ),
-        stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
+        stage = { model, revision, _ -> TutorialViewBoxesScreen(model, revision) },
         handsOver = true,
     ),
     TutorialBeat(
@@ -769,7 +774,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
             "BILL: Both are right there in the PC's own menu, whenever you need " +
                 "them."
         ),
-        stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
+        stage = { model, revision, _ -> TutorialViewBoxesScreen(model, revision) },
     ),
     TutorialBeat(
         listOf("BILL: That's everything! Thank you for testing the mobile Pokémon Storage System."),

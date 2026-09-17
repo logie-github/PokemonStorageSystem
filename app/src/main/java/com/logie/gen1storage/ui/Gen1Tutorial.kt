@@ -285,7 +285,13 @@ fun Gen1Tutorial(
                         // filled is the app talking to itself.
                         val said = remember(beat, connecting) {
                             if (connecting) emptyList()
-                            else current.linesFor?.invoke(model) ?: current.lines
+                            // Every other window in the app is capitals — the
+                            // cartridge's own alphabet never had a lower
+                            // case — and his own box was the one place still
+                            // typing in it, which read as a second font
+                            // rather than as the same machine talking.
+                            else (current.linesFor?.invoke(model) ?: current.lines)
+                                .map { it.uppercase() }
                         }
                         Gen1TypedLines(
                             said,
@@ -663,17 +669,17 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: This is the Pokemon Storage System. It works on the same " +
+            "BILL: This is the Pokémon Storage System. It works on the same " +
                 "network as the PCs inside POKéMON CENTERs all over the Kanto " +
                 "region. Normally, your Pokémon are sent back to the lab or " +
-                "research facility your Pokedex is registered with. This app " +
-                "lets you reach that system and store your pokemon on your " +
+                "research facility your Pokédex is registered with. This app " +
+                "lets you reach that system and store your Pokémon on your " +
                 "phone, instead."
         ),
     ),
     TutorialBeat(
         listOf(
-            "BILL: This app is an upgrade of the software used by the Pokemon " +
+            "BILL: This app is an upgrade of the software used by the Pokémon " +
                 "Centers, so you will be able to do more useful things."
         ),
     ),
@@ -722,7 +728,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: To store a Pokémon in the app, deposit a pokemon into your " +
+            "BILL: To store a Pokémon in the app, deposit a Pokémon into your " +
                 "PC and save your progress. The next time that Trainer Card " +
                 "syncs, the save sync will move the Pokémon out of its current " +
                 "box and into the Storage System."
@@ -734,11 +740,11 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     ),
     TutorialBeat(
         listOf(
-            "BILL: Normally, pokemon center boxes are limited to a small number " +
-                "of pokemon due to hardware constraints. Pokémon are divided " +
+            "BILL: Normally, Pokémon Center boxes are limited to a small number " +
+                "of Pokémon due to hardware constraints. Pokémon are divided " +
                 "between several boxes at their registered storage location. " +
                 "Here, all six hundred spaces are kept together.",
-            "BILL: I believe the pokemon prefer the extra company."
+            "BILL: I believe the Pokémon prefer the extra company."
         ),
         stage = { model, revision -> TutorialViewBoxesScreen(model, revision) },
         sound = SoundEffect.SELECT,
@@ -747,7 +753,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
     TutorialBeat(
         listOf(
             "BILL: From the app, you can send a Pokémon back to a PC at a " +
-                "pokemon center.",
+                "Pokémon Center.",
             "BILL: You can also check its stats, see which moves it knows, and " +
                 "make sure you're sending the right Pokémon before you transfer " +
                 "it back out."
@@ -756,7 +762,7 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         handsOver = true,
     ),
     TutorialBeat(
-        listOf("BILL: That's everything! Thank you for testing the mobile Pokemon Storage System."),
+        listOf("BILL: That's everything! Thank you for testing the mobile Pokémon Storage System."),
         sound = SoundEffect.LOG_OFF,
     ),
 )

@@ -19,5 +19,15 @@ internal fun isCompletePng(bytes: ByteArray): Boolean {
     return IEND_CHUNK.indices.all { bytes[tail + it] == IEND_CHUNK[it] }
 }
 
-/** Length (0x00000000, IEND carries no data) then the type, "IEND". */
-private val IEND_CHUNK = byteArrayOf(0, 0, 0, 0, 'I'.code.toByte(), 'E'.code.toByte(), 'N'.code.toByte(), 'D'.code.toByte())
+/**
+ * The whole of an IEND chunk: length (0x00000000, it carries no data), the
+ * type "IEND", then its CRC. The CRC is a fixed value here rather than
+ * something computed — empty data means the same four type bytes go into it
+ * every time, on every PNG there is — but it is still the last four bytes of
+ * the file, after "IEND" rather than the file ending on "IEND" itself.
+ */
+private val IEND_CHUNK = byteArrayOf(
+    0, 0, 0, 0,
+    'I'.code.toByte(), 'E'.code.toByte(), 'N'.code.toByte(), 'D'.code.toByte(),
+    0xAE.toByte(), 0x42, 0x60, 0x82.toByte(),
+)

@@ -187,7 +187,13 @@ class TrainerStore(private val directory: File) {
                 inScaled = false
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            // Cached from before fetch rejected a short read, most likely -
+            // deleted rather than left failing the same way forever, so the
+            // next fetch gets a clean shot at replacing it.
+            source.delete()
+            return null
+        }
 
         // Generation II's pictures arrive in the colours the Game Boy Color
         // gave them, the same as its Pokémon do, so they are left alone

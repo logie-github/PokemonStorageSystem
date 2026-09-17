@@ -234,7 +234,15 @@ class SpriteStore(
             BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            // A file that no longer decodes is one this app cannot draw
+            // anyway — cached from before the download itself was made to
+            // reject a short read, most likely. Deleted rather than left
+            // sitting there failing the same way forever, so the next fetch
+            // gets a clean shot at replacing it.
+            file.delete()
+            return null
+        }
 
         val reduced = runCatching { pointSample(full) }.getOrNull()
         if (reduced == null) {

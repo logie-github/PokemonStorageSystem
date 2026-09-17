@@ -80,9 +80,16 @@ class FollowerStore(private val directory: File) {
                 inScaled = false
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            // Cached from before fetch rejected a short read, most likely -
+            // deleted rather than left failing the same way forever, so the
+            // next fetch gets a clean shot at replacing it.
+            source.delete()
+            return null
+        }
         if (sheet.width != SIZE || sheet.height != SIZE * FRAMES) {
             sheet.recycle()
+            source.delete()
             return null
         }
 
@@ -109,8 +116,16 @@ class FollowerStore(private val directory: File) {
         // Left connected on purpose: see the note in CryStore.fetch — a
         // disconnect here costs the next file a whole handshake.
         if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-        val bytes = connection.inputStream.use { it.readBytes() }
+        val bytes = runCatching { connection.inputStream.use { it.readBytes() } }.getOrNull()
+            ?: return null
         if (bytes.isEmpty()) return null
+        // A dropped connection does not always throw — see the same note in
+        // SpriteDownloader.read and TrainerStore.fetch. The sheet's bounds
+        // sit near the front of the file and decode fine long before the
+        // pixel data runs out, so a truncated download used to pass the
+        // check below and land on disk looking complete.
+        val expectedLength = connection.contentLengthLong
+        if (expectedLength > 0 && bytes.size.toLong() != expectedLength) return null
 
         // Confirm it decodes to the sheet this expects before it lands, so a
         // proxy's error page cannot sit on disk looking like a Pokémon.

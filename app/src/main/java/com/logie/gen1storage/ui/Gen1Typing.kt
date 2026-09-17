@@ -257,29 +257,23 @@ const val GEN1_DIALOGUE_LINES = 3
 /**
  * The text cut into pages of no more than [GEN1_DIALOGUE_LINES] lines.
  *
- * Measured rather than guessed at: how many lines a sentence takes depends on
- * the width it is given, the size the player has the text at, and the font,
- * and a character count that was right on one phone would break mid-word on
- * the next. Words move to the next page whole; a single word too long for a
- * line is left where it is rather than dropped.
+ * A sentence opens a box of its own and never shares one. The cartridge's
+ * boxes read that way — one thought to a window, the next behind it — and a
+ * box packed to the line with the end of one sentence and the start of the
+ * next reads as a run-on rather than as two things said.
  *
- * Each entry in [lines] is its own thing being said and always opens its own
- * page, even when it would fit on the tail of the one before it. Joining them
- * first and rewrapping the result as one continuous ribbon of text used to
- * let a short line's last few words share a page with the next line's first
- * few — a sentence ending and a fresh one beginning back to back in the same
- * box, mid-page, which reads as one run-on thought instead of two.
+ * A sentence too long for a window still has to be broken, and then the
+ * pieces follow one another the way they always did: words move whole, and a
+ * single word too long for a line is left where it is rather than dropped.
  */
 internal fun paginate(lines: List<String>, columns: Int): List<String> {
     val pages = ArrayList<String>()
-    lines.forEach { line ->
-        val whole = line.trim()
-        if (whole.isEmpty()) return@forEach
-        if (wrappedLineCount(whole, columns) <= GEN1_DIALOGUE_LINES) {
-            pages.add(whole)
+    lines.forEach { line -> sentencesOf(line).forEach { sentence ->
+        if (wrappedLineCount(sentence, columns) <= GEN1_DIALOGUE_LINES) {
+            pages.add(sentence)
             return@forEach
         }
-        val words = whole.split(" ").filter { it.isNotEmpty() }
+        val words = sentence.split(" ").filter { it.isNotEmpty() }
         var current = StringBuilder()
         words.forEach { word ->
             val candidate = if (current.isEmpty()) word else "$current $word"
@@ -291,9 +285,42 @@ internal fun paginate(lines: List<String>, columns: Int): List<String> {
             }
         }
         if (current.isNotEmpty()) pages.add(current.toString())
-    }
+    } }
     return pages
 }
+
+/**
+ * [text] cut into sentences, each of them something said on its own.
+ *
+ * A mark only ends one when there is a space behind it. The games are full of
+ * names with a full stop inside them — LT.SURGE, PROF.OAK, JR.TRAINER — and
+ * breaking at those would put half a name in a window of its own. A run of
+ * marks and any quote closing over them go with the sentence they end, so an
+ * ellipsis is one ending rather than three.
+ */
+internal fun sentencesOf(text: String): List<String> {
+    val sentences = ArrayList<String>()
+    val current = StringBuilder()
+    var index = 0
+    while (index < text.length) {
+        val char = text[index]
+        current.append(char)
+        index++
+        if (char !in ENDINGS) continue
+        while (index < text.length && (text[index] in ENDINGS || text[index] in CLOSERS)) {
+            current.append(text[index])
+            index++
+        }
+        if (index < text.length && !text[index].isWhitespace()) continue
+        current.toString().trim().takeIf { it.isNotEmpty() }?.let(sentences::add)
+        current.setLength(0)
+    }
+    current.toString().trim().takeIf { it.isNotEmpty() }?.let(sentences::add)
+    return sentences
+}
+
+private const val ENDINGS = ".!?"
+private const val CLOSERS = "\"')]”’"
 
 /**
  * How many lines [text] wraps to in a box [columns] characters across.

@@ -134,31 +134,22 @@ fun LinkForm(
     // asking them to do the app's work.
     val secondField = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val context = LocalContext.current
     // Split screen is where this screen is most used and least able to fit:
     // the game is in the other pane with the codes on it, and this pane is
     // half a phone tall. Everything that is not the codes and the button that
     // takes them comes off, because with them on screen the fields themselves
     // were pushed off the top of the pane and could not be typed into. The
-    // title is Bill's line above it or the row that opened this, and the way
-    // into the game is the other half of the screen already.
+    // title is Bill's line above it, or the row that opened this.
     val short = isShort()
-    val gen1RecompInstalled = remember { TheGame.isInstalled(context) } && !short
 
-    // Every choice here on one layer, in the order they are drawn.
-    //
-    // With SWIPE CONTROLS on a tap is the A button and A takes whatever the
-    // cursor is on — see [gen1Clickable] — so a button the cursor cannot
-    // reach is a button that cannot be pressed at all. OPEN GEN1RECOMP was
-    // exactly that: tapping it confirmed the only row there was, the link
-    // below, which does nothing until both codes are in. The screen simply
-    // sat there.
-    val openAt = if (gen1RecompInstalled) 0 else -1
-    val linkAt = if (gen1RecompInstalled) 1 else 0
-    val skipAt = if (onSkip != null) linkAt + 1 else -1
+    // Both choices here on one layer, in the order they are drawn: with SWIPE
+    // CONTROLS on a tap is the A button and A takes whatever the cursor is on
+    // — see [gen1Clickable] — so a button the cursor cannot reach is a button
+    // that cannot be pressed at all.
+    val linkAt = 0
+    val skipAt = if (onSkip != null) 1 else -1
     val cursor = rememberCursorLayerHandle(maxOf(linkAt, skipAt) + 1) { index ->
         when (index) {
-            openAt -> TheGame.open(context)
             linkAt -> if (ready && !state.linking) model.link(first, second)
             skipAt -> onSkip?.invoke()
         }
@@ -175,19 +166,7 @@ fun LinkForm(
                 GbText("SAVE SYNC")
             }
         }
-        // These two codes are Gen1Recomp's own, read off its own screen — split
-        // this app and Gen1Recomp side by side first (Recents, then drag), and
-        // this button opens it into the other pane instead of over the top of
-        // this one, so the codes stay in view while they are typed in below.
-        if (gen1RecompInstalled) {
-            Gen1Frame {
-                Gen1Button(
-                    "OPEN GEN1RECOMP",
-                    onClick = { TheGame.open(context) },
-                    selected = at == openAt,
-                )
-            }
-        }
+        // These two codes are Gen1Recomp's own, read off its own screen.
         Gen1Frame {
             CodeField("FIRST CODE", first) { text ->
                 val wasFull = SyncApi.normalizeCode(first) != null

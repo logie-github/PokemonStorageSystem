@@ -55,6 +55,30 @@ class Gen1PaginateTest {
     }
 
     @Test
+    fun `a sentence never shares a box with the next one`() {
+        // Both would fit in three lines together; they still get a box each.
+        val pages = paginate(listOf("ONE TWO. THREE FOUR! FIVE SIX?"), 40)
+        assertEquals(listOf("ONE TWO.", "THREE FOUR!", "FIVE SIX?"), pages)
+    }
+
+    @Test
+    fun `a name with a full stop in it is not a sentence ending`() {
+        assertEquals(listOf("LT.SURGE AND PROF.OAK SPOKE."), sentencesOf("LT.SURGE AND PROF.OAK SPOKE."))
+    }
+
+    @Test
+    fun `a run of marks ends one sentence, not three`() {
+        assertEquals(listOf("WAIT...", "WHO IS THERE?"), sentencesOf("WAIT... WHO IS THERE?"))
+    }
+
+    @Test
+    fun `a sentence too tall for the box still breaks across boxes`() {
+        val pages = paginate(listOf(storageSystem), 20)
+        assertTrue("expected more boxes than sentences", pages.size > sentencesOf(storageSystem).size)
+        pages.forEach { assertTrue(wrappedLineCount(it, 20) <= GEN1_DIALOGUE_LINES) }
+    }
+
+    @Test
     fun `a word longer than the line is kept rather than dropped`() {
         val long = "A".repeat(90)
         val pages = paginate(listOf(long), 20)

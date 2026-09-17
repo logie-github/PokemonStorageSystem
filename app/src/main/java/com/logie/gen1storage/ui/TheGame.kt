@@ -81,16 +81,23 @@ object TheGame {
         playthroughId: String? = null,
     ): Boolean {
         val name = installedPackage(context) ?: return false
+        // LAUNCH_ADJACENT only ever does anything while this app is already
+        // showing in split screen — Android has no way for one app to force
+        // another into split screen from a single fullscreen window, so a
+        // player after that wants both on screen still splits it themselves
+        // first (Recents, then drag). Once they have, this keeps the game
+        // from simply covering the app they just split away from.
+        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT
         val deepLink = Intent(
             Intent.ACTION_VIEW,
             launchUri(gameVersionId, slot, playthroughId),
         ).apply {
             setPackage(name)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(flags)
         }
         if (start(context, deepLink)) return true
         val launcher = context.packageManager.getLaunchIntentForPackage(name) ?: return false
-        launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        launcher.addFlags(flags)
         return start(context, launcher)
     }
 

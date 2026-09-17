@@ -128,6 +128,8 @@ fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modif
     // asking them to do the app's work.
     val secondField = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    val gen1RecompInstalled = remember { TheGame.isInstalled(context) }
 
     Column(
         modifier.wrapContentHeight(),
@@ -136,6 +138,15 @@ fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modif
     ) {
         Gen1Frame(Modifier.wrapContentWidth()) {
             GbText("SAVE SYNC")
+        }
+        // These two codes are Gen1Recomp's own, read off its own screen — split
+        // this app and Gen1Recomp side by side first (Recents, then drag), and
+        // this button opens it into the other pane instead of over the top of
+        // this one, so the codes stay in view while they are typed in below.
+        if (gen1RecompInstalled) {
+            Gen1Frame {
+                Gen1Button("OPEN GEN1RECOMP", onClick = { TheGame.open(context) })
+            }
         }
         Gen1Frame {
             CodeField("FIRST CODE", first) { text ->

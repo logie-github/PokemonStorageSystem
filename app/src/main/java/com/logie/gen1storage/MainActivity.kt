@@ -254,13 +254,20 @@ private fun StorageApp(model: StorageViewModel) {
         lastDepth = state.stack.size
     }
 
+    // The shelf of games and trainer cards is worked by finger alone —
+    // tapping a card, scrolling the list — whatever SWIPE CONTROLS is set
+    // to. It registers no cursor at all, so there is nothing there for a
+    // swipe to move, and a swipe still swallowed on its behalf is only a
+    // list that cannot be scrolled.
+    val swipesHere = state.swipeControls && state.screen !is Screen.ChooseCart
+
     CompositionLocalProvider(
         LocalGen1Cursor provides cursor,
         LocalGen1WindowBounds provides windows,
         LocalGen1Audio provides audio,
         // Every list reads this: with swipes driving the cursor, none of them
         // scroll under a finger. They still follow the cursor.
-        LocalGen1Swipe provides state.swipeControls,
+        LocalGen1Swipe provides swipesHere,
     ) {
     Gen1NoOverscroll {
     Box(
@@ -274,7 +281,7 @@ private fun StorageApp(model: StorageViewModel) {
             // someone asked for it — the hold included. On, a swipe anywhere
             // is the D-pad and the lists stop scrolling under a finger.
             .gen1Gestures(
-                state.swipeControls,
+                swipesHere,
                 windows::isFreeSpace,
                 windows::isHoldClaimed,
             ) { button ->

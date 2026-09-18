@@ -319,6 +319,7 @@ data class UiState(
     val currentStorageBox: Int = StorageLayout.THE_BOX,
     val showAllSaves: Boolean = false,
     val showAllItems: Boolean = false,
+    val gameSelection: Boolean = true,
     /** The [GbPalette] id everything is drawn through. */
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
@@ -598,6 +599,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 linked = credentials.isLinked,
                 showAllSaves = settings.showAllSaves,
                 showAllItems = settings.showAllItems,
+                gameSelection = settings.gameSelection,
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
@@ -1449,6 +1451,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.showAllItems = enabled
         mutable.update { it.copy(showAllItems = enabled) }
         if (enabled) loadAllSaves()
+    }
+
+    /** Whether the shelf of games stands over the cards. See [AppSettings.gameSelection]. */
+    fun setGameSelection(enabled: Boolean) {
+        settings.gameSelection = enabled
+        mutable.update { it.copy(gameSelection = enabled) }
     }
 
     fun loadAllSaves() = viewModelScope.launch {

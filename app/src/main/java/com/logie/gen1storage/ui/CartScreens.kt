@@ -85,7 +85,11 @@ fun ChooseCartScreen(
     // cursor used to be registered only in the second case, so a swipe on the
     // screen that asks which game did nothing at all and the three cards could
     // only be tapped.
-    val pickingGame = game == null || state.saves.none { it.version.id == game }
+    // With the shelf turned off there is no game to be picking, whatever the
+    // screen was opened with: every card is listed at once and each names its
+    // own game down its spine.
+    val shelved = state.gameSelection
+    val pickingGame = !shelved || game == null || state.saves.none { it.version.id == game }
     // Six across with the room for it, two rows of three without: a card is
     // a picture worth seeing, and a sixth of a folded phone is a thumbnail.
     val across = if (isUnfolded()) shelf.size else 3
@@ -96,7 +100,15 @@ fun ChooseCartScreen(
     // picking Silver meant walking the shelf to SILVER, pressing it, and only
     // then being offered the card that was wanted all along. The shelf still
     // narrows to one game when one is pressed.
-    val listed = if (pickingGame) state.saves else saves(state, game)
+    // Off the shelf, the account's cards run in the games' own order — RED,
+    // BLUE, YELLOW, GOLD, SILVER, CRYSTAL — rather than in whatever order the
+    // account happens to hand them over. With the shelf up the order is the
+    // account's, because the shelf above already says which game these are.
+    val listed = when {
+        !shelved -> state.saves.sortedBy { it.version.ordinal }
+        pickingGame -> state.saves
+        else -> saves(state, game)
+    }
     // No cursor on this screen, and deliberately none: it is a shelf of
     // pictures, and picking one off a shelf is pointing at it. Everything
     // here is tapped and the list is scrolled, whatever SWIPE CONTROLS is
@@ -112,28 +124,32 @@ fun ChooseCartScreen(
             .padding(gen1Dp(4)),
     ) {
         // The whole shelf, in rows of [across]: the three that can be picked
-        // and the three that are only there to be looked at.
-        shelf.chunked(across).forEachIndexed { _, row ->
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
-            ) {
-                row.forEach { card ->
-                    TitleCard(
-                        label = card.label,
-                        art = card.art,
-                        palette = card.palette,
-                        chosen = game == card.version.id,
-                        modifier = Modifier.weight(1f),
-                        onClick = { choose(card) },
-                    )
+        // and the three that are only there to be looked at. Off entirely
+        // when GAME SELECTION is, and the room it was taking goes to the list
+        // underneath rather than being left empty.
+        if (shelved) {
+            shelf.chunked(across).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
+                ) {
+                    row.forEach { card ->
+                        TitleCard(
+                            label = card.label,
+                            art = card.art,
+                            palette = card.palette,
+                            chosen = game == card.version.id,
+                            modifier = Modifier.weight(1f),
+                            onClick = { choose(card) },
+                        )
+                    }
+                    repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
+                Spacer(Modifier.height(gen1Dp(2)))
             }
-            Spacer(Modifier.height(gen1Dp(2)))
-        }
 
-        Spacer(Modifier.height(gen1Dp(3)))
+            Spacer(Modifier.height(gen1Dp(3)))
+        }
 
         if (saves.isEmpty()) {
             // An account with nothing in it anywhere is asked for a card; one

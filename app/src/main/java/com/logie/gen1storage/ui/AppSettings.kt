@@ -33,6 +33,19 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_SHOW_ALL_ITEMS, value).apply()
 
     /**
+     * Whether the shelf of six games stands over the cards.
+     *
+     * On, and a game is picked first and its cards listed under it. Off, the
+     * shelf goes and every card on the account is listed at once in the games'
+     * own order, with the room the shelf was taking given to the list. Each
+     * card names its own game down its spine either way, so nothing is lost by
+     * dropping the shelf — see [Gen1SpineCard].
+     */
+    var gameSelection: Boolean
+        get() = prefs.getBoolean(KEY_GAME_SELECTION, true)
+        set(value) = prefs.edit().putBoolean(KEY_GAME_SELECTION, value).apply()
+
+    /**
      * Let Android copy this app into the player's Google account, the way it
      * backs up any app that allows it.
      *
@@ -289,6 +302,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_RESTORED_UIDS = "restored-uids"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"
+        const val KEY_GAME_SELECTION = "game-selection"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
         const val KEY_WINDOWS_RIGHT = "windows-on-right"

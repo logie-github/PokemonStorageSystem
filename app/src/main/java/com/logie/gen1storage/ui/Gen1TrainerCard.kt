@@ -82,10 +82,17 @@ fun Gen1TrainerCard(
     val lead = save?.party?.firstOrNull()
     val read = save != null
 
-    Gen1Frame(
+    Gen1SpineCard(
         modifier,
         fill = palette.lightest,
         ink = palette.darkest,
+        // The game's own name down the edge, so a list holding every game's
+        // cards at once is read by its spines the way a shelf of books is.
+        spine = remote.version.label,
+        // The second darkest of the four: dark enough to carry the lightest
+        // as letters, light enough not to be taken for the border.
+        spineFill = palette.dark,
+        spineInk = palette.lightest,
     ) {
         // The badge case is eight tiles and the seven gaps between them, and
         // it is the one thing on the card with a size of its own: a badge is

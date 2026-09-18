@@ -76,7 +76,12 @@ class BackupExportTest {
     fun `a zip entry trying to escape its directory is refused`() {
         val restoredPc = temporaryFolder.newFolder("restored-pc")
         val restoredPrefs = temporaryFolder.newFolder("restored-prefs")
+        // Valid envelope (magic + version), so this exercises the path guard
+        // itself rather than being turned away for not looking like a
+        // backup at all.
         val malicious = ByteArrayOutputStream().also { out ->
+            out.write("PSSB".toByteArray())
+            out.write(1)
             java.util.zip.ZipOutputStream(out).use { zip ->
                 zip.putNextEntry(java.util.zip.ZipEntry("pc/../../../etc/evil.lua"))
                 zip.write("return { pwned = true }".toByteArray())
@@ -85,5 +90,26 @@ class BackupExportTest {
         }.toByteArray()
 
         BackupExport.read(restoredPc, restoredPrefs, ByteArrayInputStream(malicious))
+    }
+
+    @Test(expected = java.io.IOException::class)
+    fun `a file without the app's own header is refused`() {
+        val restoredPc = temporaryFolder.newFolder("restored-pc")
+        val restoredPrefs = temporaryFolder.newFolder("restored-prefs")
+        val notABackup = "just some other file, or a corrupted one".toByteArray()
+
+        BackupExport.read(restoredPc, restoredPrefs, ByteArrayInputStream(notABackup))
+    }
+
+    @Test(expected = java.io.IOException::class)
+    fun `a backup from a future, unreadable format is refused rather than half-applied`() {
+        val restoredPc = temporaryFolder.newFolder("restored-pc")
+        val restoredPrefs = temporaryFolder.newFolder("restored-prefs")
+        val fromTheFuture = ByteArrayOutputStream().also { out ->
+            out.write("PSSB".toByteArray())
+            out.write(99)
+        }.toByteArray()
+
+        BackupExport.read(restoredPc, restoredPrefs, ByteArrayInputStream(fromTheFuture))
     }
 }

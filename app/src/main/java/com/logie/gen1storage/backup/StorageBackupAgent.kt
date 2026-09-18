@@ -80,7 +80,15 @@ class StorageBackupAgent : BackupAgent() {
         /** When a restore last finished putting this app back. */
         const val RESTORE_MARKER = "restore.marker"
 
-        private fun note(context: Context, name: String, what: String) {
+        /**
+         * When this app last pushed to Drive on its own, and what happened.
+         *
+         * The same idea as [MARKER], for a push this app makes itself rather
+         * than one the system decides to take — see `StorageViewModel.pushToDrive`.
+         */
+        const val DRIVE_MARKER = "drive-backup.marker"
+
+        fun note(context: Context, name: String, what: String) {
             runCatching {
                 File(context.filesDir, name).writeText("${System.currentTimeMillis()} $what")
             }

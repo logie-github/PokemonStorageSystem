@@ -1642,10 +1642,21 @@ private fun OptionsDrawerContent(
                 // own choosing. See BackupExport.
                 add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
                 add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
-                // The same backup, signed in and uploaded straight to this
-                // player's own Drive rather than left for them to steer a
-                // picker there. See DriveBackup.
-                add(OptionRow("BACK UP TO GOOGLE DRIVE") { withDriveAccess { token -> model.backUpToDrive(token) } })
+                // One sign-in, and every change from here on pushes on its
+                // own — a deposit, a sync, anything BACKUP TO GOOGLE already
+                // hears about — the same debounced signal, spent on Drive
+                // too. Off just stops the pushing; what is already on Drive
+                // stays there untouched. See DriveBackup and
+                // StorageViewModel.pushToDriveSilently.
+                add(
+                    OptionRow("GOOGLE DRIVE BACKUP", if (state.driveLinked) "ON" else "OFF") {
+                        if (state.driveLinked) model.unlinkDrive()
+                        else withDriveAccess { token -> model.linkDrive(token) }
+                    }
+                )
+                if (state.driveLinked) {
+                    add(OptionRow("LAST DRIVE BACKUP", state.driveNote) { model.explainDrive() })
+                }
                 add(
                     OptionRow("RESTORE FROM GOOGLE DRIVE") {
                         model.prompt(

@@ -331,16 +331,6 @@ fun StorageSystemScreen(
         }
     }
 
-    // Cards with something in their boxes that this one does not have.
-    //
-    // DEPOSIT reads the card in the machine and nothing else, which is right —
-    // a transfer takes from one cartridge — but a player looking at another
-    // card's boxes has no way of knowing that. The list simply came up empty,
-    // with "There are no POKéMON here." over a card that plainly had some.
-    // So the card that does have them goes in instead.
-    val boxedElsewhere = state.saves.map { it.key }.filter { key ->
-        key != state.activeSaveKey && (state.save(key)?.save?.storedCount ?: 0) > 0
-    }
 
     /** The label a group starts under, or null once that group is open. */
     fun depositHeader(index: Int): String? {
@@ -357,7 +347,13 @@ fun StorageSystemScreen(
     // grid of empty spots is already the answer the message would give.
     val emptiness = when (mode) {
         PcMode.WITHDRAW -> "What? There are no POKéMON here!".takeIf { stored.isEmpty() }
-        PcMode.DEPOSIT -> "There are no POKéMON here.".takeIf { depositRows.isEmpty() }
+        // Named rather than left as the cartridge's bare "here": the list
+        // reads the card in the machine and nothing else, so an empty one
+        // over a shelf of cards that plainly have Pokémon on them has to say
+        // which card it is talking about. Changing that card is the TRAINER
+        // CARD row's job, and DEPOSIT no longer does it for you.
+        PcMode.DEPOSIT -> "There are no POKéMON in this card's BOXES."
+            .takeIf { depositRows.isEmpty() }
         else -> null
     }
 
@@ -491,18 +487,16 @@ fun StorageSystemScreen(
                     )
 
                 (box?.freeSlots ?: 0) <= 0 -> refusal = "Oops! This Box is full of POKéMON."
-                // Nothing boxed on the card in the machine, and exactly one
-                // other card with something to send: that is the card meant,
-                // so it goes in and the list opens on it. Several of them and
-                // there is a real question, which is the shelf's to ask.
-                depositRows.isEmpty() && boxedElsewhere.size == 1 ->
-                    model.selectSave(boxedElsewhere.single()) { model.pcMode = PcMode.DEPOSIT }
-
-                depositRows.isEmpty() && boxedElsewhere.size > 1 ->
-                    model.open(
-                        Screen.ChooseCart(null, thenOpenStorage = true, then = PcMode.DEPOSIT)
-                    )
-
+                // Otherwise the list, always, for the card that is in the
+                // machine. DEPOSIT used to hand the player back to the shelf
+                // when that card had nothing boxed and another one did — or,
+                // where only one other did, quietly swap the card for them.
+                // Both were the same mistake: a row that answers "deposit"
+                // with "pick a different cartridge" sends somebody who has
+                // already chosen theirs round the houses, and swapping it
+                // without asking changes what every other screen is about.
+                // An empty list says so and leaves the choice where it
+                // belongs, on the TRAINER CARD row.
                 else -> model.pcMode = PcMode.DEPOSIT
             }
         },
@@ -649,7 +643,7 @@ fun StorageSystemScreen(
                     },
                     onConfirm = { chosen = it },
                     onCancel = { model.pcMode = PcMode.MENU },
-                    emptyMessage = "There are no POKéMON here.",
+                    emptyMessage = "There are no POKéMON in this card's BOXES.",
                     marked = marked,
                     onToggle = ::toggle,
                     actionLabel = TRANSFER_LABEL.takeIf { marked.isNotEmpty() },

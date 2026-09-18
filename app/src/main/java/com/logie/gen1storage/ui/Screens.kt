@@ -514,10 +514,14 @@ fun StorageSystemScreen(
         onView = { model.pcMode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onTrade = if (state.tradeEvolution) ({ model.open(Screen.Trade) }) else null,
-        // Offered only when there is something to send: a row that always
-        // answers "nothing is waiting" is a row that never did anything.
+        // Offered as soon as the PC holds anything, rather than only when
+        // something can actually go. The screen behind it lists everything in
+        // the box and says of each one whether it can go on and why not — so
+        // a player whose Pokemon are all being held back can now reach the
+        // answer, which under the old rule was the one case where the row
+        // disappeared and took the explanation with it.
         onTimeCapsule =
-            if (model.timeCapsuleCandidates().isNotEmpty()) {
+            if (state.storage.total > 0) {
                 { model.open(Screen.TimeCapsule) }
             } else null,
         onDex = { model.open(Screen.Dex) },

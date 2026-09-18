@@ -1187,8 +1187,42 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * promised to a cartridge is not one to change underneath it.
      */
     fun timeCapsuleCandidates(): List<StoredPokemon> =
+        timeCapsuleRoster().mapNotNull { (stored, blocked) -> stored.takeIf { blocked == null } }
+
+    /**
+     * Why one cannot go through, or null when it can.
+     *
+     * Four separate reasons, kept apart rather than rolled into one test,
+     * because a Pokemon that is simply not on the screen is a bug report with
+     * nothing in it. Three of them are the app's own bookkeeping and one —
+     * the third — is a guess read off the Pokemon's own fields, which is the
+     * one that can be wrong about a Pokemon nobody has touched.
+     */
+    fun timeCapsuleBlock(stored: StoredPokemon): String? = when {
+        // Nothing here settles a transfer note any more, so a mark left by an
+        // older build is a mark that never clears. Named rather than obeyed
+        // in silence.
+        stored.inFlight -> "IT IS WAITING ON A TRANSFER."
+        stored.generation != 1 -> "IT IS ALREADY IN GENERATION II."
+        TimeCapsule.hasCrossed(stored.data) -> "ITS OWN FIELDS ARE GENERATION II'S."
+        stored.pokemon.speciesId?.let { Gen2Data.species(Gen2Data.idOf(it)) } == null ->
+            "GENERATION II HAS NO ENTRY FOR IT."
+        else -> null
+    }
+
+    /**
+     * Everything in the PC, with the reason each one cannot go on beside it,
+     * the ones that can first.
+     *
+     * The screen used to be handed the ones that could go and nothing else,
+     * so a Pokemon held back by any of the four tests above was not refused —
+     * it was absent, which is the one answer a player cannot act on. Every
+     * one of them is listed now and says for itself why it is staying.
+     */
+    fun timeCapsuleRoster(): List<Pair<StoredPokemon, String?>> =
         mutable.value.storage.boxes.flatMap { it.contents }
-            .filter { !it.inFlight && it.generation == 1 && TimeCapsule.canCarry(it.pokemon) }
+            .map { it to timeCapsuleBlock(it) }
+            .sortedBy { (_, blocked) -> blocked != null }
 
     /**
      * Sends one forward, with what it was written down beside it.
@@ -2820,6 +2854,49 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             appendLine("Local backups: ${localBackups().size}")
             appendLine("Pending transfer: ${pendingTransferSummary() ?: "none"}")
             appendLine()
+            // Everything that can take a Pokemon out of the boxes without
+            // anybody asking for it to go, and everything that can leave one
+            // out of the list it should be in.
+            //
+            // All of it was already written down and none of it was anywhere
+            // a player could see: the load's own notes went to the
+            // diagnostics list and nowhere else, and the two guards that
+            // silently remove — the duplicate-uid sweep at load, and the
+            // restore check — reported only to themselves. A Pokemon that is
+            // not there is the one thing a report about this app has to be
+            // able to answer, so it answers it here.
+            appendLine("### The PC's own file")
+            val pc = current.storage
+            appendLine("- Spots taken: ${pc.total}")
+            pc.boxes.forEach { box ->
+                appendLine("- ${box.label}: ${box.contents.size} in, ${box.freeSlots} free")
+            }
+            val loadNotes = runCatching { storage.loadNotes }.getOrDefault(emptyList())
+            if (loadNotes.isEmpty()) {
+                appendLine("- Read with nothing dropped")
+            } else {
+                appendLine("- Dropped or moved while reading the file:")
+                loadNotes.forEach { appendLine("  - $it") }
+            }
+            appendLine()
+            appendLine("### Duplication guards")
+            // Written down against a Pokemon's content rather than its name,
+            // so a fingerprint's first few characters say which record is
+            // which without saying anything about the Pokemon.
+            val placements = runCatching { engine.placements() }.getOrDefault(emptyList())
+            appendLine("- Handed out and not yet back: ${placements.size}")
+            placements.take(GUARD_REPORT_LIMIT).forEach {
+                appendLine("  - ${it.fingerprint.take(8)} in ${it.savePath}")
+            }
+            val unchecked = runCatching { settings.restoredUids }.getOrDefault(emptySet())
+            appendLine("- Restored and not yet checked against a save: ${unchecked.size}")
+            // The one list in the app that a Pokemon can be kept out of, and
+            // why each one is being kept out.
+            val roster = runCatching { timeCapsuleRoster() }.getOrDefault(emptyList())
+            appendLine("- TIME CAPSULE can send: ${roster.count { it.second == null }}")
+            roster.mapNotNull { it.second }.groupingBy { it }.eachCount()
+                .forEach { (reason, held) -> appendLine("  - $held held back: $reason") }
+            appendLine()
             appendLine("### ROMs imported")
             com.logie.gen1storage.rom.RomVersion.entries.forEach { version ->
                 appendLine("- ${version.id}: ${if (roms.has(version)) "present" else "-"}")
@@ -2900,6 +2977,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 /** Where the last download failure is kept, for the report under ABOUT. */
 /** How many stored Pokémon the debug report names a sprite source for. */
 private const val SPRITE_REPORT_LIMIT = 40
+
+/** How many of the ledger's records the report lists before it stops. */
+private const val GUARD_REPORT_LIMIT = 20
 
 private const val DOWNLOAD_FAILURE_FILE = "last-download-failure.txt"
 

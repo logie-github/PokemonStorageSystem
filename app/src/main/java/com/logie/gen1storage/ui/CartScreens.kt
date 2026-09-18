@@ -80,26 +80,23 @@ fun ChooseCartScreen(
     val choose: (TitleCardArt) -> Unit = { card ->
         model.replace(Screen.ChooseCart(card.version.id, sendUids, thenOpenStorage, then))
     }
-    // Whichever of the two things on this screen is the one to take: the games
-    // until one is picked and shown to have saves, the saves after that. The
-    // cursor used to be registered only in the second case, so a swipe on the
-    // screen that asks which game did nothing at all and the three cards could
-    // only be tapped.
-    // With the shelf turned off there is no game to be picking, whatever the
-    // screen was opened with: every card is listed at once and each names its
-    // own game down its spine.
+    // Whether a game has been named yet, which decides whether the list under
+    // the shelf is that game's cards or the whole account's. With the shelf
+    // turned off there is no game to be picking at all, whatever the screen
+    // was opened with: every card is listed at once and each names its own
+    // game down its spine.
     val shelved = state.gameSelection
     val pickingGame = !shelved || game == null || state.saves.none { it.version.id == game }
     // Six across with the room for it, two rows of three without: a card is
     // a picture worth seeing, and a sixth of a folded phone is a thumbnail.
     val across = if (isUnfolded()) shelf.size else 3
-    // Every card on the account until a game is named, rather than only the
-    // one the cursor happens to be standing over. Naming a game was a step
+    // Every card on the account until a game is named: naming one was a step
     // that had to be taken before any card could be taken at all, and for an
     // account with a handful of cards there was never a question in it —
-    // picking Silver meant walking the shelf to SILVER, pressing it, and only
-    // then being offered the card that was wanted all along. The shelf still
-    // narrows to one game when one is pressed.
+    // picking Silver meant pressing SILVER on the shelf and only then being
+    // offered the card that was wanted all along. The shelf still narrows to
+    // one game when one is pressed.
+    //
     // Off the shelf, the account's cards run in the games' own order — RED,
     // BLUE, YELLOW, GOLD, SILVER, CRYSTAL — rather than in whatever order the
     // account happens to hand them over. With the shelf up the order is the
@@ -114,7 +111,14 @@ fun ChooseCartScreen(
     // here is tapped and the list is scrolled, whatever SWIPE CONTROLS is
     // set to — see the exemption in MainActivity, which is what keeps a
     // drag here a scroll rather than a D-pad step.
-    val listColumns = if (pickingGame) 1 else columns
+    //
+    // Two to a row wherever there is room for two, whether or not a game has
+    // been named. Listing every game's cards used to force a single file,
+    // because the cursor stepped one at a time through the rows under the
+    // shelf and a list two wide would have had it skipping every other card.
+    // There is no cursor here to keep up with any more, and an opened screen
+    // was drawing one card a row with half the width left empty beside it.
+    val listColumns = columns
     val saves = listed
 
     Column(

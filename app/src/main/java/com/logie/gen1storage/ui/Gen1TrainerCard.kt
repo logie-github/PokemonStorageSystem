@@ -317,8 +317,9 @@ fun Gen1TrainerSprite(
                 bitmap = it,
                 contentDescription = id,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-                // Pixel art at a whole multiple; smoothing would undo it.
+                // A whole multiple or nothing — Generation II draws its
+                // trainers at their own sizes too. See [Gen1WholePixels].
+                contentScale = Gen1WholePixels,
                 filterQuality = FilterQuality.None,
             )
         }

@@ -24,7 +24,9 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.ScaleFactor
 import androidx.compose.ui.unit.dp
+import kotlin.math.floor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.logie.gen1storage.pokemon.Gen1Pokemon
@@ -153,7 +155,7 @@ fun Gen1Sprite(
                 bitmap = bitmap,
                 contentDescription = speciesId,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+                contentScale = Gen1WholePixels,
                 // Nearest neighbour: these are pixel sprites, and smoothing
                 // them would undo the whole point of the presentation.
                 filterQuality = FilterQuality.None,
@@ -164,6 +166,37 @@ fun Gen1Sprite(
             // replaced.
             SpritePlaceholderMark()
         }
+    }
+}
+
+/**
+ * Fit, but only ever by a whole number of pixels.
+ *
+ * Pixel art enlarged by a fraction is pixel art with a wobble in it: some
+ * source pixels land two device pixels across and their neighbours three, and
+ * at the size a Pokémon is drawn beside a trainer that reads as a smear
+ * rather than as a picture.
+ *
+ * It matters because Generation II art is not one size. pokered drew every
+ * Pokémon 56 pixels square, and this app was built around that, but pokegold
+ * and pokecrystal draw each species at the size it needs: 40 for Chikorita,
+ * Cyndaquil, Totodile and Pidgey, 48 for Sentret, 56 for Arcanine, Lugia and
+ * Onix. Handed a box measured in 56s, a 40-pixel sprite was being stretched
+ * by 1.4 — which is why the Generation II starters in particular have never
+ * looked right.
+ *
+ * So the scale is floored to a whole number and the remainder is left as air
+ * around the sprite, which is the same rule the trainer card already applies
+ * to its portrait. Shrinking is left alone: below 1:1 there is no whole
+ * multiple to snap to, and overflowing the space given would be worse than a
+ * soft edge.
+ */
+internal val Gen1WholePixels = object : ContentScale {
+    override fun computeScaleFactor(srcSize: Size, dstSize: Size): ScaleFactor {
+        if (srcSize.width <= 0f || srcSize.height <= 0f) return ScaleFactor(1f, 1f)
+        val fit = minOf(dstSize.width / srcSize.width, dstSize.height / srcSize.height)
+        val scale = if (fit >= 1f) floor(fit) else fit
+        return ScaleFactor(scale, scale)
     }
 }
 

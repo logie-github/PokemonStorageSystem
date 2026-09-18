@@ -205,6 +205,11 @@ private fun StorageApp(model: StorageViewModel) {
         if (state.transferScene?.question != null) model.cancelSend() else model.back()
     }
 
+    // Every BackHandler in the tree, so the hold can go through the same
+    // door the system's Back does. See GbButton.B below.
+    val backs = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current
+        ?.onBackPressedDispatcher
+
     val cursor = remember { Gen1Cursor() }
     val cursorTick = rememberCursorTick()
     val confirmTick = rememberConfirmTick()
@@ -260,7 +265,7 @@ private fun StorageApp(model: StorageViewModel) {
     // to. It registers no cursor at all, so there is nothing there for a
     // swipe to move, and a swipe still swallowed on its behalf is only a
     // list that cannot be scrolled.
-    val fingersOnly = state.screen is Screen.ChooseCart || state.screen is Screen.Printer
+    val fingersOnly = state.screen is Screen.ChooseCart
     // Except while something is asking. A question opened over the shelf —
     // "INSERT RED?", with YES and NO under it — is a window like every other
     // window in the app and it does register a cursor, so the arrow was drawn
@@ -301,10 +306,25 @@ private fun StorageApp(model: StorageViewModel) {
                 // mid-transfer would otherwise still navigate.
                 if (cursor.locked) return@gen1Gestures
                 when (button) {
-                    // Back, from anywhere. At the top of the stack this does
-                    // nothing rather than closing the app — a hold should never
-                    // be the thing that puts someone out of the machine.
-                    GbButton.B -> model.back()
+                    // Back, from anywhere, through the one back there is.
+                    //
+                    // It used to walk the screen stack itself, which meant a
+                    // hold knew about nothing that is not a screen: OPTIONS
+                    // opens its drawers inside one screen and guards them
+                    // with a BackHandler, so holding in a drawer stepped
+                    // straight past it and left OPTIONS altogether. Android's
+                    // dispatcher already has every one of those handlers on
+                    // it, innermost first, and the screen stack at the bottom
+                    // — so the hold and the system's own Back now do exactly
+                    // the same thing, which is the only way either of them
+                    // can be learned.
+                    //
+                    // Nothing at all when nothing is listening: at the top of
+                    // the stack the dispatcher would fall through to the
+                    // activity, and a hold should never be the thing that
+                    // puts someone out of the machine.
+                    GbButton.B ->
+                        if (backs?.hasEnabledCallbacks() == true) backs.onBackPressed()
                     GbButton.A -> {
                         audio.play(SoundEffect.CURSOR)
                         confirmTick()

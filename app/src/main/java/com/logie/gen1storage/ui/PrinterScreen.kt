@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import com.logie.gen1storage.share.PrintBorder
 import com.logie.gen1storage.share.PrintKind
@@ -75,9 +76,35 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
     }
 
     val current = kinds[at.coerceIn(0, kinds.lastIndex)]
+    // How wide the roll is, so a page can be sent the whole way off it by
+    // something that is not a finger.
+    var width by remember { mutableStateOf(0f) }
 
     fun step(by: Int) {
         at = (at + by).coerceIn(0, kinds.lastIndex)
+    }
+
+    /**
+     * The same move a throw makes, made by the D-pad.
+     *
+     * Left and right are how the cursor turns pages everywhere else in this
+     * app, and with SWIPE CONTROLS on a drag never reaches the carousel below
+     * — the gesture layer takes every drag on the screen and hands back a
+     * direction. So the page has to be turned from here as well, and it is
+     * turned by running the same settle the throw ends with rather than by
+     * swapping one print for another on the spot.
+     */
+    fun glide(by: Int) {
+        if (at + by !in 0..kinds.lastIndex) return
+        if (width <= 0f) {
+            step(by)
+            return
+        }
+        scope.launch {
+            val settle = Animatable(dragPx)
+            settle.animateTo(-by * width, tween(SETTLE)) { dragPx = value }
+            step(by)
+        }
     }
 
     Column(
@@ -100,6 +127,9 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .onSizeChanged { width = it.width.toFloat() }
+                // Only reached with SWIPE CONTROLS off: on, the gesture layer
+                // takes the drag first and [glide] gets it instead.
                 .pointerInput(kinds.size) {
                     val width = size.width.toFloat().coerceAtLeast(1f)
                     detectDragGestures(
@@ -176,7 +206,15 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
             },
             "BACK" to { model.back() },
         )
-        val cursor = rememberCursorLayer(rows.size) { rows[it].second() }
+        // Up and down walk the three rows; left and right turn the roll,
+        // which is the same division of the D-pad the status pages use.
+        val cursor = rememberCursorLayer(
+            rows.size,
+            onSide = { _, button ->
+                glide(if (button == GbButton.RIGHT) 1 else -1)
+                true
+            },
+        ) { rows[it].second() }
         Gen1Frame(Modifier.wrapContentWidth()) {
             rows.forEachIndexed { index, (label, act) ->
                 Gen1MenuRow(label, selected = cursor == index, onSelect = {}, onConfirm = act)

@@ -1054,7 +1054,7 @@ private fun syncLines(cartridge: Prompt.Cartridge?): List<String> = when {
     )
 }
 
-private const val BACK_LABEL = "BACK"
+internal const val BACK_LABEL = "BACK"
 private const val NICKNAME_LABEL = "NAME"
 private const val SHARE_LABEL = "SHARE"
 

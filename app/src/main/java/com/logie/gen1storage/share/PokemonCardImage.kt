@@ -186,6 +186,27 @@ object PokemonCardImage {
             return true
         }
 
+        /**
+         * A line set a character at a time, so the marks the cartridge has
+         * its own tiles for are drawn as those tiles rather than as whatever
+         * the text face has under the same key. The face is monospace at an
+         * eight pixel em, which is why walking it a character at a time lands
+         * every glyph exactly where writing the whole string would have.
+         */
+        fun writeGlyphs(x: Int, baseline: Int, value: String, paint: Paint = text) {
+            value.forEachIndexed { index, ch ->
+                val left = x + index * 8
+                val tile = when (ch) {
+                    '\'' -> TrainerStore.DEX_TILE_FEET
+                    '"' -> TrainerStore.DEX_TILE_INCHES
+                    else -> null
+                }
+                if (tile == null || !drawTile(tile, left, baseline - 8)) {
+                    write(left, baseline, ch.toString(), paint)
+                }
+            }
+        }
+
         fun drawSprite(left: Int, top: Int, side: Int) {
             val art = sprite ?: return
             canvas.drawBitmap(
@@ -232,17 +253,19 @@ object PokemonCardImage {
                 drawSprite(INSET + 2, 10, 56)
                 write(72, 20, name.take(10))
                 entry?.let { write(72, 32, it.category.take(10)) }
-                entry?.let { write(72, 44, "HT ${it.heightText}") }
-                entry?.let { write(72, 56, "WT ${it.weightText}") }
+                entry?.let { writeGlyphs(72, 44, "HT ${it.heightText}") }
+                entry?.let { writeGlyphs(72, 56, "WT ${it.weightText}") }
                 // `No.` is a tile of the dex sheet, not three letters of the
                 // text face — the cartridge draws it as one glyph and so does
                 // this, falling back to the letters where the sheet is absent.
+                // `No.` is two tiles of the dex sheet — the letters and the
+                // stop — not three characters of the text face. Both or
+                // neither: half of it drawn and half written would be worse
+                // than either.
                 val digits = pokemon.species?.let { "%03d".format(it.dexNumber) } ?: "???"
-                if (drawTile(TrainerStore.DEX_TILE_NUMBER, INSET, 66)) {
-                    write(INSET + 10, 74, digits)
-                } else {
-                    write(INSET, 74, number)
-                }
+                val drawn = drawTile(TrainerStore.DEX_TILE_NUMBER, INSET, 66) &&
+                    drawTile(TrainerStore.DEX_TILE_STOP, INSET + 8, 66)
+                if (drawn) write(INSET + 16, 74, digits) else write(INSET, 74, number)
                 beadedRule(82)
                 // The entry's own line breaks where it has them — they are the
                 // cartridge's, and it broke its lines where it meant to.

@@ -482,11 +482,20 @@ class TrainerStore(private val directory: File) {
         const val DEX_TILE = 8
 
         /**
-         * `No.`, which the printed Pokédex page sets under the picture. Its
-         * own tile on the sheet rather than three characters of the text
-         * face, because that is what the cartridge draws there.
+         * `No.`, which the printed Pokédex page sets under the picture — two
+         * tiles, the letters and then the stop, rather than three characters
+         * of the text face, because that is what the cartridge draws there.
          */
         const val DEX_TILE_NUMBER = 43
+        const val DEX_TILE_STOP = 44
+
+        /**
+         * The prime and double prime a height is set in: `1'04"`. The face
+         * has an apostrophe and a quote under those keys, which are not the
+         * same marks and do not sit where these do.
+         */
+        const val DEX_TILE_FEET = 45
+        const val DEX_TILE_INCHES = 46
 
         /** The ball strung along the rule that divides the page. */
         const val DEX_TILE_BALL = 30

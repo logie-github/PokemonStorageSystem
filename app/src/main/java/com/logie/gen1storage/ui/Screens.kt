@@ -61,6 +61,7 @@ import com.logie.gen1storage.storage.StoredPokemon
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.RemoteSave
 import com.logie.gen1storage.sync.SyncApi
+import com.logie.gen1storage.transfer.crossGenerationRefusal
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.WithdrawTarget
 import java.time.Instant
@@ -418,6 +419,21 @@ fun StorageSystemScreen(
         val loaded = state.save(active)?.save
         if (active == null || loaded == null) {
             model.open(Screen.ChooseCart(null, uids))
+            return
+        }
+        // Asked here rather than on arrival. The engine refuses a Pokémon
+        // that belongs to the other generation at the point of writing, which
+        // it has to — but by then the question has been put, the ball has
+        // gone up and the whole trade has played out, and the answer lands as
+        // if something went wrong mid-flight. Nothing is animated that was
+        // never going anywhere.
+        val generation = state.remote(active)?.version?.generation
+            ?: if (loaded.isGen2) 2 else 1
+        val blocked = uids.firstNotNullOfOrNull { uid ->
+            state.storage.find(uid)?.second?.let { crossGenerationRefusal(it, generation) }
+        }
+        if (blocked != null) {
+            refusal = blocked
             return
         }
         // The first one stands for the set when there are several; there is

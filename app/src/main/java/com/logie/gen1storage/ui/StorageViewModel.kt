@@ -1177,6 +1177,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             return@launch
         }
         val name = stored.pokemon.displayName.uppercase()
+        // Whichever Generation II card is in the machine is the cartridge the
+        // player is playing, so it is the one this Pokemon is bound for and
+        // the one whose art it comes back wearing. Gold only when there is no
+        // Generation II card in at all, which is the old behaviour for
+        // everybody who never inserts one.
+        val into = current.save(current.activeSaveKey)?.save
+            ?.takeIf { it.isGen2 }
+            ?.let { current.remote(current.activeSaveKey)?.version?.id }
+            ?: GameVersion.GOLD.id
+        val intoLabel = GameVersion.fromId(into)?.label ?: GameVersion.GOLD.label
 
         // The cartridges never gave the Time Capsule an animation of its own —
         // crossing over was the ordinary link-trade sequence, the same cable
@@ -1197,7 +1207,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         toSpeciesId = toSpecies,
                         name = name,
                         gameVersionId = stored.spriteGameVersionId,
-                        toGameVersionId = GameVersion.GOLD.id,
+                        toGameVersionId = into,
                         toDexNumber = Gen2Data.species(toSpecies)?.dexNumber,
                         captionWhile = "$name IS GOING",
                         captionAfter = "$name CAME THROUGH!",
@@ -1209,14 +1219,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             mutable.update { it.copy(busy = true, prompt = null) }
         }
 
-        val record = storage.carryForward(uid)
+        val record = storage.carryForward(uid, gameVersion = into)
         mutable.update { it.copy(busy = false, evolutionScene = null, storage = storage.state()) }
         if (record == null) {
             message("$name COULD NOT GO ON.")
             return@launch
         }
         val lines = buildList {
-            add("$name came through to GOLD.")
+            add("$name came through to $intoLabel.")
             record.heldItem?.let { add("It is holding ${itemLabel(it)}.") }
         }
         mutable.update { it.copy(prompt = Prompt.Message(lines)) }

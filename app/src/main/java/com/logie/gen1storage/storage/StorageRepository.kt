@@ -317,7 +317,12 @@ class StorageRepository(private val directory: File) {
      * One way only, and only when asked. Nothing in this app moves a Pokémon
      * between generations on its own.
      */
-    fun carryForward(uid: String, at: Long = System.currentTimeMillis()): TimeCapsule.Record? =
+    fun carryForward(
+        uid: String,
+        at: Long = System.currentTimeMillis(),
+        /** The Generation II card in the machine, whose game this one is bound for. */
+        gameVersion: String? = null,
+    ): TimeCapsule.Record? =
         synchronized(lock) {
             ensureLoaded()
             for (box in boxes) {
@@ -325,7 +330,7 @@ class StorageRepository(private val directory: File) {
                 if (position < 0) continue
                 val stored = box[position] ?: return null
                 if (stored.inFlight || stored.generation != 1) return null
-                val carried = TimeCapsule.carry(stored.data, at) ?: return null
+                val carried = TimeCapsule.carry(stored.data, at, gameVersion) ?: return null
                 box[position] = stored.copy(
                     data = carried.data,
                     generation = 2,

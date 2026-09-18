@@ -118,7 +118,10 @@ data class StoredPokemon(
             val recorded = GameVersion.fromId(provenance.gameVersion)
             return when {
                 recorded == null || recorded.generation == generation -> provenance.gameVersion
-                generation == 2 -> GameVersion.GOLD.id
+                // The Generation II card it was carried into, which is the
+                // one the player was actually holding. Gold only for a record
+                // written before that was kept.
+                generation == 2 -> timeCapsule?.gameVersion ?: GameVersion.GOLD.id
                 else -> provenance.gameVersion
             }
         }

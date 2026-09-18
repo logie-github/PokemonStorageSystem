@@ -83,7 +83,14 @@ fun Gen1TrainerCard(
     val read = save != null
 
     Gen1SpineCard(
-        modifier,
+        // Every card on the shelf the same height, whatever is on it. A
+        // Generation II card carries sixteen badges in two rows where a
+        // Generation I card carries eight in one, and a card whose save has
+        // not been read yet carries none at all — so left to its contents a
+        // list of cards came out as a list of different-sized cards, and one
+        // of them changed size as its save arrived. The long form is exempt:
+        // it is the only card on the screen and has more to say.
+        if (full) modifier else modifier.height(gen1Dp(CARD_PIXELS)),
         fill = palette.lightest,
         ink = palette.darkest,
         // The game's own name down the edge, so a list holding every game's
@@ -187,11 +194,12 @@ fun Gen1TrainerCard(
                     }
                 }
             } else {
-                Column(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().fillMaxHeight()) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f), content = header)
                         portrait(Modifier, gen1Dp(SMALL_PORTRAIT_PIXELS))
                     }
+                    Spacer(Modifier.weight(1f))
                     badges()
                 }
             }
@@ -417,6 +425,21 @@ private const val BADGE_PIXELS = 16
 
 /** The air between two badges, in game pixels. */
 private const val BADGE_GAP = 1
+
+/**
+ * How tall a card on the shelf stands, in game pixels.
+ *
+ * Room for the name, the three fields under it and two rows of badges — the
+ * most any card has to hold — so that a Generation I card, a Generation II
+ * card and one whose save has not arrived yet are all the same object.
+ *
+ * Four lines of text at this app's own leading come to about fifty pixels
+ * and two rows of sixteen-pixel badges with a gap between them to thirty
+ * three, plus the frame's inset either side: ninety six leaves the tallest
+ * card its room rather than clipping it, and the shorter ones carry the
+ * difference as air under the name.
+ */
+private const val CARD_PIXELS = 96
 
 /** What a decomp's sprite is drawn at, and the unit the portrait scales by. */
 private const val ART_PIXELS = 56f

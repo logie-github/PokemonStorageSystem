@@ -2783,6 +2783,36 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 appendLine("- ${version.id}: ${if (roms.has(version)) "present" else "-"}")
             }
             appendLine()
+            appendLine("### Trainer cards")
+            // The cards themselves, and the two pictures each one draws: the
+            // trainer it wears and the lead Pokemon standing with them. The
+            // lead is the one nothing else in this report covers — it is not
+            // in the PC, it is in the save's own party, and it is asked for
+            // under the card's own game rather than under wherever a stored
+            // Pokemon came from. A card whose lead comes out wrong is being
+            // reported here or nowhere.
+            current.saves.forEach { remote ->
+                val save = current.save(remote.key)?.save
+                val named = cartName(remote.key)?.uppercase()
+                    ?: remote.summary.trainerName?.uppercase()
+                    ?: "?"
+                appendLine(
+                    "- $named (${remote.version.id}, gen ${remote.version.generation}): " +
+                        if (save == null) "save not read yet" else "save read"
+                )
+                appendLine("  wears: ${trainerSprite(remote.key) ?: "the game's own player"}")
+                val lead = save?.party?.firstOrNull()
+                val leadId = lead?.spriteSpeciesId()
+                appendLine(
+                    "  lead: " + when {
+                        save == null -> "unknown until the save is read"
+                        lead == null -> "none in the party"
+                        leadId == null -> "no species id"
+                        else -> "$leadId -> ${sprites.sourceOf(leadId, remote.version.id)}"
+                    }
+                )
+            }
+            appendLine()
             appendLine("### Where the sprites come from")
             // Every Pokemon actually in the PC, named with the cartridge its
             // art is being drawn from and what that source gave back. A

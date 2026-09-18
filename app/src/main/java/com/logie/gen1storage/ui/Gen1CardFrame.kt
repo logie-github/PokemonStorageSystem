@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -182,3 +183,54 @@ private const val CARD_INSET_PIXELS = 4
 
 /** How many pixels each corner steps in — chunky enough to read as cut. */
 private const val CARD_CORNER_STEPS = 3
+
+/**
+ * How far down a long list you are, as a bar beside it.
+ *
+ * A rail of the window's own ink at a quarter strength with a solid handle on
+ * it, both drawn in whole Game Boy pixels so the handle steps down the rail
+ * rather than sliding smoothly — the cartridge had no sub-pixel anything, and
+ * a bar that glided would be the one thing on screen that did.
+ *
+ * Nothing to scroll, nothing drawn: a bar whose handle fills the whole rail
+ * says "there is more here" to no purpose.
+ */
+@Composable
+fun Gen1ScrollBar(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    count: Int,
+    modifier: Modifier = Modifier,
+) {
+    val info = state.layoutInfo
+    val shown = info.visibleItemsInfo.size
+    if (count <= 0 || shown <= 0 || shown >= count) return
+    val pixel = gen1PixelPx().toFloat()
+    val first = state.firstVisibleItemIndex.coerceIn(0, (count - 1).coerceAtLeast(0))
+    Box(
+        modifier
+            .width(gen1Dp(SCROLLBAR_PIXELS))
+            .padding(start = gen1Dp(2))
+            .drawBehind {
+                val rail = Gen1Palette.Ink.copy(alpha = RAIL_ALPHA)
+                val width = size.width
+                drawRect(rail, Offset.Zero, Size(width, size.height))
+                // The handle is as much of the rail as the screen is of the
+                // list, never thinner than something you can actually see.
+                val span = (size.height * shown / count).coerceAtLeast(pixel * 4)
+                val room = size.height - span
+                val furthest = (count - shown).coerceAtLeast(1)
+                val top = room * first.coerceAtMost(furthest) / furthest
+                // Snapped to whole pixels, both ends, so the handle is always
+                // a clean block rather than a smeared one.
+                val snappedTop = (top / pixel).toInt() * pixel
+                val snappedSpan = ((span / pixel).toInt() * pixel).coerceAtLeast(pixel)
+                drawRect(Gen1Palette.Ink, Offset(0f, snappedTop), Size(width, snappedSpan))
+            },
+    )
+}
+
+/** How wide the bar is, in game pixels, including the air on its left. */
+private const val SCROLLBAR_PIXELS = 6
+
+/** How faint the rail behind the handle is. */
+private const val RAIL_ALPHA = 0.25f

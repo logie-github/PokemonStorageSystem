@@ -139,26 +139,32 @@ fun DexScreen(state: UiState, model: StorageViewModel) {
         )
 
         Spacer(Modifier.height(gen1Dp(2)))
-        LazyColumn(
-            Modifier.weight(1f),
-            state = scroll,
-            userScrollEnabled = !LocalGen1Swipe.current,
-        ) {
-            itemsIndexed(rows, key = { _, species -> species.id }) { index, species ->
-                DexRow(
-                    species = species,
-                    caught = species.id in owned || species.id in inThePc,
-                    here = species.id in inThePc,
-                    met = species.id in owned || species.id in seen || species.id in inThePc,
-                    trainers = model.trainers,
-                    revision = state.spriteRevision,
-                    selected = cursor == index + 1,
-                    onConfirm = { model.open(Screen.DexEntry(species.id)) },
-                )
+        // The list and the bar that says where in it you are. Two hundred and
+        // fifty rows long with nothing to show how far down them you had got,
+        // and a Pokédex is the one list here that is genuinely long.
+        Row(Modifier.weight(1f)) {
+            LazyColumn(
+                Modifier.weight(1f),
+                state = scroll,
+                userScrollEnabled = !LocalGen1Swipe.current,
+            ) {
+                itemsIndexed(rows, key = { _, species -> species.id }) { index, species ->
+                    DexRow(
+                        species = species,
+                        caught = species.id in owned || species.id in inThePc,
+                        here = species.id in inThePc,
+                        met = species.id in owned || species.id in seen || species.id in inThePc,
+                        trainers = model.trainers,
+                        revision = state.spriteRevision,
+                        selected = cursor == index + 1,
+                        onConfirm = { model.open(Screen.DexEntry(species.id)) },
+                    )
+                }
+                if (rows.isEmpty()) {
+                    item { GbText("NOTHING TO SHOW.", maxLines = 1) }
+                }
             }
-            if (rows.isEmpty()) {
-                item { GbText("NOTHING TO SHOW.", maxLines = 1) }
-            }
+            Gen1ScrollBar(scroll, rows.size, Modifier.fillMaxHeight())
         }
         Spacer(Modifier.height(gen1Dp(2)))
 

@@ -1955,7 +1955,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 // answers "that app is not here" is a row that never did
                 // anything.
                 val game = prompt.openGame?.takeIf { TheGame.isInstalled(context) }
-                Gen1DialogueBox(prompt.lines.map { it.uppercase() } + syncLines(game)) {
+                Gen1DialogueBox(prompt.lines.map { it.uppercase() } + syncLines(game), fit = true) {
                 Spacer(Modifier.height(gen1Dp(2)))
                 Gen1ChoiceRows(
                     if (game == null) listOf("OK" to model::dismissPrompt)
@@ -1970,7 +1970,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 }
             }
 
-            is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
+            is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }, fit = true) {
                 Spacer(Modifier.height(gen1Dp(2)))
                 Gen1ChoiceRows(
                     listOf(

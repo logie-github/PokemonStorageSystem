@@ -134,6 +134,12 @@ class StorageRepository(private val directory: File) {
         uid: String = UUID.randomUUID().toString(),
         /** Which generation's cartridge it came out of. */
         generation: Int = 1,
+        /**
+         * Everywhere this one has already been, where the app recognised it
+         * on the way in. Null for a Pokémon it is seeing for the first time,
+         * which is given a fresh mark here.
+         */
+        lineage: Lineage? = null,
     ): StoredPokemon? = synchronized(lock) {
         ensureLoaded()
         val start = (preferredBox - 1).coerceIn(0, StorageLayout.BOX_COUNT - 1)
@@ -141,13 +147,62 @@ class StorageRepository(private val directory: File) {
             val index = (start + offset) % StorageLayout.BOX_COUNT
             val slot = boxes[index].indexOfFirst { it == null }
             if (slot >= 0) {
-                val stored = StoredPokemon(uid, data, provenance, generation = generation)
+                // Every Pokémon this app has ever held gets a mark, whether
+                // or not anything ever asks about it. A mark given only to
+                // the ones that look interesting is a mark that is missing
+                // from exactly the one somebody asks about later.
+                val marked = lineage ?: Lineage(Lineage.newTag())
+                val stored = StoredPokemon(
+                    uid,
+                    // The mark comes off on the way in. What the boxes hold
+                    // is exactly the fields the cartridge handed over — the
+                    // app's bookkeeping lives beside a Pokémon, never inside
+                    // it — and the mark goes back on at the moment of
+                    // leaving. See [Lineage.unstamp].
+                    Lineage.unstamp(data),
+                    provenance,
+                    generation = generation,
+                    lineage = marked.then(
+                        Hop(
+                            kind = Hop.Kind.DEPOSITED,
+                            atMillis = provenance.depositedAtEpochMillis,
+                            gameVersion = provenance.gameVersion,
+                            saveKey = provenance.saveId,
+                            trainerName = provenance.trainerName,
+                        )
+                    ),
+                )
                 boxes[index][slot] = stored
                 persist()
                 return stored
             }
         }
         null
+    }
+
+    /**
+     * Replaces one in place, keeping its spot.
+     *
+     * Used where something about a Pokémon changes without it going anywhere
+     * — another stop written onto its history, say.
+     */
+    fun replace(stored: StoredPokemon): Boolean = synchronized(lock) {
+        ensureLoaded()
+        for (box in boxes) {
+            val position = box.indexOfFirst { it?.uid == stored.uid }
+            if (position >= 0) {
+                box[position] = stored
+                persist()
+                return true
+            }
+        }
+        false
+    }
+
+    /** Everything in the PC that carries this mark. */
+    fun withTag(tag: String): List<StoredPokemon> = synchronized(lock) {
+        ensureLoaded()
+        boxes.flatMap { box -> box.filterNotNull() }.filter { it.lineage?.tag == tag }
     }
 
     /** Removes a Pokémon by uid. Returns it, or null when it was not here. */
@@ -335,6 +390,14 @@ class StorageRepository(private val directory: File) {
                     data = carried.data,
                     generation = 2,
                     timeCapsule = carried.record,
+                    // A stop on its history like any other. It went nowhere
+                    // — the app is both ends of this cable — but what came
+                    // back is a Generation II Pokémon, and the one question
+                    // its history has to be able to answer is when that
+                    // happened and which cartridge it was bound for.
+                    lineage = (stored.lineage ?: Lineage(Lineage.newTag())).then(
+                        Hop(Hop.Kind.CARRIED, at, gameVersion)
+                    ),
                 )
                 persist()
                 return carried.record
@@ -432,6 +495,24 @@ class StorageRepository(private val directory: File) {
             return item
         }
         null
+    }
+
+    /**
+     * Empties the PC and the files behind it.
+     *
+     * For one thing only: a player who has been offered a restore and said
+     * no. Nothing in the ordinary running of the app removes a Pokemon this
+     * way — a transfer moves one, and a release is its own deliberate act.
+     */
+    fun clear() = synchronized(lock) {
+        boxes = emptyBoxes()
+        names = LinkedHashMap()
+        revision = 0
+        notes = emptyList()
+        loaded = true
+        file.delete()
+        staged.delete()
+        backup.delete()
     }
 
     /** Forces a re-read from disk; used after an external repair. */

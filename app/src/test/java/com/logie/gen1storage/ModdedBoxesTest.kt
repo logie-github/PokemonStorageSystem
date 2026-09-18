@@ -4,6 +4,8 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassifier
 import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.LuaWriter
+import com.logie.gen1storage.storage.Lineage
+import com.logie.gen1storage.storage.LineageBook
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.SaveBackups
@@ -18,6 +20,7 @@ import com.logie.gen1storage.transfer.TransferResult
 import com.logie.gen1storage.transfer.WithdrawTarget
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -87,6 +90,7 @@ class ModdedBoxesTest {
             storage,
             TransferJournal(directory),
             PlacementLedger(directory),
+            LineageBook(directory),
         ) { 1_700_000_000_000 }
     }
 
@@ -149,8 +153,10 @@ class ModdedBoxesTest {
         assertTrue(result.toString(), result is TransferResult.Success)
         val after = onServer()
         val landed = after.boxes[moddedBoxCount - 1].first { it.nickname == "SPARKY" }
-        // The same bytes it left with: a box past the twelfth is an ordinary box.
-        assertEquals(encoding, LuaWriter.encodeValue(landed.raw))
+        // The same bytes it left with, once the app's own mark is taken back
+        // off: a box past the twelfth is an ordinary box. See [Lineage].
+        assertNotNull(Lineage.tagOf(landed.raw))
+        assertEquals(encoding, LuaWriter.encodeValue(Lineage.unstamp(landed.raw.deepCopy())))
         assertEquals(2, after.boxes[moddedBoxCount - 1].size)
         assertEquals(0, storage.state().total)
     }

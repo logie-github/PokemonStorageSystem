@@ -3,16 +3,32 @@
   What goes into the account's backup when BACKUP TO GOOGLE is on, and what
   never does.
 
-  The boxes go: they are the thing worth carrying to a new phone, and a
-  restored Pokémon is checked against the cartridges before the app will treat
-  it as its own (see AppSettings.restoredUids). Nothing else about the app is
-  worth the space:
+  The rule is that a restored install is the same machine, not a new one that
+  happens to have some old files in it. Delete the app, reinstall it with the
+  backup on, and it comes back as it was: the boxes, every setting, and the
+  link to the game's sync account, so it goes on syncing with the game without
+  anybody re-entering a code. The app asks once, before anything else is on
+  screen, whether that is what was wanted — see RestoreScreen — and starting
+  clean is the answer that costs something, so it is the one that is spelled
+  out.
+
+  Shared preferences carry the settings and the sync credentials and are all
+  included, which is the point above. What is left out is only what is either
+  re-fetchable or about this device alone:
 
     * sprites, cries and follower sheets are downloaded art, hundreds of
       megabytes of it against the twenty-five the platform allows, and they
       come back with a tap
     * pc/backups holds the copy taken of a cartridge before each write, which
       is evidence about this device and belongs to it
+    * install.marker is how a restore is noticed at all: it is written on
+      first run and never allowed into a backup, so boxes arriving without it
+      are boxes that came from somewhere else
+    * last-crash.txt is about a crash on the old phone
+
+  pc/lineages.lua does go, and has to: it is where a Pokémon that is out in a
+  cartridge keeps its history, and a history that did not survive a new phone
+  would not be a history.
 
   With the switch off, StorageBackupAgent writes nothing at all and none of
   this applies.

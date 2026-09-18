@@ -63,25 +63,23 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_CLOUD_BACKUP, value).apply()
 
     /**
-     * Pokémon that came back from a backup and have not been checked yet.
+     * Whether this install found data from a backup and has not yet asked
+     * about it.
      *
-     * A backup is the boxes as they were at one moment, and the cartridges
-     * have moved on since. One that was transferred into a save after the
-     * backup was taken is in that save now *and* in the copy being restored,
-     * which is the one thing this app is built never to allow.
-     *
-     * So every Pokémon a restore brings back is listed here, and each one is
-     * dropped from the list the first time a save is read that does not hold
-     * it. A Pokémon found in a save is taken out of the PC instead: the
-     * cartridge owns it, and the PC's copy is a picture of one that has
-     * already left.
+     * Set once, by the app noticing that its boxes, its settings or its link
+     * arrived without the marker file that never leaves a device — see
+     * `StorageViewModel.noticeRestore`. For as long as it stands, the app
+     * shows one question and nothing else: use what came back, or start
+     * clean. It is asked before the introduction rather than after, because
+     * being walked round a machine and *then* asked whether the machine
+     * should exist is the wrong way round.
      */
-    var restoredUids: Set<String>
-        get() = prefs.getStringSet(KEY_RESTORED_UIDS, emptySet()).orEmpty()
-        set(value) = prefs.edit().apply {
-            if (value.isEmpty()) remove(KEY_RESTORED_UIDS)
-            else putStringSet(KEY_RESTORED_UIDS, value)
-        }.apply()
+    var restoreOffer: Boolean
+        get() = prefs.getBoolean(KEY_RESTORE_OFFER, false)
+        set(value) = prefs.edit().putBoolean(KEY_RESTORE_OFFER, value).apply()
+
+    /** Everything back to how it ships, for a restore the player turned down. */
+    fun clear() = prefs.edit().clear().apply()
 
     /**
      * The colour palette everything is drawn through, by [GbPalette] id.
@@ -303,7 +301,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_TEXT_SPEED = "text-speed"
         const val KEY_CLOUD_BACKUP = "cloud-backup"
         const val KEY_GBC_FOLLOWS_PALETTE = "gbc-follows-palette"
-        const val KEY_RESTORED_UIDS = "restored-uids"
+        const val KEY_RESTORE_OFFER = "restore-offer"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"
         const val KEY_GAME_SELECTION = "game-selection"

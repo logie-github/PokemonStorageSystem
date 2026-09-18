@@ -26,6 +26,9 @@ import com.logie.gen1storage.pokemon.TimeCapsule
 import com.logie.gen1storage.pokemon.tradeEvolutionName
 import com.logie.gen1storage.pokemon.tradeEvolutionOf
 import com.logie.gen1storage.pokemon.tradeEvolves
+import com.logie.gen1storage.storage.Hop
+import com.logie.gen1storage.storage.Lineage
+import com.logie.gen1storage.storage.LineageBook
 import com.logie.gen1storage.storage.StoredPokemon
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -341,6 +344,12 @@ data class UiState(
      * install looks like, and it is the only thing that plays it.
      */
     val tutorialSeen: Boolean = true,
+    /**
+     * Whether this install came back from a backup and has not been asked
+     * about it yet. While it stands the app shows that one question and
+     * nothing else — not even the introduction. See [AppSettings.restoreOffer].
+     */
+    val restoreOffer: Boolean = false,
     /** How fast the text prints, as the games' OPTIONS screen puts it. */
     val textSpeed: TextSpeed = TextSpeed.DEFAULT,
     /** Shown while a transfer is in flight, and cleared by its result. */
@@ -457,7 +466,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.setGameSlotId(key, slot)
     }
     private val ledger = PlacementLedger(storageDir)
-    private val engine = TransferEngine(saves, storage, journal, ledger)
+    /** Where every Pokémon the app has held has been. See [LineageBook]. */
+    private val lineages = LineageBook(storageDir)
+    private val engine = TransferEngine(saves, storage, journal, ledger, lineages)
     private val itemStorage = ItemRepository(storageDir)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
     private val mailEngine = MailEngine(saves)
@@ -622,6 +633,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 windowsOnRight = settings.windowsOnRight,
                 billsPc = settings.billsPc,
                 tutorialSeen = settings.tutorialSeen,
+                restoreOffer = settings.restoreOffer,
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
@@ -2361,7 +2373,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { state ->
             state.copy(loaded = state.loaded + saves.associateBy { it.key })
         }
-        checkRestored(saves)
+        noticeElsewhere(saves)
     }
 
     // ------- coming back from a backup
@@ -2385,56 +2397,156 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val marker = File(getApplication<Application>().filesDir, "install.marker")
         if (marker.exists()) return
         val held = runCatching { storage.all() }.getOrDefault(emptyList())
-        if (held.isNotEmpty()) settings.restoredUids = held.map { it.uid }.toSet()
+        // Boxes, or a link, without the marker: this install did not start
+        // on this device. The whole of it came back — the Pokemon, every
+        // setting, and the link to the account — so there is nothing to
+        // repair and one thing to ask.
+        if (held.isNotEmpty() || credentials.isLinked) settings.restoreOffer = true
         runCatching { marker.writeText(System.currentTimeMillis().toString()) }
     }
 
+    /** Keeps what the backup brought back, which is the whole of it. */
+    fun useRestored() {
+        settings.restoreOffer = false
+        mutable.update { it.copy(restoreOffer = false) }
+    }
+
     /**
-     * Holds what a restore brought back up against a cartridge that has just
-     * been read.
+     * Throws away what the backup brought back and starts this device clean.
      *
-     * A Pokémon the save already holds left this app before the backup was
-     * taken, so the copy in the PC is a picture of one that is gone: the
-     * cartridge is where it lives now and the copy goes. One the save does not
-     * hold is the app's own, and it stops being asked about.
-     *
-     * Only ever removes from the PC, and only when a cartridge is holding the
-     * same Pokémon — the app never ends up with nothing where there was
-     * something, which is the half of the promise a backup could break.
+     * Everything: the boxes, the histories, the ledger, the items, every
+     * setting, and the link to the account. A player who says no to a
+     * restore is saying they want a new machine, and half a new machine —
+     * empty boxes still signed in as somebody — is not a thing to hand them.
+     * The introduction then plays, because this is now a first run.
      */
-    private fun checkRestored(saves: Collection<LoadedSave>) {
-        val unchecked = settings.restoredUids
-        if (unchecked.isEmpty()) return
-        val contents = saves.mapNotNull { it.save }
-        if (contents.isEmpty()) return
-        var left = unchecked
-        var removed = 0
-        for (uid in unchecked) {
-            val stored = storage.get(uid)
-            if (stored == null) {
-                left = left - uid
-                continue
-            }
-            val fingerprint = stored.pokemon.fingerprint
-            val inASave = contents.any { save ->
-                save.party.any { it.fingerprint == fingerprint } ||
-                    save.boxes.any { box -> box.any { it.fingerprint == fingerprint } }
-            }
-            if (inASave) {
-                storage.withdraw(uid)
-                removed++
-            }
-            left = left - uid
+    fun discardRestored() = viewModelScope.launch {
+        mutable.update { it.copy(busy = true, prompt = null) }
+        withContext(Dispatchers.IO) {
+            runCatching { api.unlink(credentials.deviceId) }
+            runCatching { credentials.clear() }
+            runCatching { storage.clear() }
+            runCatching { itemStorage.clear() }
+            runCatching { lineages.clear() }
+            runCatching { ledger.clear() }
+            runCatching { journal.clear() }
+            runCatching { backups.clear() }
+            // Last, because it is the one that puts restoreOffer back to
+            // false: anything after it would be running against settings
+            // that have already been wiped.
+            runCatching { settings.clear() }
         }
-        settings.restoredUids = left
-        if (removed > 0) {
-            mutable.update { it.copy(storage = storage.state()) }
-            message(
-                if (removed == 1) "A RESTORED POKéMON WAS ALREADY IN A SAVE."
-                else "$removed RESTORED POKéMON WERE ALREADY IN SAVES.",
-                "THE CARTRIDGE KEPT THEM.",
+        mutable.update {
+            UiState(
+                storage = storage.state(),
+                restoreOffer = false,
+                tutorialSeen = false,
             )
         }
+    }
+
+    /**
+     * Holds the PC up against a cartridge that has just been read, and
+     * notices a Pokémon that is in both.
+     *
+     * The app writes its own mark into every Pokémon it hands to a cartridge
+     * (see [Lineage]), so a Pokémon found in a save wearing the mark of one
+     * the PC still holds is not a coincidence and not a lookalike: it is the
+     * same creature, and it got there by a route this app never saw — a save
+     * restored from a backup of its own, a cartridge copied, a trade inside
+     * the game, a withdrawal that landed after the app was reinstalled.
+     *
+     * This used to compare content fingerprints, which meant it could only
+     * recognise a Pokémon that had not been played with since — and it acted
+     * on the match by deleting the PC's copy without asking. It asks now, and
+     * it recognises one that has spent a season levelling.
+     *
+     * Asked once per Pokémon per cartridge: the noticing is written onto the
+     * Pokémon's own history, so a player who says no is not asked again every
+     * time that save is read.
+     */
+    private fun noticeElsewhere(saves: Collection<LoadedSave>) {
+        val held = storage.all().mapNotNull { stored ->
+            stored.lineage?.let { it.tag to stored }
+        }.toMap()
+        if (held.isEmpty()) return
+
+        val found = LinkedHashMap<String, Pair<StoredPokemon, LoadedSave>>()
+        saves.forEach { loaded ->
+            val save = loaded.save ?: return@forEach
+            (save.party + save.boxes.flatten()).forEach { mon ->
+                val tag = Lineage.tagOf(mon.raw) ?: return@forEach
+                val stored = held[tag] ?: return@forEach
+                // Already raised for this Pokémon in this cartridge. The
+                // answer was no, and asking again every time the save is
+                // read is how a warning becomes something to tap past.
+                val last = stored.lineage?.hops?.lastOrNull()
+                if (last?.kind == Hop.Kind.SEEN_ELSEWHERE && last.saveKey == loaded.key) {
+                    return@forEach
+                }
+                found[tag] = stored to loaded
+            }
+        }
+        if (found.isEmpty()) return
+
+        // Written down before anything is asked, so the question is not
+        // repeated whatever the answer turns out to be.
+        found.values.forEach { (stored, loaded) ->
+            val lineage = stored.lineage ?: return@forEach
+            runCatching {
+                storage.replace(
+                    stored.copy(
+                        lineage = lineage.then(
+                            Hop(
+                                kind = Hop.Kind.SEEN_ELSEWHERE,
+                                atMillis = System.currentTimeMillis(),
+                                gameVersion = loaded.remote.version.id,
+                                saveKey = loaded.key,
+                                trainerName = loaded.save?.trainerName,
+                            )
+                        )
+                    )
+                )
+            }
+        }
+
+        val first = found.values.first()
+        val name = first.first.pokemon.displayName.uppercase()
+        val where = first.second.remote.version.label.uppercase()
+        val uids = found.values.map { it.first.uid }
+        mutable.update {
+            it.copy(
+                storage = storage.state(),
+                prompt = Prompt.Confirm(
+                    lines = if (uids.size == 1) {
+                        listOf(
+                            "$name IS IN $where TOO.",
+                            "IT LEFT THE PC SOME OTHER WAY.",
+                            "TAKE IT OUT OF THE PC?",
+                        )
+                    } else {
+                        listOf(
+                            "${uids.size} POKéMON ARE IN CARTRIDGES TOO.",
+                            "THEY LEFT THE PC SOME OTHER WAY.",
+                            "TAKE THEM OUT OF THE PC?",
+                        )
+                    },
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { dropDuplicates(uids) },
+                ),
+            )
+        }
+    }
+
+    /** Takes the PC's copies out, for a player who said yes to the above. */
+    private fun dropDuplicates(uids: List<String>) {
+        uids.forEach { uid -> runCatching { storage.withdraw(uid) } }
+        mutable.update { it.copy(storage = storage.state(), prompt = null) }
+        message(
+            if (uids.size == 1) "THE CARTRIDGE KEPT IT."
+            else "THE CARTRIDGES KEPT THEM.",
+        )
     }
 
     /** Whether this app's data goes into the account's backup. */
@@ -2888,8 +3000,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             placements.take(GUARD_REPORT_LIMIT).forEach {
                 appendLine("  - ${it.fingerprint.take(8)} in ${it.savePath}")
             }
-            val unchecked = runCatching { settings.restoredUids }.getOrDefault(emptySet())
-            appendLine("- Restored and not yet checked against a save: ${unchecked.size}")
+            appendLine("- Waiting on the restore question: ${current.restoreOffer}")
+            // The marks, which is how the app recognises a Pokemon it has
+            // handed out before. Counted rather than listed: a tag says
+            // nothing about a Pokemon, and there can be thousands.
+            val marked = runCatching { storage.all() }.getOrDefault(emptyList())
+            appendLine("- Marked in the PC: ${marked.count { it.lineage != null }} of ${marked.size}")
+            val book = runCatching { lineages.all() }.getOrDefault(emptyList())
+            appendLine("- Histories kept for ones that are out: ${book.count { it.isOut }}")
+            appendLine("- Histories kept in all: ${book.size}")
             // The one list in the app that a Pokemon can be kept out of, and
             // why each one is being kept out.
             val roster = runCatching { timeCapsuleRoster() }.getOrDefault(emptyList())

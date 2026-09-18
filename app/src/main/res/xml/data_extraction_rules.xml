@@ -8,7 +8,6 @@
         <exclude domain="file" path="followers/" />
         <exclude domain="file" path="install.marker" />
         <exclude domain="file" path="last-crash.txt" />
-    <exclude domain="file" path="last-crash.txt" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="pc/backups/" />
@@ -17,6 +16,5 @@
         <exclude domain="file" path="followers/" />
         <exclude domain="file" path="install.marker" />
         <exclude domain="file" path="last-crash.txt" />
-    <exclude domain="file" path="last-crash.txt" />
     </device-transfer>
 </data-extraction-rules>

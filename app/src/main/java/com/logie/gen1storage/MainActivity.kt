@@ -67,6 +67,7 @@ import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
 import com.logie.gen1storage.ui.PrinterScreen
 import com.logie.gen1storage.ui.PromptWindow
+import com.logie.gen1storage.ui.RestoreScreen
 import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
 import com.logie.gen1storage.ui.GbButton
@@ -181,15 +182,21 @@ private fun StorageApp(model: StorageViewModel) {
     val locked = state.busy ||
         (state.transferScene != null && state.transferScene?.question == null)
 
+    // A machine that came back from the account's backup, asking whether that
+    // is what was wanted. Before everything, the introduction included — see
+    // [RestoreScreen].
+    val askingRestore = state.restoreOffer
+
     // The first run, and only the first: a fresh install has never been shown
     // round the machine, and this is what shows it. Written to disk by the
     // last beat, so it is gone by the next launch; REPLAY TUTORIAL in OPTIONS
     // is what brings it back.
-    val showTutorial = !state.tutorialSeen
+    val showTutorial = !state.tutorialSeen && !askingRestore
 
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(
         enabled = locked ||
+            askingRestore ||
             showTutorial ||
             state.transferScene?.question != null ||
             state.prompt != null ||
@@ -200,7 +207,10 @@ private fun StorageApp(model: StorageViewModel) {
         // and it must not fall through to closing the app either. The
         // introduction is the same: it is four taps long and Back is not one
         // of the ways out of it, least of all the one that closes the app.
-        if (locked || showTutorial) return@BackHandler
+        // There is nothing behind the restore question, and the introduction
+        // is four taps long. Back is not one of the ways out of either, least
+        // of all the way that closes the app.
+        if (locked || showTutorial || askingRestore) return@BackHandler
         // Backing out of the question is saying no to it.
         if (state.transferScene?.question != null) model.cancelSend() else model.back()
     }
@@ -331,7 +341,7 @@ private fun StorageApp(model: StorageViewModel) {
                         cursor.confirm()
                     }
                     GbButton.START ->
-                        if (state.screen != Screen.Options && !showTutorial) {
+                        if (state.screen != Screen.Options && !showTutorial && !askingRestore) {
                             audio.play(SoundEffect.OPTIONS)
                             model.open(Screen.Options)
                         }
@@ -354,9 +364,13 @@ private fun StorageApp(model: StorageViewModel) {
             // app asking them to watch it fetch files instead — the
             // introduction shows the one fetch it actually waits on and
             // nothing else. See [Gen1Tutorial].
-            if (!showTutorial) state.artProgress?.let { LoadingStrip(it.percent) }
+            if (!showTutorial && !askingRestore) {
+                state.artProgress?.let { LoadingStrip(it.percent) }
+            }
             Box(Modifier.weight(1f)) {
-                if (showTutorial) {
+                if (askingRestore) {
+                    RestoreScreen(state, model)
+                } else if (showTutorial) {
                     Gen1Tutorial(state, model, onFinished = model::finishTutorial)
                 } else {
                     // Opened up, the status pages take the left half — so the

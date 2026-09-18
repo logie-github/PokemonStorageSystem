@@ -269,6 +269,11 @@ class SaveBackups(private val directory: File) {
             .flatMap { list(unsafe(it.name)) }
             .sortedByDescending { it.savedAtMillis }
 
+    /** Throws every kept copy away. See [StorageRepository.clear]. */
+    fun clear() {
+        directory.deleteRecursively()
+    }
+
     private fun prune(folder: File) {
         val files = folder.listFiles().orEmpty().sortedByDescending { it.lastModified() }
         files.drop(KEEP_PER_SAVE).forEach { it.delete() }

@@ -73,24 +73,30 @@ class Gen2SpriteCodecTest {
 
     @Test
     fun `a 7x7 sprite reshapes into a 56x56 picture`() {
-        val sprite = Gen2SpriteCodec.decompress(patternCCompressed, 0)
+        val sprite = Gen2SpriteCodec.decompressFrontpic(patternCCompressed, 0, 7)
         assertEquals(56, sprite.widthPx)
         assertEquals(56, sprite.heightPx)
     }
 
     @Test
-    fun `a sprite whose size is not one of the three valid squares is refused`() {
-        // Pattern A decompresses to exactly 400 bytes — a valid 5x5 sprite —
-        // so it is a legitimate positive case for the size check; this test
-        // instead uses pattern B's 100 bytes, which is none of 400, 576, 784.
+    fun `a stream too short for the frame it was promised is refused`() {
+        // Pattern B decompresses to 100 bytes, nowhere near the 400 a five
+        // tile square needs, so it cannot be the pic the table said it was.
         assertThrows(Gen2SpriteCodec.MalformedSpriteException::class.java) {
-            Gen2SpriteCodec.decompress(patternBCompressed, 0)
+            Gen2SpriteCodec.decompressFrontpic(patternBCompressed, 0, 5)
+        }
+    }
+
+    @Test
+    fun `a pic size no Generation II sprite ever has is refused`() {
+        assertThrows(Gen2SpriteCodec.MalformedSpriteException::class.java) {
+            Gen2SpriteCodec.decompressFrontpic(patternACompressed, 0, 4)
         }
     }
 
     @Test
     fun `a 5x5 sprite reshapes into a 40x40 picture`() {
-        val sprite = Gen2SpriteCodec.decompress(patternACompressed, 0)
+        val sprite = Gen2SpriteCodec.decompressFrontpic(patternACompressed, 0, 5)
         assertEquals(40, sprite.widthPx)
         assertEquals(40, sprite.heightPx)
     }
@@ -105,8 +111,12 @@ class Gen2SpriteCodecTest {
     private val cornerTileCompressed = bytesOf(-19, 63, 47, -1, 127, 127, -1)
 
     @Test
-    fun `an animated frontpic's resting frame is put back in row-major order`() {
-        val sprite = Gen2SpriteCodec.decompressAnimatedFrontpic(cornerTileCompressed, 0, 5)
+    fun `a frontpic's tiles are put back in row-major order`() {
+        // The one that matters, and the one Gold and Silver were not getting:
+        // read straight out, the marked tile lands at row 0 column 4's
+        // neighbour instead of the top right, and a real sprite comes out as
+        // a grid of shuffled fragments at exactly the right size.
+        val sprite = Gen2SpriteCodec.decompressFrontpic(cornerTileCompressed, 0, 5)
         assertEquals(40, sprite.widthPx)
         for (row in 0 until 40) {
             for (col in 0 until 40) {

@@ -30,13 +30,9 @@ import com.logie.gen1storage.pokemon.Gen2Species
  * load_pics.asm`'s own `.FixPicBankTable`) — and the strongest shape of all,
  * that what it points to decompresses into exactly the square picture
  * [Located.tableOffset]'s own `BASE_PIC_SIZE` byte already said it would be —
- * plainly for Gold and Silver ([Gen2SpriteCodec.decompress]), as the
- * *resting frame of an animated pic* for Crystal
- * ([Gen2SpriteCodec.decompressAnimatedFrontpic] — Crystal was the series'
- * first game to animate them, and its own `PokemonPicPointers` entries point
- * at that format even for a species whose animation is nothing more than
- * one frame's own tiles again). A candidate table only stands once every
- * species this app can check agrees with the table it is already sure of.
+ * as the resting frame of a front pic ([Gen2SpriteCodec.decompressFrontpic]).
+ * A candidate table only stands once every species this app can check agrees
+ * with the table it is already sure of.
  *
  * Unown is the one species this cannot hold: real Gold, Silver, and Crystal
  * ROMs give it no entry at all in `PokemonPicPointers` (six bytes of `$FF`,
@@ -124,10 +120,9 @@ object Gen2RomLocator {
 
     /**
      * Reads one `PokemonPicPointers` entry's front half and decompresses
-     * whatever it points to — the plain way for Gold/Silver, the animated
-     * way (see [Gen2SpriteCodec.decompressAnimatedFrontpic]) for Crystal,
-     * which is why [tileDimension] — already read off the base-stats table
-     * this species' own record lives in — has to come along either way.
+     * whatever it points to — see [Gen2SpriteCodec.decompressFrontpic], which
+     * is why [tileDimension], already read off the base-stats table this
+     * species' own record lives in, has to come along.
      */
     private fun readSprite(rom: ByteArray, entryAt: Int, game: Gen2Game, tileDimension: Int): Gen1SpriteCodec.DecodedSprite? {
         if (entryAt + 2 !in rom.indices) return null
@@ -137,10 +132,10 @@ object Gen2RomLocator {
         val bank = fixPicBank(bankRaw, game) ?: return null
         val fileOffset = bank * 0x4000 + (addr - 0x4000)
         if (fileOffset !in rom.indices) return null
-        return when (game) {
-            Gen2Game.CRYSTAL -> Gen2SpriteCodec.decompressAnimatedFrontpic(rom, fileOffset, tileDimension)
-            Gen2Game.GOLD_SILVER -> Gen2SpriteCodec.decompress(rom, fileOffset)
-        }
+        // Both games the same way. Gold and Silver store their front pics
+        // transposed exactly as Crystal does; Crystal's only addition is the
+        // animation tiles after the resting frame, which this leaves unread.
+        return Gen2SpriteCodec.decompressFrontpic(rom, fileOffset, tileDimension)
     }
 
     /**

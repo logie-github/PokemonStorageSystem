@@ -38,62 +38,44 @@ object Gen2SpriteCodec {
     private val VALID_TILE_DIMENSIONS = intArrayOf(5, 6, 7)
 
     /**
-     * Decompresses the lz3 stream beginning at [offset] in [data] and
-     * reshapes it into a square picture, or throws when the result is not
-     * one of Generation II's three known sprite sizes — the same "never
-     * silently accept a coincidence" stance [Gen1SpriteCodec] takes.
+     * A Generation II front pic: the lz3 stream at [offset], put back into
+     * reading order, as a square picture [tileDimension] tiles on a side.
      *
-     * Gold and Silver's own front pics are exactly this: one plain,
-     * row-major tile sheet, nothing else. Crystal's are not — see
-     * [decompressAnimatedFrontpic].
+     * **The tiles are stored column-major and have to be put back.** All
+     * three games write a pic into VRAM a column at a time, so that is the
+     * order it is kept in — `transpose_tiles` in the disassembly's own
+     * graphics tool is what puts it there. Read straight out and laid down
+     * row by row, every tile lands in the wrong place: the picture keeps its
+     * exact size and its exact colours and comes out as a grid of shuffled
+     * fragments, which is a much more convincing kind of wrong than an
+     * obviously broken decode and is why this took so long to see.
+     *
+     * Crystal's pics carry their animation frames' extra tiles after the
+     * resting frame; Gold and Silver's stop at the frame. Either way only
+     * the first [tileDimension] squared tiles are the picture, and the rest
+     * is animation this app never plays, so the same read serves all three.
+     *
+     * [tileDimension] has to be told rather than counted off the byte count:
+     * an animated pic's own length depends on how much the *other* frames
+     * needed, which nothing here can predict, so the base-stats table's own
+     * `BASE_PIC_SIZE` — already read to locate this pic at all — is the only
+     * honest source for it.
      */
-    fun decompress(data: ByteArray, offset: Int): Gen1SpriteCodec.DecodedSprite {
-        val raw = decompressRaw(data, offset, MAX_OUTPUT_BYTES)
-        val tiles = raw.size / TILE_BYTES
-        if (raw.size % TILE_BYTES != 0 || VALID_TILE_DIMENSIONS.none { it * it == tiles }) {
-            throw MalformedSpriteException("decompressed to ${raw.size} bytes, not a square Gen II sprite")
-        }
-        val dimensionTiles = VALID_TILE_DIMENSIONS.first { it * it == tiles }
-        return tilesToPixels(raw, dimensionTiles)
-    }
-
-    /**
-     * Crystal's own front pics — the series' first animated ones, per
-     * `tools/pokemon_animation_graphics.c`. Where Gold and Silver's
-     * `FrontpicX` label is one plain tile sheet, Crystal's is [tileDimension]
-     * `x` [tileDimension] tiles of the resting frame, *transposed*
-     * column-major (`transpose_tiles`'s own doing — the tool reorders every
-     * frame that way before it ever gets to the deduplication this app does
-     * not need), followed by however many further tiles the OTHER animation
-     * frames needed that the resting one didn't already have. That tail is
-     * animation this app never plays and is simply left unread; the resting
-     * frame is a whole picture on its own once it is put back in row-major
-     * order.
-     *
-     * [tileDimension] has to be told rather than read off the byte count the
-     * way [decompress] does: an animated pic's own byte count depends on how
-     * much the *other* frames needed, which nothing here can predict, so the
-     * base-stats table's own `BASE_PIC_SIZE` — already read once to locate
-     * this pic in the first place — is the only honest source for it.
-     *
-     * Confirmed by rebuilding pret/pokecrystal from source and comparing
-     * this function's output, tile for tile, against the disassembly's own
-     * pre-compression `front.2bpp` for a species this app already trusts the
-     * bytes of.
-     */
-    fun decompressAnimatedFrontpic(data: ByteArray, offset: Int, tileDimension: Int): Gen1SpriteCodec.DecodedSprite {
+    fun decompressFrontpic(data: ByteArray, offset: Int, tileDimension: Int): Gen1SpriteCodec.DecodedSprite {
         if (tileDimension !in VALID_TILE_DIMENSIONS) {
             throw MalformedSpriteException("implausible pic size $tileDimension tiles")
         }
         val frameTiles = tileDimension * tileDimension
         val frameBytes = frameTiles * TILE_BYTES
-        val raw = decompressRaw(data, offset, MAX_ANIMATED_OUTPUT_BYTES)
+        val raw = decompressRaw(data, offset, MAX_OUTPUT_BYTES)
         if (raw.size < frameBytes) {
-            throw MalformedSpriteException("decompressed to only ${raw.size} bytes, short of one $tileDimension x $tileDimension frame")
+            throw MalformedSpriteException(
+                "decompressed to only ${raw.size} bytes, short of one $tileDimension x $tileDimension frame"
+            )
         }
 
-        // storedTile s = col * tileDimension + row; undo that back to
-        // row-major (row * tileDimension + col) one whole tile at a time.
+        // stored = col * tileDimension + row; undo that back to row-major
+        // (row * tileDimension + col) one whole tile at a time.
         val rowMajor = ByteArray(frameBytes)
         for (stored in 0 until frameTiles) {
             val col = stored / tileDimension
@@ -279,9 +261,10 @@ object Gen2SpriteCodec {
     private const val LZ_LONG_CMD = 7
     private const val LZ_LONG_HI = 0b0000_0011
 
-    /** Comfortably past the largest real sprite (49 tiles, 784 bytes); anything past this is not one. */
-    private const val MAX_OUTPUT_BYTES = 4096
-
-    /** Animated pics carry extra deduplicated frame tiles beyond the resting one, so they need more room. */
-    private const val MAX_ANIMATED_OUTPUT_BYTES = 16384
+    /**
+     * Past the largest real pic by a long way: the resting frame is at most
+     * 49 tiles, and an animated one carries its other frames' extra tiles
+     * after it.
+     */
+    private const val MAX_OUTPUT_BYTES = 16384
 }

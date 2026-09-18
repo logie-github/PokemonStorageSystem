@@ -23,7 +23,7 @@ class BackupExportTest {
         File(pcDir, "storage.lua").writeText("return { revision = 1 }")
         File(pcDir, "lineages.lua").writeText("return {}")
         val prefsDir = temporaryFolder.newFolder("shared_prefs")
-        File(prefsDir, "gen1storage-settings.xml").writeText("<map><boolean name=\"cloudBackup\" value=\"true\" /></map>")
+        File(prefsDir, "gen1storage-settings.xml").writeText("<map><boolean name=\"swipeControls\" value=\"true\" /></map>")
         File(prefsDir, "gen1storage-sync.xml").writeText("<map><string name=\"code\">ABC123</string></map>")
 
         val zipped = ByteArrayOutputStream().also { BackupExport.write(pcDir, prefsDir, it) }.toByteArray()
@@ -34,7 +34,7 @@ class BackupExportTest {
 
         assertEquals("return { revision = 1 }", File(restoredPc, "storage.lua").readText())
         assertEquals("return {}", File(restoredPc, "lineages.lua").readText())
-        assertTrue(File(restoredPrefs, "gen1storage-settings.xml").readText().contains("cloudBackup"))
+        assertTrue(File(restoredPrefs, "gen1storage-settings.xml").readText().contains("swipeControls"))
         assertTrue(File(restoredPrefs, "gen1storage-sync.xml").readText().contains("ABC123"))
     }
 

@@ -47,14 +47,8 @@ data class StorageState(
 class StorageRepository(
     private val directory: File,
     /**
-     * Told whenever the boxes change on disk, so the platform knows there is
-     * something new to take.
-     *
-     * Android's own backup runs on its own schedule, but an app only enters
-     * the queue for it by saying its data has changed. Saying so once, when
-     * the switch was turned on, meant the first backup went up and every
-     * Pokémon deposited afterwards waited on whenever the system next felt
-     * like a pass of its own accord.
+     * Told whenever the boxes change on disk, so a linked backup folder gets
+     * pushed to. See `StorageViewModel.backupWanted`.
      */
     private val onChanged: () -> Unit = {},
 ) {

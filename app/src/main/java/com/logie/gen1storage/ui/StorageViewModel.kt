@@ -1,7 +1,6 @@
 package com.logie.gen1storage.ui
 
 import android.app.Application
-import android.app.backup.BackupManager
 import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
@@ -28,7 +27,7 @@ import com.logie.gen1storage.pokemon.tradeEvolutionOf
 import com.logie.gen1storage.pokemon.tradeEvolves
 import com.logie.gen1storage.backup.BackupExport
 import com.logie.gen1storage.backup.BackupFolderWriter
-import com.logie.gen1storage.backup.StorageBackupAgent
+import com.logie.gen1storage.backup.BackupMarkers
 import com.logie.gen1storage.storage.Hop
 import com.logie.gen1storage.storage.Lineage
 import com.logie.gen1storage.storage.LineageBook
@@ -347,12 +346,6 @@ data class UiState(
      * install looks like, and it is the only thing that plays it.
      */
     val tutorialSeen: Boolean = true,
-    /**
-     * Whether this install came back from a backup and has not been asked
-     * about it yet. While it stands the app shows that one question and
-     * nothing else — not even the introduction. See [AppSettings.restoreOffer].
-     */
-    val restoreOffer: Boolean = false,
     /** How fast the text prints, as the games' OPTIONS screen puts it. */
     val textSpeed: TextSpeed = TextSpeed.DEFAULT,
     /** Shown while a transfer is in flight, and cleared by its result. */
@@ -377,13 +370,9 @@ data class UiState(
     val soundsOn: Set<String> = emptySet(),
     /** Nothing moves, and which kinds of movement are on under that. */
     val reduceMotion: Boolean = false,
-    /** Whether Android may copy this app into the player's Google account. */
-    val cloudBackup: Boolean = false,
-    /** What the system has actually done about backing this app up. */
-    val backupNote: String = "OFF",
     /** Whether this app is linked to push its own backup into a folder the player picked. */
     val backupFolderLinked: Boolean = false,
-    /** What the last push actually did, the same idea as [backupNote]. */
+    /** What the last push into that folder actually did. */
     val folderBackupNote: String = "OFF",
     /** Whether Generation II art follows the palette instead of its own colours. */
     val gbcFollowsPalette: Boolean = false,
@@ -458,85 +447,22 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val storageDir = File(application.filesDir, "pc")
 
     /**
-     * Tells the platform this app has something new worth backing up.
-     *
-     * Android's backup runs on its own schedule — overnight, charging, on an
-     * unmetered network — but an app only joins the queue for that pass by
-     * saying its data has changed. This used to be said once, when the switch
-     * was turned on, so the first backup went and everything deposited after
-     * it waited on the system happening to come round again.
+     * Pushes into the linked backup folder, if there is one.
      *
      * Debounced, because a bulk import persists the boxes once per Pokémon
-     * and the platform does not need telling six hundred times.
+     * and a folder full of intermediate copies is not what LINKED is
+     * promising.
      */
     private var backupSignal: Job? = null
-
-    /** Said once per run, so a bulk import does not ask twenty-five times over. */
-    private var warnedBackupSize = false
 
     private fun backupWanted() {
         if (backupSignal?.isActive == true) return
         backupSignal = viewModelScope.launch {
             delay(BACKUP_SIGNAL_MILLIS)
-            withContext(Dispatchers.IO) {
-                runCatching { BackupManager(getApplication()).dataChanged() }
-                checkBackupSize()
-                settings.backupFolderUri?.let { pushToBackupFolder(it) }
+            settings.backupFolderUri?.let { uri ->
+                withContext(Dispatchers.IO) { pushToBackupFolder(uri) }
             }
         }
-    }
-
-    /**
-     * A rough tally of what would actually go up: everything under the
-     * app's own files directory that `backup_rules.xml` does not exclude,
-     * plus every SharedPreferences file, which is where the settings and the
-     * sync credentials live. Rough because a live directory can change under
-     * the walk; close enough to warn by, which is all this is for.
-     */
-    private fun backupSizeBytes(): Long {
-        val app = getApplication<Application>()
-        val filesDir = app.filesDir
-        val excludedDirs = listOf("roms", "sprites", "cries", "followers", "trainers", "pc/backups")
-            .map { File(filesDir, it) }
-        val excludedFiles = setOf(
-            "install.marker", "backup.marker", "restore.marker", "folder-backup.marker", "last-crash.txt",
-        )
-        val filesTotal = runCatching {
-            filesDir.walkTopDown()
-                .filter { it.isFile }
-                .filterNot { f -> f.name in excludedFiles || excludedDirs.any { f.startsWith(it) } }
-                .sumOf { it.length() }
-        }.getOrDefault(0L)
-        val prefsDir = File(app.dataDir, "shared_prefs")
-        val prefsTotal = if (prefsDir.isDirectory) {
-            runCatching { prefsDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } }
-                .getOrDefault(0L)
-        } else 0L
-        return filesTotal + prefsTotal
-    }
-
-    /**
-     * Warns once a session when the backup is close enough to the
-     * platform's twenty-five megabyte allowance to matter.
-     *
-     * The platform does not say when an app goes over — it just drops the
-     * whole backup, silently — so the only way anybody finds out is a report
-     * that turns out to be from before it started happening. Twenty
-     * megabytes is early enough to still be a warning rather than a
-     * post-mortem.
-     */
-    private fun checkBackupSize() {
-        if (warnedBackupSize || !settings.cloudBackup) return
-        val bytes = runCatching { backupSizeBytes() }.getOrDefault(0L)
-        if (bytes < BACKUP_WARN_BYTES) return
-        warnedBackupSize = true
-        val mb = bytes / (1024 * 1024)
-        message(
-            "YOUR BACKUP IS GETTING BIG:",
-            "ABOUT ${mb}MB OF A 25MB LIMIT.",
-            "OVER THAT, GOOGLE DROPS THE",
-            "WHOLE BACKUP, SILENTLY.",
-        )
     }
 
     private val storage = StorageRepository(storageDir, ::backupWanted)
@@ -689,7 +615,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             .take(40)
 
     init {
-        noticeRestore()
         sprites.gbcFollowsPalette = settings.gbcFollowsPalette
         // The trainers were left out of this, so GBC SPRITES / PALETTE
         // recoloured the Pokemon and the Generation II trainer art went on
@@ -725,12 +650,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 windowsOnRight = settings.windowsOnRight,
                 billsPc = settings.billsPc,
                 tutorialSeen = settings.tutorialSeen,
-                restoreOffer = settings.restoreOffer,
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
-                cloudBackup = settings.cloudBackup,
-                backupNote = backupNote(),
                 backupFolderLinked = settings.backupFolderUri != null,
                 folderBackupNote = folderBackupNote(),
                 gbcFollowsPalette = settings.gbcFollowsPalette,
@@ -2476,75 +2398,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         noticeElsewhere(saves)
     }
 
-    // ------- coming back from a backup
-
-    /**
-     * Whether the boxes on this device arrived with the app or came back from
-     * Android's backup.
-     *
-     * The marker is a file this app writes once and never lets into a backup.
-     * A fresh install has neither it nor any boxes; a restore has boxes and no
-     * marker, because the boxes came from the account and the marker could
-     * not. That is the whole of the test, and it needs nothing from the
-     * backup system itself.
-     *
-     * Everything a restore brought back is written down as unchecked. See
-     * [AppSettings.restoredUids]: a backup is the boxes at one moment and the
-     * cartridges have moved on since, so until each one has been held up
-     * against the saves it is a Pokémon this app is not sure it still owns.
-     */
-    private fun noticeRestore() {
-        val marker = File(getApplication<Application>().filesDir, "install.marker")
-        if (marker.exists()) return
-        val held = runCatching { storage.all() }.getOrDefault(emptyList())
-        // Boxes, or a link, without the marker: this install did not start
-        // on this device. The whole of it came back — the Pokemon, every
-        // setting, and the link to the account — so there is nothing to
-        // repair and one thing to ask.
-        if (held.isNotEmpty() || credentials.isLinked) settings.restoreOffer = true
-        runCatching { marker.writeText(System.currentTimeMillis().toString()) }
-    }
-
-    /** Keeps what the backup brought back, which is the whole of it. */
-    fun useRestored() {
-        settings.restoreOffer = false
-        mutable.update { it.copy(restoreOffer = false) }
-    }
-
-    /**
-     * Throws away what the backup brought back and starts this device clean.
-     *
-     * Everything: the boxes, the histories, the ledger, the items, every
-     * setting, and the link to the account. A player who says no to a
-     * restore is saying they want a new machine, and half a new machine —
-     * empty boxes still signed in as somebody — is not a thing to hand them.
-     * The introduction then plays, because this is now a first run.
-     */
-    fun discardRestored() = viewModelScope.launch {
-        mutable.update { it.copy(busy = true, prompt = null) }
-        withContext(Dispatchers.IO) {
-            runCatching { api.unlink(credentials.deviceId) }
-            runCatching { credentials.clear() }
-            runCatching { storage.clear() }
-            runCatching { itemStorage.clear() }
-            runCatching { lineages.clear() }
-            runCatching { ledger.clear() }
-            runCatching { journal.clear() }
-            runCatching { backups.clear() }
-            // Last, because it is the one that puts restoreOffer back to
-            // false: anything after it would be running against settings
-            // that have already been wiped.
-            runCatching { settings.clear() }
-        }
-        mutable.update {
-            UiState(
-                storage = storage.state(),
-                restoreOffer = false,
-                tutorialSeen = false,
-            )
-        }
-    }
-
     /**
      * Holds the PC up against a cartridge that has just been read, and
      * notices a Pokémon that is in both.
@@ -2649,71 +2502,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    /** Whether this app's data goes into the account's backup. */
-    fun setCloudBackup(on: Boolean) {
-        settings.cloudBackup = on
-        mutable.update { it.copy(cloudBackup = on, backupNote = backupNote()) }
-        backupWanted()
-    }
-
-    /**
-     * What the system has actually done about backing this app up.
-     *
-     * There is no way to ask Android whether backup is on for a device, and
-     * "I turned it on and nothing came back" has two completely different
-     * causes — the system has never run a pass yet, or it ran and something
-     * went wrong. So the agent writes down each time it is asked, and this is
-     * that note put into words. See [StorageBackupAgent].
-     */
-    private fun backupNote(): String {
-        val app = getApplication<Application>()
-        val taken = StorageBackupAgent.read(app, StorageBackupAgent.MARKER)
-            ?: return if (settings.cloudBackup) "NOT YET" else "OFF"
-        val when_ = java.time.Instant.ofEpochMilli(taken.first)
-            .atZone(java.time.ZoneId.systemDefault())
-            .toLocalDate()
-            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))
-            .uppercase()
-        return if (taken.second.startsWith("taken")) when_ else "$when_ (${taken.second.uppercase()})"
-    }
-
-    /** What the row above is actually saying, for anybody who taps it. */
-    fun explainBackup() {
-        val app = getApplication<Application>()
-        val taken = StorageBackupAgent.read(app, StorageBackupAgent.MARKER)
-        val bytes = runCatching { backupSizeBytes() }.getOrDefault(0L)
-        val sizeLines = if (bytes >= BACKUP_WARN_BYTES) {
-            listOf(
-                "IT IS ABOUT ${bytes / (1024 * 1024)}MB, CLOSE",
-                "TO GOOGLE'S 25MB LIMIT. OVER",
-                "THAT, THE WHOLE BACKUP DROPS.",
-            )
-        } else emptyList()
-        prompt(
-            Prompt.Message(
-                (if (taken == null) {
-                    listOf(
-                        "ANDROID HAS NOT ASKED FOR A",
-                        "BACKUP YET.",
-                        "IT TAKES ONE OVERNIGHT WHILE",
-                        "CHARGING ON WI-FI, ONCE A DAY.",
-                    )
-                } else {
-                    listOf(
-                        "ANDROID LAST ASKED ON",
-                        "${backupNote()}.",
-                        "IT TAKES ONE OVERNIGHT WHILE",
-                        "CHARGING ON WI-FI, ONCE A DAY.",
-                    )
-                }) + sizeLines
-            )
-        )
-    }
-
-    /** The same idea as [backupNote], for the push this app makes itself. */
+    /** What the last push into the linked folder actually did. */
     private fun folderBackupNote(): String {
         if (settings.backupFolderUri == null) return "OFF"
-        val last = StorageBackupAgent.read(getApplication(), StorageBackupAgent.FOLDER_MARKER) ?: return "NOT YET"
+        val last = BackupMarkers.read(getApplication(), BackupMarkers.FOLDER_MARKER) ?: return "NOT YET"
         val when_ = java.time.Instant.ofEpochMilli(last.first)
             .atZone(java.time.ZoneId.systemDefault())
             .toLocalDate()
@@ -2724,7 +2516,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     /** What the LAST FOLDER BACKUP row is actually saying, for anybody who taps it. */
     fun explainFolderBackup() {
-        val last = StorageBackupAgent.read(getApplication(), StorageBackupAgent.FOLDER_MARKER)
+        val last = BackupMarkers.read(getApplication(), BackupMarkers.FOLDER_MARKER)
         prompt(
             Prompt.Message(
                 when {
@@ -2758,9 +2550,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Writes everything Auto Backup would carry into the file the player just
-     * picked — the same set `backup_rules.xml` names, taken right now rather
-     * than whenever Android next runs its own pass. See [BackupExport].
+     * Writes the boxes, the histories, every setting and the link to the
+     * account into the file the player just picked. See [BackupExport].
      */
     fun backUpNow(uri: Uri) {
         val app = getApplication<Application>()
@@ -2865,7 +2656,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             resolver.openOutputStream(fileUri, "wt")?.use { it.write(bytes) }
                 ?: error("could not open the backup file")
         }
-        StorageBackupAgent.note(app, StorageBackupAgent.FOLDER_MARKER, if (result.isSuccess) "pushed" else "failed")
+        BackupMarkers.note(app, BackupMarkers.FOLDER_MARKER, if (result.isSuccess) "pushed" else "failed")
         mutable.update { it.copy(folderBackupNote = folderBackupNote()) }
         return result
     }
@@ -3352,34 +3143,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             placements.take(GUARD_REPORT_LIMIT).forEach {
                 appendLine("  - ${it.fingerprint.take(8)} in ${it.savePath}")
             }
-            appendLine("- Waiting on the restore question: ${current.restoreOffer}")
-            // Whether the platform has ever actually taken one. The only way
-            // to tell "the system has not run yet" from "the system ran and
-            // it failed", and the first thing worth knowing when a restore
-            // comes back empty. See [StorageBackupAgent].
             val app2 = getApplication<Application>()
-            appendLine("- BACKUP TO GOOGLE: ${if (current.cloudBackup) "on" else "off"}")
-            appendLine(
-                "- Backup size, roughly: " +
-                    "${runCatching { backupSizeBytes() }.getOrDefault(0L) / (1024 * 1024)}MB of 25MB"
-            )
-            appendLine(
-                "- Backup last asked for: " +
-                    (StorageBackupAgent.read(app2, StorageBackupAgent.MARKER)
-                        ?.let { "${Instant.ofEpochMilli(it.first)} (${it.second})" }
-                        ?: "never")
-            )
-            appendLine(
-                "- Restore last finished: " +
-                    (StorageBackupAgent.read(app2, StorageBackupAgent.RESTORE_MARKER)
-                        ?.let { Instant.ofEpochMilli(it.first).toString() }
-                        ?: "never")
-            )
             appendLine("- BACKUP FOLDER: ${if (current.backupFolderLinked) "linked" else "not linked"}")
             if (current.backupFolderLinked) {
                 appendLine(
                     "- Folder last pushed: " +
-                        (StorageBackupAgent.read(app2, StorageBackupAgent.FOLDER_MARKER)
+                        (BackupMarkers.read(app2, BackupMarkers.FOLDER_MARKER)
                             ?.let { "${Instant.ofEpochMilli(it.first)} (${it.second})" }
                             ?: "never")
                 )
@@ -3478,15 +3247,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
 /** Where the last download failure is kept, for the report under ABOUT. */
 /**
- * How long the app waits before telling the platform its data changed.
+ * How long the app waits before pushing into a linked backup folder.
  *
  * Long enough that a run of transfers, or an import of a whole box, is one
- * message rather than six hundred.
+ * push rather than six hundred.
  */
 private const val BACKUP_SIGNAL_MILLIS = 3_000L
-
-/** Where the backup size warning kicks in — the platform's own limit is 25MB. */
-private const val BACKUP_WARN_BYTES = 20L * 1024 * 1024
 
 /** How many stored Pokémon the debug report names a sprite source for. */
 private const val SPRITE_REPORT_LIMIT = 40

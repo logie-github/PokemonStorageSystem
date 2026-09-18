@@ -10,20 +10,14 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /**
- * A backup the player asks for, rather than the one Android decides to take.
+ * The one file a backup is: everything BACK UP NOW writes by hand and
+ * BACKUP FOLDER pushes on its own, in the same format either way.
  *
- * Auto Backup only runs on the system's own schedule — idle, charging, on
- * wi-fi, at most once a day — and nothing an app does can move that up. A
- * player who needs a backup right now, not whenever the phone next feels like
- * it, needs a different route to the same place: everything Auto Backup would
- * carry, written to one file the player picks, immediately, on request.
- *
- * What goes in is the same set `backup_rules.xml` names for the cloud copy —
- * the boxes, the histories, every setting, the link to the account — read
- * straight from `pc/` (skipping `pc/backups/`, which is evidence about this
- * device) and from `shared_prefs/` whole. Restoring is the same list read
- * back over whatever is already on disk, which is why it asks first: this
- * replaces the machine, the same as saying yes to a restore offer does.
+ * What goes in is the boxes, the histories, every setting, and the link to
+ * the account — read straight from `pc/` (skipping `pc/backups/`, which is
+ * evidence about this device) and from `shared_prefs/` whole. Restoring is
+ * the same list read back over whatever is already on disk, which is why
+ * both callers ask first: this replaces the machine.
  *
  * Takes plain directories rather than a [Context] so the round trip is
  * testable on the JVM without a device; [write] and [read] below are the

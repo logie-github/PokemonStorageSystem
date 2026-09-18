@@ -1584,37 +1584,16 @@ private fun OptionsDrawerContent(
                 } else {
                     add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
                 }
-                // Android's own backup, which is where the phone already
-                // keeps a copy of every app that allows it. Off unless asked
-                // for: a copy of someone's Pokémon leaving their phone is not
-                // a thing to start doing quietly.
-                add(
-                    OptionRow("BACKUP TO GOOGLE", if (state.cloudBackup) "ON" else "OFF") {
-                        model.setCloudBackup(!state.cloudBackup)
-                    }
-                )
-                // Whether one has ever actually been taken, which is the only
-                // honest answer to "is this working". Android runs the pass
-                // itself — overnight, charging, on wi-fi, at most once a day
-                // — so a switch turned on this afternoon has genuinely not
-                // been backed up yet, and a row that only said ON would be
-                // telling somebody their Pokémon were safe when they are not
-                // anywhere yet.
-                if (state.cloudBackup) {
-                    add(OptionRow("LAST BACKUP", state.backupNote) { model.explainBackup() })
-                }
-                // Android's own pass on its own schedule, but a player who
-                // needs one right now — before deleting the app, say, or
-                // before handing the phone off — should not have to wait on
-                // it. Same contents, taken this instant, to a file of their
-                // own choosing. See BackupExport.
+                // Taken this instant, to a file of the player's own choosing
+                // — before deleting the app, say, or before handing the
+                // phone off. See BackupExport.
                 add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
                 add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
                 // One pick, and every change from here on pushes on its own
-                // — a deposit, a sync, anything BACKUP TO GOOGLE already
-                // hears about — the same debounced signal, spent on this
-                // folder too. Off just stops the pushing; what is already
-                // there stays untouched. See BackupFolderWriter and
+                // — a deposit, a sync, anything that persists the boxes —
+                // the same debounced signal BACK UP NOW answers to by hand.
+                // Off just stops the pushing; what is already there stays
+                // untouched. See BackupFolderWriter and
                 // StorageViewModel.pushToBackupFolder.
                 add(
                     OptionRow("BACKUP FOLDER", if (state.backupFolderLinked) "LINKED" else "NOT LINKED") {

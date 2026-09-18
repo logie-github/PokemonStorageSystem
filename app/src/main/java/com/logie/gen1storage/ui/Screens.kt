@@ -471,7 +471,17 @@ fun StorageSystemScreen(
         // open over it, a question in the middle of the screen, or a message
         // come up at the foot of it.
         notice = refusal ?: emptiness,
-        showCaption = atMenu && refusal == null && emptiness == null,
+        // Tapping it puts it away. A refusal goes back to the menu it was
+        // refused from; an empty list closes, which is the same thing the
+        // hold does and the thing a player reaches for first.
+        onNotice = {
+            if (refusal != null) refusal = null else model.pcMode = PcMode.MENU
+        },
+        // The caption is the machine idling, and it is not idling while it
+        // has a question open: the prompt window comes up in the same corner
+        // and grows towards this one, so a tall one — a transfer landing and
+        // then asking whether to open the game — sat on top of it.
+        showCaption = atMenu && refusal == null && emptiness == null && state.prompt == null,
         // Whatever is open has the screen to itself.
         showMenu = atMenu,
         // A transfer needs a cartridge in the machine, and the row is not

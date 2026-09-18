@@ -255,17 +255,24 @@ private fun Portrait(
         val room = with(density) { minOf(maxWidth, maxHeight).toPx() }
         val scale = floor(room / ART_PIXELS).toInt().coerceAtLeast(1)
         val side = with(density) { (scale * ART_PIXELS).toDp() }
-        // Half the trainer, near enough, in whole multiples of its own art:
-        // enough to read as standing with them rather than as a second
-        // portrait, and never a smeared one.
-        val leadSide = with(density) { (((scale + 1) / 2) * ART_PIXELS).toDp() }
-        // And nothing at all where half of him is still the whole of him. The
-        // smallest whole multiple this art has is its own size, so on a card
-        // drawn at one times — the shelf's, beside another card — the lead
-        // came out exactly as big as the trainer and was laid over him in the
-        // corner, the two of them reading as one torn picture rather than as
-        // somebody standing with their Pokémon. A trainer alone is what the
-        // card has always been able to be.
+        // Three quarters of the trainer. Half read as a pet at their heel;
+        // this reads as the two of them standing together, which is what a
+        // trainer card is a picture of.
+        //
+        // The room it is given rather than the size it is drawn at: the
+        // sprite snaps itself to a whole multiple of its own art inside
+        // whatever box it is handed (see [Gen1WholePixels]), so the box can
+        // be three quarters of anything without the picture in it ever being
+        // scaled by a fraction. Which also means this no longer has to know
+        // that Generation II draws its Pokémon at three different sizes.
+        val leadSide = side * LEAD_FRACTION
+        // And nothing at all where there is no room to draw it smaller than
+        // the trainer. The smallest whole multiple any art has is its own
+        // size, so on a card drawn at one times — the shelf's, beside another
+        // card — the lead came out exactly as big as the trainer and was laid
+        // over him in the corner, the two of them reading as one torn picture
+        // rather than as somebody standing with their Pokémon. A trainer
+        // alone is what the card has always been able to be.
         val showLead = lead != null && scale >= 2
 
         Box(Modifier.size(side).align(Alignment.BottomCenter)) {
@@ -440,6 +447,14 @@ private const val BADGE_GAP = 1
  * difference as air under the name.
  */
 private const val CARD_PIXELS = 96
+
+/**
+ * How big the party's lead stands beside the trainer, as a fraction of them.
+ *
+ * Three quarters: tall enough to be standing with them rather than kept at
+ * their heel, short enough that the trainer is still whose card this is.
+ */
+private const val LEAD_FRACTION = 0.75f
 
 /** What a decomp's sprite is drawn at, and the unit the portrait scales by. */
 private const val ART_PIXELS = 56f

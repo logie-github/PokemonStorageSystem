@@ -1589,22 +1589,29 @@ private fun OptionsDrawerContent(
                 // phone off. See BackupExport.
                 add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
                 add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
-                // One pick, and every change from here on pushes on its own
-                // — a deposit, a sync, anything that persists the boxes —
-                // the same debounced signal BACK UP NOW answers to by hand.
-                // Off just stops the pushing; what is already there stays
-                // untouched. See BackupFolderWriter and
-                // StorageViewModel.pushToBackupFolder.
-                add(
-                    OptionRow("BACKUP FOLDER", if (state.backupFolderLinked) "LINKED" else "NOT LINKED") {
-                        if (state.backupFolderLinked) model.unlinkBackupFolder()
-                        else pickBackupFolder.launch(null)
+                // Behind the same [state.linked] this whole drawer already
+                // gates SYNC NOW and UNLINK on: a folder to push a PC into
+                // is not worth asking for from a device that has not yet
+                // synced with the game, and offering it before then is
+                // offering a choice that is not real yet.
+                if (state.linked) {
+                    // One pick, and every change from here on pushes on its
+                    // own — a deposit, a sync, anything that persists the
+                    // boxes — the same debounced signal BACK UP NOW answers
+                    // to by hand. Off just stops the pushing; what is
+                    // already there stays untouched. See BackupFolderWriter
+                    // and StorageViewModel.pushToBackupFolder.
+                    add(
+                        OptionRow("BACKUP FOLDER", if (state.backupFolderLinked) "LINKED" else "NOT LINKED") {
+                            if (state.backupFolderLinked) model.unlinkBackupFolder()
+                            else pickBackupFolder.launch(null)
+                        }
+                    )
+                    if (state.backupFolderLinked) {
+                        add(OptionRow("LAST FOLDER BACKUP", state.folderBackupNote) { model.explainFolderBackup() })
                     }
-                )
-                if (state.backupFolderLinked) {
-                    add(OptionRow("LAST FOLDER BACKUP", state.folderBackupNote) { model.explainFolderBackup() })
+                    add(OptionRow("RESTORE FROM BACKUP FOLDER") { pickRestoreFolder.launch(null) })
                 }
-                add(OptionRow("RESTORE FROM BACKUP FOLDER") { pickRestoreFolder.launch(null) })
             }
 
             OptionsDrawer.ABOUT -> {

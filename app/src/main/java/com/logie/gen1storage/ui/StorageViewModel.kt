@@ -465,12 +465,67 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     private var backupSignal: Job? = null
 
+    /** Said once per run, so a bulk import does not ask twenty-five times over. */
+    private var warnedBackupSize = false
+
     private fun backupWanted() {
         if (backupSignal?.isActive == true) return
         backupSignal = viewModelScope.launch {
             delay(BACKUP_SIGNAL_MILLIS)
             runCatching { BackupManager(getApplication()).dataChanged() }
+            checkBackupSize()
         }
+    }
+
+    /**
+     * A rough tally of what would actually go up: everything under the
+     * app's own files directory that `backup_rules.xml` does not exclude,
+     * plus every SharedPreferences file, which is where the settings and the
+     * sync credentials live. Rough because a live directory can change under
+     * the walk; close enough to warn by, which is all this is for.
+     */
+    private fun backupSizeBytes(): Long {
+        val app = getApplication<Application>()
+        val filesDir = app.filesDir
+        val excludedDirs = listOf("roms", "sprites", "cries", "followers", "trainers", "pc/backups")
+            .map { File(filesDir, it) }
+        val excludedFiles = setOf("install.marker", "backup.marker", "restore.marker", "last-crash.txt")
+        val filesTotal = runCatching {
+            filesDir.walkTopDown()
+                .filter { it.isFile }
+                .filterNot { f -> f.name in excludedFiles || excludedDirs.any { f.startsWith(it) } }
+                .sumOf { it.length() }
+        }.getOrDefault(0L)
+        val prefsDir = File(app.dataDir, "shared_prefs")
+        val prefsTotal = if (prefsDir.isDirectory) {
+            runCatching { prefsDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } }
+                .getOrDefault(0L)
+        } else 0L
+        return filesTotal + prefsTotal
+    }
+
+    /**
+     * Warns once a session when the backup is close enough to the
+     * platform's twenty-five megabyte allowance to matter.
+     *
+     * The platform does not say when an app goes over — it just drops the
+     * whole backup, silently — so the only way anybody finds out is a report
+     * that turns out to be from before it started happening. Twenty
+     * megabytes is early enough to still be a warning rather than a
+     * post-mortem.
+     */
+    private fun checkBackupSize() {
+        if (warnedBackupSize || !settings.cloudBackup) return
+        val bytes = runCatching { backupSizeBytes() }.getOrDefault(0L)
+        if (bytes < BACKUP_WARN_BYTES) return
+        warnedBackupSize = true
+        val mb = bytes / (1024 * 1024)
+        message(
+            "YOUR BACKUP IS GETTING BIG:",
+            "ABOUT ${mb}MB OF A 25MB LIMIT.",
+            "OVER THAT, GOOGLE DROPS THE",
+            "WHOLE BACKUP, SILENTLY.",
+        )
     }
 
     private val storage = StorageRepository(storageDir, ::backupWanted)
@@ -874,6 +929,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // exactly like a feature that was never wired up.
         try {
             runSync(silent)
+            // A sync can change what the account link looks like — codes
+            // cleared on an Unauthorized, a save's revision moving on —
+            // without ever touching the boxes, and none of that is a change
+            // `persist()` sees. So it says so itself, same as a deposit does.
+            backupWanted()
         } finally {
             mutable.update { it.copy(syncing = false) }
         }
@@ -2608,9 +2668,17 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun explainBackup() {
         val app = getApplication<Application>()
         val taken = StorageBackupAgent.read(app, StorageBackupAgent.MARKER)
+        val bytes = runCatching { backupSizeBytes() }.getOrDefault(0L)
+        val sizeLines = if (bytes >= BACKUP_WARN_BYTES) {
+            listOf(
+                "IT IS ABOUT ${bytes / (1024 * 1024)}MB, CLOSE",
+                "TO GOOGLE'S 25MB LIMIT. OVER",
+                "THAT, THE WHOLE BACKUP DROPS.",
+            )
+        } else emptyList()
         prompt(
             Prompt.Message(
-                if (taken == null) {
+                (if (taken == null) {
                     listOf(
                         "ANDROID HAS NOT ASKED FOR A",
                         "BACKUP YET.",
@@ -2624,7 +2692,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         "IT TAKES ONE OVERNIGHT WHILE",
                         "CHARGING ON WI-FI, ONCE A DAY.",
                     )
-                }
+                }) + sizeLines
             )
         )
     }
@@ -3079,6 +3147,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             val app2 = getApplication<Application>()
             appendLine("- BACKUP TO GOOGLE: ${if (current.cloudBackup) "on" else "off"}")
             appendLine(
+                "- Backup size, roughly: " +
+                    "${runCatching { backupSizeBytes() }.getOrDefault(0L) / (1024 * 1024)}MB of 25MB"
+            )
+            appendLine(
                 "- Backup last asked for: " +
                     (StorageBackupAgent.read(app2, StorageBackupAgent.MARKER)
                         ?.let { "${Instant.ofEpochMilli(it.first)} (${it.second})" }
@@ -3190,6 +3262,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
  * message rather than six hundred.
  */
 private const val BACKUP_SIGNAL_MILLIS = 3_000L
+
+/** Where the backup size warning kicks in — the platform's own limit is 25MB. */
+private const val BACKUP_WARN_BYTES = 20L * 1024 * 1024
 
 /** How many stored Pokémon the debug report names a sprite source for. */
 private const val SPRITE_REPORT_LIMIT = 40

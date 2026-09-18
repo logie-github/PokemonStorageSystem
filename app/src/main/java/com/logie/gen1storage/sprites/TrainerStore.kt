@@ -182,12 +182,25 @@ class TrainerStore(private val directory: File) {
         memory[key]?.let { return it }
 
         val source = file(id).takeIf { it.isFile } ?: return null
+        val bytes = runCatching { source.readBytes() }.getOrNull()
+        if (bytes == null || !isCompletePng(bytes)) {
+            // fetch() treats "the file exists" as "already have it" and never
+            // re-checks completeness, so a trainer cached from before a
+            // download was made to reject a short read stayed exactly this
+            // broken forever. Deleted here so the next fetch actually
+            // replaces it instead of skipping it as done.
+            source.delete()
+            return null
+        }
         val decoded = runCatching {
-            BitmapFactory.decodeFile(source.path, BitmapFactory.Options().apply {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
                 inScaled = false
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            source.delete()
+            return null
+        }
 
         // Generation II's pictures arrive in the colours the Game Boy Color
         // gave them, the same as its Pokémon do, so they are left alone
@@ -248,8 +261,22 @@ class TrainerStore(private val directory: File) {
         // Left connected on purpose: a disconnect here costs the next file a
         // whole handshake, and there are forty-five of them from one host.
         if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-        val bytes = connection.inputStream.use { it.readBytes() }
+        val bytes = runCatching { connection.inputStream.use { it.readBytes() } }.getOrNull()
+            ?: return null
         if (bytes.isEmpty()) return null
+        // A dropped connection does not always throw — some paths just hand
+        // back what arrived before the socket closed, which used to land on
+        // disk looking like a trainer: a real file, a real name, and a
+        // truncated picture, because IHDR (and so the bounds check below)
+        // sits near the front of a PNG and decodes fine long before the
+        // pixel data run out. The server's declared length is the one thing
+        // that says how much there was supposed to be.
+        val expectedLength = connection.contentLengthLong
+        if (expectedLength > 0 && bytes.size.toLong() != expectedLength) return null
+        // Content-Length is not always sent (chunked responses carry none at
+        // all), so the file's own structure is checked too: an IEND-less tail
+        // means the transfer was cut short regardless of what the header said.
+        if (!isCompletePng(bytes)) return null
 
         // It must be the shape this expects before it lands, so a proxy's
         // error page cannot sit on disk looking like a trainer.

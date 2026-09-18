@@ -77,8 +77,8 @@ fun TimeCapsuleScreen(state: UiState, model: StorageViewModel) {
             Gen1Frame {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Gen1Sprite(
-                        speciesId = stored.pokemon.speciesId,
-                        gameVersionId = stored.provenance.gameVersion,
+                        speciesId = stored.pokemon.spriteSpeciesId(),
+                        gameVersionId = stored.spriteGameVersionId,
                         store = model.sprites,
                         revision = state.spriteRevision,
                         sizeInPixels = ROW_SPRITE_PIXELS,

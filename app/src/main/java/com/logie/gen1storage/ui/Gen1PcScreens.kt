@@ -95,19 +95,40 @@ fun Gen1DialogueBox(
     lines: List<String>,
     modifier: Modifier = Modifier,
     more: Boolean = false,
+    /**
+     * Whether this is a box that asks something rather than one that talks.
+     *
+     * A box that talks runs the width of the screen and holds a page open
+     * whatever is in it, because the next thing said goes in the same box and
+     * a box that resized between one line and the next is the jumping this
+     * app went to some trouble to stop. A box that asks is the end of the
+     * matter: nothing follows it but the answer, so it is drawn no wider than
+     * a window is allowed to be and no taller than what it is actually
+     * holding — a question and two words under it.
+     *
+     * Its width is still fixed rather than taken from the text, so it does
+     * not creep outward a letter at a time while the question types itself.
+     */
+    fit: Boolean = false,
     actions: @Composable () -> Unit = {},
 ) {
     var finished by remember(lines) { mutableStateOf(false) }
-    Gen1Frame(modifier.fillMaxWidth(), opening = true) {
-        Gen1TypedLines(lines, onFinished = { finished = true })
-        if (finished) {
-            if (more) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Gen1BlinkingArrow()
-                }
-            }
-            actions()
-        }
+    Gen1Frame(
+        modifier.then(
+            if (fit) Modifier.gen1MaxWidth().fillMaxWidth() else Modifier.fillMaxWidth()
+        ),
+        opening = true,
+    ) {
+        // The arrow goes in the room the box already holds for it. On a row of
+        // its own under the text it grew the window by a line the moment the
+        // last letter landed.
+        Gen1TypedLines(
+            lines,
+            arrowWhenDone = more,
+            holdLines = if (fit) null else GEN1_DIALOGUE_LINES + 1,
+            onFinished = { finished = true },
+        )
+        if (finished) actions()
     }
 }
 

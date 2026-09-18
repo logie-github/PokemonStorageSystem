@@ -355,7 +355,7 @@ internal val GEN2_DEX_TABLE: List<Gen2DexEntry> = listOf(
     ),
     Gen2DexEntry(
         "ARCANINE",
-        Gen2DexPage("LEGENDARY", 6, 3, 3420, "This legendary\nChinese POKEMON is\nconsidered magnif-\n\nicent. Many people\nare enchanted by\nits grand mane."),
+        Gen2DexPage("LEGENDARY", 6, 3, 3420, "This legendary\nChinese POKéMON is\nconsidered magnif-\n\nicent. Many people\nare enchanted by\nits grand mane."),
         Gen2DexPage("LEGENDARY", 6, 3, 3420, "Its magnificent\nbark conveys a\nsense of majesty.\n\nAnyone hearing it\ncan't help but\ngrovel before it."),
         Gen2DexPage("LEGENDARY", 6, 3, 3420, "An ancient picture\nscroll shows that\npeople were\n\nattracted to its\nmovement as it ran\nthrough prairies."),
     ),

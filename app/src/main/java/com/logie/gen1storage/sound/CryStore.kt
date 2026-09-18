@@ -1,38 +1,54 @@
 package com.logie.gen1storage.sound
 
 import android.content.Context
-import com.logie.gen1storage.download.DownloadProgress
-import com.logie.gen1storage.download.fetchInParallel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlin.coroutines.coroutineContext
 
 /**
- * The Pokémon cries on the device.
+ * The Pokémon cries, rendered on this device and kept as WAV.
  *
- * They are the games' own recordings, so none of them ship with the app: each
- * is fetched from the PokéAPI archive and kept here. One file per dex number,
- * which is all the naming this needs — the archive is keyed the same way.
+ * They used to be downloaded: two hundred and fifty-one recordings from an
+ * archive, the largest fetch this app had after the sprites. They are not
+ * recordings any more. A cry is note data and a pitch, played through the
+ * Game Boy's own sound channels, so [CrySynth] makes one out of tables that
+ * ship in the APK and nothing is fetched at all. See `tools/generate_cries.py`.
  *
- * Its `legacy` folder is the Game Boy recordings, Johto's among them, so the
- * same place answers for all 251.
- *
- * Both the player that sounds them and the bulk download go through this, so
- * there is one place that knows where a cry lives and where it comes from.
+ * Kept on disk rather than in memory because [android.media.SoundPool] loads
+ * from a file, and because rendering is a few milliseconds that only the first
+ * tap of each species should pay. The file is the app's own output, so the
+ * cache is thrown away and rebuilt whenever the synthesiser changes: see
+ * [VERSION].
  */
 class CryStore(private val directory: File) {
 
-    constructor(context: Context) : this(File(context.filesDir, "cries"))
+    constructor(context: Context) : this(File(context.cacheDir, "cries"))
 
-    fun file(dexNumber: Int): File = File(directory, "$dexNumber.ogg")
+    fun file(dexNumber: Int, generation: Int): File =
+        File(directory, "$VERSION-$generation-$dexNumber.wav")
 
-    fun has(dexNumber: Int): Boolean = file(dexNumber).let { it.isFile && it.length() > 0 }
+    /**
+     * The cry for a species, rendered if this is the first time it is asked
+     * for. Null only for a dex number neither generation has.
+     */
+    fun render(dexNumber: Int, generation: Int): File? {
+        val target = file(dexNumber, generation)
+        if (target.isFile && target.length() > 0) return target
 
-    fun count(): Int = (1..LAST_CRY).count(::has)
+        val samples = (if (generation >= 2) CrySynth.gen2(dexNumber) else CrySynth.gen1(dexNumber))
+            ?: return null
+        if (samples.isEmpty()) return null
+
+        directory.mkdirs()
+        // Written beside the target and renamed, so a render interrupted
+        // halfway cannot leave a file that later looks finished.
+        val staged = File(directory, "${target.name}.part")
+        return runCatching {
+            staged.writeBytes(wav(samples))
+            if (!staged.renameTo(target)) {
+                staged.delete()
+                null
+            } else target
+        }.getOrNull()
+    }
 
     fun bytesOnDisk(): Long =
         directory.walkTopDown().filter { it.isFile }.sumOf { it.length() }
@@ -41,65 +57,39 @@ class CryStore(private val directory: File) {
         directory.deleteRecursively()
     }
 
-    /**
-     * Fetches one cry if it is not here yet. Returns the file, or null when it
-     * could not be had — a missing cry is silence, never a failure.
-     */
-    fun fetch(dexNumber: Int): File? {
-        if (dexNumber !in 1..LAST_CRY) return null
-        val target = file(dexNumber)
-        if (target.isFile && target.length() > 0) return target
-
-        val connection = (URL("$BASE_URL/$dexNumber.ogg").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000
-            readTimeout = 20_000
-            instanceFollowRedirects = true
+    /** A 16-bit mono WAV around the samples, which is all a header is. */
+    private fun wav(samples: ShortArray): ByteArray {
+        val dataBytes = samples.size * 2
+        val out = java.io.ByteArrayOutputStream(44 + dataBytes)
+        fun ascii(text: String) = out.write(text.toByteArray(Charsets.US_ASCII))
+        fun int32(value: Int) {
+            out.write(value and 0xFF)
+            out.write((value ushr 8) and 0xFF)
+            out.write((value ushr 16) and 0xFF)
+            out.write((value ushr 24) and 0xFF)
         }
-        // Deliberately not disconnected: that shuts the socket and throws
-        // away the keep-alive, so every file after it pays for a fresh TCP
-        // and TLS handshake. Reading the body to the end and closing the
-        // stream hands the connection back to the pool for the next one.
-        if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-        val bytes = connection.inputStream.use { it.readBytes() }
-        if (bytes.isEmpty()) return null
-
-        directory.mkdirs()
-        // Staged and renamed, so an interrupted download cannot leave half a
-        // cry behind that later looks like a complete one.
-        val staged = File(directory, "$dexNumber.ogg.part")
-        staged.writeBytes(bytes)
-        if (!staged.renameTo(target)) {
-            staged.delete()
-            return null
+        fun int16(value: Int) {
+            out.write(value and 0xFF)
+            out.write((value ushr 8) and 0xFF)
         }
-        return target
+
+        ascii("RIFF"); int32(36 + dataBytes); ascii("WAVE")
+        ascii("fmt "); int32(16); int16(1); int16(1)
+        int32(CrySynth.RATE); int32(CrySynth.RATE * 2); int16(2); int16(16)
+        ascii("data"); int32(dataBytes)
+        samples.forEach { int16(it.toInt()) }
+        return out.toByteArray()
     }
-
-    /**
-     * Fetches every cry that is not already here, reporting after each.
-     *
-     * One that fails is counted and skipped rather than ending the run: a
-     * missing recording should not cost the player the other hundred and fifty.
-     */
-    suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
-        withContext(Dispatchers.IO) {
-            val total = LAST_CRY
-            onProgress(DownloadProgress(0, total))
-            val counted = fetchInParallel(1..total, total, onProgress) { fetch(it) }
-            DownloadProgress(total, total, counted, finished = true).also(onProgress)
-        }
 
     companion object {
         /**
-         * As far as this app's Pokémon go.
-         *
-         * The archive's `legacy` folder is the Game Boy recordings and it runs
-         * well past here — it has every generation's — so the cap is this
-         * app's rather than the archive's: 251 is what a Gold, Silver or
-         * Crystal save can hold.
+         * Bumped whenever the synthesiser's output changes, so an install
+         * that has cached the old sound renders the new one rather than going
+         * on playing what it already had.
          */
+        const val VERSION = 1
+
+        /** Every species either generation has a cry for. */
         const val LAST_CRY = 251
-        private const val BASE_URL =
-            "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/legacy"
     }
 }

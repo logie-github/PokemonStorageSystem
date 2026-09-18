@@ -33,6 +33,19 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_SHOW_ALL_ITEMS, value).apply()
 
     /**
+     * Whether the shelf of six games stands over the cards.
+     *
+     * On, and a game is picked first and its cards listed under it. Off, the
+     * shelf goes and every card on the account is listed at once in the games'
+     * own order, with the room the shelf was taking given to the list. Each
+     * card names its own game down its spine either way, so nothing is lost by
+     * dropping the shelf — see [Gen1SpineCard].
+     */
+    var gameSelection: Boolean
+        get() = prefs.getBoolean(KEY_GAME_SELECTION, true)
+        set(value) = prefs.edit().putBoolean(KEY_GAME_SELECTION, value).apply()
+
+    /**
      * Let Android copy this app into the player's Google account, the way it
      * backs up any app that allows it.
      *
@@ -71,10 +84,13 @@ class AppSettings(private val prefs: SharedPreferences) {
 
     /**
      * The colour palette everything is drawn through, by [GbPalette] id.
-     * Defaults to the untinted look.
+     * Defaults to the Game Boy Color's own pastel mix, free from the start
+     * the same as the tint-free look is — a new install reads as a Game Boy
+     * Color already turned on, not as a monochrome one waiting to be told to
+     * do something else.
      */
     var paletteId: String
-        get() = prefs.getString(KEY_PALETTE, null) ?: GbPalette.ORIGINAL.id
+        get() = prefs.getString(KEY_PALETTE, null) ?: GbPalette.GBC_PASTEL.id
         set(value) = prefs.edit().putString(KEY_PALETTE, value).apply()
 
     /**
@@ -169,14 +185,29 @@ class AppSettings(private val prefs: SharedPreferences) {
     }
 
     /**
+     * Whether the player has been shown around the machine once already.
+     *
+     * False on a fresh install, which is the only thing that starts the
+     * introduction — it is a first run, not a thing to meet again every time
+     * the app opens. REPLAY TUTORIAL in OPTIONS is what puts it back to false,
+     * so someone who wants it again can have it and nobody else ever sees it
+     * twice.
+     */
+    var tutorialSeen: Boolean
+        get() = prefs.getBoolean(KEY_TUTORIAL_SEEN, false)
+        set(value) = prefs.edit().putBoolean(KEY_TUTORIAL_SEEN, value).apply()
+
+    /**
      * Call this app's storage BILL'S PC rather than naming its author.
      *
-     * Off, because the machine is this app and it says so. On, it takes the
-     * name the cartridge's own storage system carries, for a player who would
-     * rather the whole thing read as the game it sits beside.
+     * On. The machine in the games is Bill's, the man himself is the one who
+     * shows a new install round it (see [Gen1Tutorial]), and a player who
+     * opens this app is opening the Pokémon Storage System rather than a
+     * piece of software by someone they have never heard of. Turning it off
+     * is the row in OPTIONS, and puts the author's name back.
      */
     var billsPc: Boolean
-        get() = prefs.getBoolean(KEY_BILLS_PC, false)
+        get() = prefs.getBoolean(KEY_BILLS_PC, true)
         set(value) = prefs.edit().putBoolean(KEY_BILLS_PC, value).apply()
 
     /**
@@ -206,14 +237,16 @@ class AppSettings(private val prefs: SharedPreferences) {
      *
      * Off, and the app is tapped and scrolled: a tap takes what is under it
      * and a list is dragged the way any list is. On, a swipe anywhere is the
-     * D-pad, wherever the finger lands — and lists stop scrolling under the
+     * D-pad, wherever the finger lands, and lists stop scrolling under the
      * finger, because a gesture cannot be both a scroll and a step.
      *
-     * Off by default. Someone who wants this knows they want it, and someone
-     * who does not should never meet a list that will not scroll.
+     * On by default. This app is a Game Boy with the buttons taken away, and
+     * a D-pad under the thumb is how it was meant to be driven; the row in
+     * OPTIONS gives the ordinary tapping and scrolling back to anyone who
+     * would rather have it.
      */
     var swipeControls: Boolean
-        get() = prefs.getBoolean(KEY_SWIPE_CONTROLS, false)
+        get() = prefs.getBoolean(KEY_SWIPE_CONTROLS, true)
         set(value) = prefs.edit().putBoolean(KEY_SWIPE_CONTROLS, value).apply()
 
     /**
@@ -269,6 +302,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_RESTORED_UIDS = "restored-uids"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"
+        const val KEY_GAME_SELECTION = "game-selection"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
         const val KEY_WINDOWS_RIGHT = "windows-on-right"
@@ -276,6 +310,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_TRAINER_PREFIX = "trainer-sprite-"
         const val KEY_GAME_SLOT_ID_PREFIX = "game-slot-id-"
         const val KEY_BILLS_PC = "bills-pc"
+        const val KEY_TUTORIAL_SEEN = "tutorial-seen"
         const val KEY_TRADE_EVOLUTION = "trade-evolution"
         const val KEY_TRADE_ANIMATION = "trade-animation"
         const val KEY_REDUCE_MOTION = "reduce-motion"

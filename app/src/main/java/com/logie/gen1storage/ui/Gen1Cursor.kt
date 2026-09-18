@@ -291,7 +291,6 @@ class Gen1WindowBounds {
      * would rename *and* navigate away from what it renamed.
      */
     fun isHoldClaimed(point: Offset): Boolean = holds.values.any { it.contains(point) }
-
 }
 
 val LocalGen1WindowBounds = staticCompositionLocalOf { Gen1WindowBounds() }
@@ -307,7 +306,6 @@ fun Modifier.gen1HoldRegion(): Modifier {
     DisposableEffect(registry, owner) { onDispose { registry.forget(owner) } }
     return onGloballyPositioned { registry.setHold(owner, it.boundsInRoot()) }
 }
-
 
 /**
  * Reports this window's position to the gesture layer, and forgets it again
@@ -353,6 +351,22 @@ fun isUnfolded(): Boolean =
 
 /** Roughly where a folded phone stops and an opened one begins. */
 const val UNFOLDED_WIDTH_DP = 600
+
+/**
+ * Whether there is so little height that a screen has to choose what to show.
+ *
+ * Read off the window the same way [isUnfolded] reads the width, and true of
+ * the same thing in practice: a pane of a split screen. Sharing the display
+ * with another app leaves each side about half a phone tall, which is not
+ * enough for a screen laid out to fill one — everything above the fold is
+ * pushed off the top of the pane and cannot be reached at all.
+ */
+@Composable
+fun isShort(): Boolean =
+    androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < SHORT_HEIGHT_DP
+
+/** About half a phone: what a split screen leaves each app. */
+const val SHORT_HEIGHT_DP = 520
 
 /**
  * Which side of the screen the windows sit on.

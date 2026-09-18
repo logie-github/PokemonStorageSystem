@@ -32,7 +32,7 @@ import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
-import com.logie.gen1storage.pokemon.Gen1TradeEvolution
+import com.logie.gen1storage.pokemon.tradeEvolves
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.sprites.SpriteStore
 import com.logie.gen1storage.storage.Provenance
@@ -97,15 +97,18 @@ fun Gen1StatusScreen(
     page: Int? = null,
     onPage: ((Int) -> Unit)? = null,
 ) {
+    // An egg has one screen and no pages; everything else has three, and a
+    // fourth for the Pokedex entry this app adds to both generations.
+    val pages = if (pokemon.isEgg) 1 else if (pokemon.generation >= 2) GEN2_PAGES else PAGES
     var ownPage by remember(pokemon.fingerprint) { mutableStateOf(0) }
-    val shownPage = page ?: ownPage
+    val shownPage = (page ?: ownPage).coerceIn(0, pages - 1)
     val turnPage: (Int) -> Unit = onPage ?: { ownPage = it }
 
     // One cry, when a Pokémon is opened — not on every page turn, and not
     // again when something unrelated recomposes.
     val cries = LocalGen1Audio.current
     LaunchedEffect(pokemon.fingerprint, speaks) {
-        if (speaks) cries?.cry(pokemon.species?.dexNumber)
+        if (speaks) cries?.cry(pokemon.species?.dexNumber, pokemon.generation)
     }
 
     Row(modifier.fillMaxSize().padding(gen1Dp(4))) {
@@ -116,7 +119,7 @@ fun Gen1StatusScreen(
         Gen1Frame(
             Modifier
                 .fillMaxWidth()
-                .gen1Clickable { turnPage((shownPage + 1) % PAGES) },
+                .gen1Clickable { turnPage((shownPage + 1) % pages) },
         ) {
             // Drawn here rather than inside either page. Turning the page used
             // to build a new sprite whose image started empty, and the
@@ -124,12 +127,12 @@ fun Gen1StatusScreen(
             // again; from out here it is the same sprite either way.
             val sprite: @Composable () -> Unit = {
                 Gen1Sprite(
-                    pokemon.speciesId,
+                    pokemon.spriteSpeciesId(),
                     gameVersionId,
                     store,
                     revision = spriteRevision,
                     onLongPress = onSpriteLongPress,
-                    onTap = { cries?.cry(pokemon.species?.dexNumber) },
+                    onTap = { cries?.cry(pokemon.species?.dexNumber, pokemon.generation) },
                     shiny = pokemon.isShiny,
                 )
             }
@@ -141,9 +144,19 @@ fun Gen1StatusScreen(
                 }
                 Spacer(Modifier.width(gen1Dp(4)))
                 Gen1CornerRule(Modifier.weight(1f)) {
-                    when (shownPage) {
-                        0 -> StatusHeaderOne(pokemon)
-                        1 -> StatusHeaderTwo(pokemon)
+                    when {
+                        // The word, and nothing that would give it away.
+                        pokemon.isEgg -> GbText(
+                            Gen1Pokemon.EGG_NAME,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = Gen1Text.copy(textAlign = TextAlign.End),
+                        )
+                        // The cartridge's own upper half, the same on all
+                        // three of its pages. The dex entry keeps this app's
+                        // own header, which names the classification.
+                        pokemon.generation >= 2 && shownPage < 3 -> Gen2Header(pokemon)
+                        shownPage == 0 -> StatusHeaderOne(pokemon)
+                        shownPage == 1 -> StatusHeaderTwo(pokemon)
                         else -> StatusHeaderThree(pokemon, gameVersionId)
                     }
                 }
@@ -152,9 +165,16 @@ fun Gen1StatusScreen(
             // No prompt to turn the page. The whole window takes a tap and
             // there are only three: a player finds that in one tap and never
             // needs telling again.
-            when (shownPage) {
-                0 -> StatusPageOne(pokemon)
-                1 -> StatusPageTwo(pokemon)
+            when {
+                pokemon.isEgg -> EggPage(pokemon)
+                pokemon.generation >= 2 -> when (shownPage) {
+                    0 -> Gen2PagePink(pokemon)
+                    1 -> Gen2PageGreen(pokemon)
+                    2 -> Gen2PageBlue(pokemon)
+                    else -> StatusPageThree(pokemon, gameVersionId)
+                }
+                shownPage == 0 -> StatusPageOne(pokemon)
+                shownPage == 1 -> StatusPageTwo(pokemon)
                 else -> StatusPageThree(pokemon, gameVersionId)
             }
             provenance?.let {
@@ -209,7 +229,7 @@ private fun CameFrom(provenance: Provenance) {
 @Composable
 private fun StatusHeaderOne(pokemon: Gen1Pokemon) {
     GbText(
-        pokemon.displayName.uppercase(),
+        pokemon.displayName.uppercase() + (pokemon.gender?.symbol?.let { " $it" } ?: ""),
         modifier = Modifier.fillMaxWidth(),
         style = Gen1Text.copy(textAlign = TextAlign.End),
     )
@@ -274,7 +294,7 @@ private fun StatusPageOne(pokemon: Gen1Pokemon) {
             GbText(" ${pokemon.otName ?: "-----"}")
             // The one thing a cartridge cannot do on its own, said where a
             // player is already looking at what this Pokémon is.
-            if (Gen1TradeEvolution.evolves(pokemon.speciesId)) {
+            if (tradeEvolves(pokemon)) {
                 Spacer(Modifier.height(gen1Dp(3)))
                 GbText("EVOLVES BY", style = Gen1TextSmall, maxLines = 1)
                 GbText("TRADE", style = Gen1TextSmall, maxLines = 1)
@@ -402,3 +422,228 @@ private fun StatusPageThree(pokemon: Gen1Pokemon, gameVersionId: String?) {
 
 /** Stats, moves, and the Pokédex entry. */
 const val PAGES = 3
+
+/**
+ * Generation II's own three, and the Pokédex entry after them.
+ *
+ * The first three are the cartridge's stats screen exactly: pink, green,
+ * blue, in that order. The fourth is this app's, the same dex page a
+ * Generation I Pokémon's third page is, kept because losing it would be a
+ * worse screen than an inexact one.
+ */
+const val GEN2_PAGES = 4
+
+// ----------------------------------------------------------------------
+// Generation II
+//
+// The cartridge's stats screen is three pages and they are not the three
+// Generation I had. `engine/pokemon/stats_screen.asm` calls them the pink,
+// green and blue pages:
+//
+//   pink   HP bar, STATUS/ and TYPE/, then EXP POINTS and what is owed to
+//          the next level, with the exp bar under it
+//   green  ITEM/, then the four moves with their PP
+//   blue   ID No/ and OT/, then the five stats
+//
+// So Special being two stats is not the only difference: the stats moved off
+// page one, the item arrived, and the status and types took their place. A
+// Generation II Pokémon shown through the Generation I layout was readable
+// but it was not its own screen.
+//
+// Happiness and caught data are deliberately absent. Both are on the record
+// and both survive a round trip through this app untouched, and the stats
+// screen shows neither: happiness is something an NPC tells you and caught
+// data is the Poké Seer's. Pokérus is the one of the three that does appear,
+// and it appears here.
+
+/** The upper half, which every page of the Generation II screen shares. */
+@Composable
+private fun Gen2Header(pokemon: Gen1Pokemon) {
+    GbText(
+        pokemon.displayName.uppercase() + (pokemon.gender?.symbol?.let { " $it" } ?: ""),
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    // "/SPECIES" under the nickname, which is the line the cartridge prints
+    // so a nicknamed Pokémon still says what it is. Nothing to add when the
+    // name already is the species.
+    pokemon.species?.displayName?.uppercase()?.takeIf { it != pokemon.displayName.uppercase() }
+        ?.let {
+            GbText(
+                "/$it",
+                modifier = Modifier.fillMaxWidth(),
+                style = Gen1TextSmall.copy(textAlign = TextAlign.End),
+            )
+        }
+    GbText(
+        ":L${pokemon.level}",
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+    Spacer(Modifier.height(gen1Dp(2)))
+    val maxHp = pokemon.maxHp
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        GbText("HP:", style = Gen1TextSmall.copy(color = Gen1Palette.Ink))
+        Spacer(Modifier.width(gen1Dp(2)))
+        Gen1HpBar(pokemon.currentHp, maxHp ?: 0, Modifier.weight(1f))
+    }
+    GbText(
+        if (maxHp != null) "%d/ %d".format(pokemon.currentHp, maxHp)
+        else "%d/ ???".format(pokemon.currentHp),
+        modifier = Modifier.fillMaxWidth(),
+        style = Gen1Text.copy(textAlign = TextAlign.End),
+    )
+}
+
+/**
+ * The pink page: what is wrong with it, what it is, and how far it has to go.
+ *
+ * STATUS prints `#RUS` in place of the condition while the Pokérus is still
+ * running, which is `LoadPinkPage`'s `.HasPokerus` arm; once it has run its
+ * course the cartridge marks the Pokémon with a dot instead, and that is the
+ * one beside the name here.
+ */
+@Composable
+private fun Gen2PagePink(pokemon: Gen1Pokemon) {
+    Row(Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f)) {
+            GbText("STATUS/")
+            GbText(
+                when {
+                    pokemon.hasPokerus -> "#RUS"
+                    else -> pokemon.status ?: "OK"
+                }
+            )
+            if (pokemon.curedOfPokerus) {
+                GbText("CURED OF #RUS", style = Gen1TextSmall, maxLines = 1)
+            }
+            Spacer(Modifier.height(gen1Dp(3)))
+            val types = pokemon.species?.types.orEmpty()
+            GbText("TYPE/")
+            GbText(" ${types.getOrNull(0) ?: "---"}")
+            types.getOrNull(1)?.let { GbText(" $it") }
+        }
+        Spacer(Modifier.width(gen1Dp(4)))
+        Column(Modifier.weight(1f)) {
+            GbText("EXP POINTS")
+            GbText(
+                pokemon.exp.toString(),
+                modifier = Modifier.fillMaxWidth(),
+                style = Gen1Text.copy(textAlign = TextAlign.End),
+            )
+            Spacer(Modifier.height(gen1Dp(2)))
+            GbText("LEVEL UP")
+            val owed = Gen1Growth.expToNextLevel(pokemon)
+            GbText(
+                if (owed == null) "---" else "TO :L${pokemon.level + 1}",
+                modifier = Modifier.fillMaxWidth(),
+                style = Gen1Text.copy(textAlign = TextAlign.End),
+            )
+            GbText(
+                owed?.toString() ?: "---",
+                modifier = Modifier.fillMaxWidth(),
+                style = Gen1Text.copy(textAlign = TextAlign.End),
+            )
+        }
+    }
+}
+
+/** The green page: what it is carrying, and what it knows. */
+@Composable
+private fun Gen2PageGreen(pokemon: Gen1Pokemon) {
+    Gen1Frame(contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2))) {
+        Row(Modifier.fillMaxWidth()) {
+            GbText("ITEM/")
+            Spacer(Modifier.width(gen1Dp(2)))
+            // "---" for nothing, which is `.ThreeDashes` and not an empty
+            // line: the row is always there and says so.
+            GbText(pokemon.heldItem?.let { itemLabel(it) } ?: "---", maxLines = 1)
+        }
+        Spacer(Modifier.height(gen1Dp(2)))
+        for (index in 0 until 4) {
+            val slot = pokemon.moves.getOrNull(index)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                GbText(
+                    slot?.displayName?.uppercase() ?: "-",
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                )
+                Spacer(Modifier.width(gen1Dp(4)))
+                GbText(if (slot == null) "--" else "PP ${slot.pp}/${slot.maxPp ?: slot.pp}")
+            }
+        }
+    }
+}
+
+/** The blue page: who it belongs to, and what it is made of. */
+@Composable
+private fun Gen2PageBlue(pokemon: Gen1Pokemon) {
+    Row(Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f)) {
+            GbText("ID No/")
+            GbText(" ${pokemon.otId?.let { "%05d".format(it) } ?: "-----"}")
+            Spacer(Modifier.height(gen1Dp(3)))
+            GbText("OT/")
+            GbText(" ${pokemon.otName ?: "-----"}")
+            if (tradeEvolves(pokemon)) {
+                Spacer(Modifier.height(gen1Dp(3)))
+                GbText("EVOLVES BY", style = Gen1TextSmall, maxLines = 1)
+                GbText("TRADE", style = Gen1TextSmall, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.width(gen1Dp(4)))
+        Gen1Frame(
+            Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2)),
+        ) {
+            // Five rows rather than four: Generation II split Special in two.
+            pokemon.battleStats.forEach { stat ->
+                GbText(stat.label)
+                GbText(
+                    stat.value?.toString() ?: "---",
+                    modifier = Modifier.fillMaxWidth(),
+                    style = Gen1Text.copy(textAlign = TextAlign.End),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The egg screen, which is its own thing and has no pages.
+ *
+ * `EggStatsScreen`: the egg's picture, the word EGG, an ID and an OT that are
+ * both `?????`, and one of four lines about how close it is. Nothing else is
+ * shown, and nothing else may be: the species is on the record because the
+ * game has to know what will hatch.
+ */
+@Composable
+private fun EggPage(pokemon: Gen1Pokemon) {
+    Column(Modifier.fillMaxWidth()) {
+        GbText("ID No/ ?????")
+        GbText("OT/ ?????")
+        Spacer(Modifier.height(gen1Dp(3)))
+        Gen1Frame(contentPadding = PaddingValues(horizontal = gen1Dp(2), vertical = gen1Dp(2))) {
+            eggFlavour(pokemon).forEach { GbText(it, maxLines = 1) }
+        }
+    }
+}
+
+/**
+ * How near it is, in the cartridge's own words.
+ *
+ * `EggStatsScreen` reads the hatch counter, which on an egg occupies the byte
+ * happiness uses on everything else, and picks a line off a `cp $6 / cp $b /
+ * cp $29` ladder. Gen1Recomp counts the same cycles down as `eggSteps`, so
+ * that is the field read here, with `happiness` as the fallback for a save
+ * that keeps it where the cartridge's own byte was.
+ */
+private fun eggFlavour(pokemon: Gen1Pokemon): List<String> {
+    val cycles = pokemon.hatchCycles
+    return when {
+        cycles < 0x6 -> listOf("IT'S MAKING SOUNDS", "INSIDE. IT'S GOING", "TO HATCH SOON!")
+        cycles < 0xB -> listOf("IT MOVES AROUND", "INSIDE SOMETIMES.", "IT MUST BE CLOSE", "TO HATCHING.")
+        cycles < 0x29 -> listOf("WONDER WHAT'S", "INSIDE? IT NEEDS", "MORE TIME, THOUGH.")
+        else -> listOf("THIS EGG NEEDS A", "LOT MORE TIME TO", "HATCH.")
+    }
+}

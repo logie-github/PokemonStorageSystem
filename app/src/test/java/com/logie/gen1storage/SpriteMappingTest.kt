@@ -2,9 +2,14 @@ package com.logie.gen1storage
 
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.pokemon.Gen1Data
+import com.logie.gen1storage.pokemon.Gen1Pokemon
+import com.logie.gen1storage.pokemon.Gen1Stat
+import com.logie.gen1storage.pokemon.Gen1Stats
+import com.logie.gen1storage.sprites.Gen2Sprites
 import com.logie.gen1storage.sprites.SpriteSet
 import com.logie.gen1storage.sprites.gen2SpriteFolder
 import com.logie.gen1storage.sprites.spriteFileName
+import com.logie.gen1storage.ui.spriteSpeciesId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -96,5 +101,70 @@ class SpriteMappingTest {
         SpriteSet.entries.filter { it !in SpriteSet.gen2 }.forEach {
             assertEquals(1, it.generation)
         }
+    }
+
+    @Test
+    fun `an Unown's letter comes from the middle two bits of four DVs`() {
+        // GetUnownLetter packs atk/def/spd/spc's middle two bits into one
+        // byte and divides by ten: 0 is A, 255 is Z.
+        fun dvs(atk: Int, def: Int, spd: Int, spc: Int) = mapOf(
+            Gen1Stat.ATTACK to atk, Gen1Stat.DEFENSE to def,
+            Gen1Stat.SPEED to spd, Gen1Stat.SPECIAL to spc,
+        )
+        assertEquals('A', Gen1Stats.unownLetter(dvs(0, 0, 0, 0)))
+        assertEquals('Z', Gen1Stats.unownLetter(dvs(15, 15, 15, 15)))
+        // Only bits 2 and 1 count: the top and bottom bit of every DV here
+        // differ from the all-zero case, and the letter does not move.
+        assertEquals('A', Gen1Stats.unownLetter(dvs(9, 9, 9, 9)))
+    }
+
+    @Test
+    fun `an Unown Pokemon's sprite id names its own letter`() {
+        val mon = SaveFixtures.pokemon(species = "UNOWN", dvs = listOf(0, 0, 0, 0), withStats = false)
+        assertEquals("UNOWN_A", Gen1Pokemon(mon).spriteSpeciesId())
+
+        val other = SaveFixtures.pokemon(species = "UNOWN", dvs = listOf(15, 15, 15, 15), withStats = false)
+        assertEquals("UNOWN_Z", Gen1Pokemon(other).spriteSpeciesId())
+
+        // Anything else is shown under its own id, unchanged.
+        assertEquals("PIKACHU", Gen1Pokemon(SaveFixtures.pokemon(species = "PIKACHU")).spriteSpeciesId())
+    }
+
+    @Test
+    fun `a Gold or Silver sprite falls back to the drawing the two games share`() {
+        // Most species were drawn twice and pokegold keeps both, so the
+        // versioned name is asked for first.
+        val pikachu = Gen2Sprites.urls(SpriteSet.GOLD, "PIKACHU")
+        assertEquals(2, pikachu.size)
+        assertTrue(pikachu[0].endsWith("/pikachu/front_gold.png"))
+        assertTrue(pikachu[1].endsWith("/pikachu/front.png"))
+
+        // Eight were drawn once for both games, and neither versioned name
+        // exists at all — which was sixteen files every download reported as
+        // lost. The fallback is what finds them.
+        val shared = Gen2Sprites.urls(SpriteSet.SILVER, "SUICUNE")
+        assertTrue(shared[0].endsWith("/suicune/front_silver.png"))
+        assertTrue(shared[1].endsWith("/suicune/front.png"))
+
+        // Crystal redrew every one of them and files them all the same way,
+        // so it has nothing to fall back to.
+        assertEquals(
+            listOf("https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/pokemon/suicune/front.png"),
+            Gen2Sprites.urls(SpriteSet.CRYSTAL, "SUICUNE"),
+        )
+
+        // Unown was never given a per-version drawing by either repository.
+        assertEquals(1, Gen2Sprites.urls(SpriteSet.GOLD, "UNOWN_F").size)
+        assertTrue(Gen2Sprites.urls(SpriteSet.GOLD, "UNOWN_F").single().endsWith("/unown_f/front.png"))
+    }
+
+    @Test
+    fun `every Unown letter folds through the ordinary folder rule`() {
+        Gen2Sprites.UNOWN_FORM_IDS.forEachIndexed { index, id ->
+            val letter = ('A' + index)
+            assertEquals("UNOWN_$letter", id)
+            assertEquals("unown_${letter.lowercaseChar()}", gen2SpriteFolder(id))
+        }
+        assertEquals(26, Gen2Sprites.UNOWN_FORM_IDS.distinct().size)
     }
 }

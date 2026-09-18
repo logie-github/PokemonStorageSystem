@@ -41,6 +41,16 @@ class SpriteDownloader(private val store: SpriteStore) {
 
     suspend fun download(
         sets: List<SpriteSet> = SpriteSet.downloadable,
+        /**
+         * Only these species, or every species the sets have when null.
+         *
+         * A handful named here is a run that finishes in seconds rather than
+         * minutes, which is what the first launch fetches before it starts on
+         * the whole archive: the dozen or so the introduction is about to put
+         * on screen, so the art is already there when it is wanted. See
+         * [com.logie.gen1storage.ui.StorageViewModel.downloadFirstRun].
+         */
+        species: Collection<String>? = null,
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadProgress = withContext(Dispatchers.IO) {
         // Each set is fetched for the species its own generation has: the
@@ -49,7 +59,20 @@ class SpriteDownloader(private val store: SpriteStore) {
         // asking anyway is a hundred round trips that can only 404.
         val gen1Species = Gen1Data.species.map { it.id }
         val gen2Species = Gen2Data.speciesIds
-        fun speciesFor(set: SpriteSet) = if (set.generation == 2) gen2Species else gen1Species
+        // UNOWN alone draws as one of twenty-six letters rather than one
+        // picture, so its sprite job is twenty-six — one per synthetic id
+        // Gen2Sprites.unownFormId builds — on top of the bare UNOWN id this
+        // app already showed before a Pokémon's own DVs picked a letter.
+        val gen2SpriteIds = gen2Species.flatMap { id ->
+            if (id.equals("UNOWN", ignoreCase = true)) listOf(id) + Gen2Sprites.UNOWN_FORM_IDS
+            else listOf(id)
+            // The egg, which is not a species and is drawn instead of one.
+        } + Gen2Sprites.EGG_ID
+        val only = species?.map { it.uppercase() }?.toSet()
+        fun speciesFor(set: SpriteSet): List<String> {
+            val all = if (set.generation == 2) gen2SpriteIds else gen1Species
+            return if (only == null) all else all.filter { it.uppercase() in only }
+        }
         // Every file in the run, across every set, as one flat list. Going set
         // by set would have each set's tail waiting on its own last few files
         // while the line sat idle.
@@ -58,12 +81,21 @@ class SpriteDownloader(private val store: SpriteStore) {
             // One shiny palette per species, whichever Generation II sets are
             // being fetched: pokegold and pokecrystal hold the same file, so
             // all three sets read the one copy.
-            if (sets.any { it.generation == 2 }) gen2Species.forEach { add(Job.Shiny(it)) }
+            // Left out of a named run: a shiny palette is two lines of text
+            // for a colour nothing in a first launch is about to draw, and
+            // two hundred and fifty of them would be most of the run.
+            if (only == null && sets.any { it.generation == 2 }) {
+                gen2Species.forEach { add(Job.Shiny(it)) }
+            }
         }
         val total = wanted.size
 
         onProgress(DownloadProgress(0, total))
-        sets.forEach { set -> File(store.fileFor(set, speciesFor(set).first()).parent!!).mkdirs() }
+        // A named run can ask for species a set has none of, and a set with
+        // nothing to fetch has no folder to make.
+        sets.forEach { set ->
+            speciesFor(set).firstOrNull()?.let { File(store.fileFor(set, it).parent!!).mkdirs() }
+        }
 
         // The colours read out of each file as it lands. Written once at the
         // end rather than per sprite: a hundred and fifty workers appending to
@@ -122,10 +154,18 @@ class SpriteDownloader(private val store: SpriteStore) {
         target: File,
         normals: MutableMap<String, ConcurrentHashMap<String, IntArray>>,
     ): Boolean {
-        val address =
-            if (set.generation == 2) Gen2Sprites.url(set, speciesId) ?: return false
-            else "$BASE_URL/${set.remotePath}/${spriteFileName(speciesId)}.png"
-        var bytes = read(address) ?: return false
+        val addresses =
+            if (set.generation == 2) Gen2Sprites.urls(set, speciesId).ifEmpty { return false }
+            else listOf("$BASE_URL/${set.remotePath}/${spriteFileName(speciesId)}.png")
+        // Each name in turn until one answers. Generation II has two for most
+        // species and one for the handful drawn once for both games; see
+        // [Gen2Sprites.urls].
+        var bytes = addresses.firstNotNullOfOrNull { read(it) } ?: return false
+        // Checked on the raw download, before Gen2Sprites.firstFrame below:
+        // that function re-encodes whatever pixels it is handed into a fresh,
+        // structurally valid PNG, so a truncated source would still pass a
+        // check made after it ran.
+        if (!isCompletePng(bytes)) return false
 
         if (set.generation == 2) {
             // The colours the cartridge showed are the file's own palette, in
@@ -170,7 +210,19 @@ class SpriteDownloader(private val store: SpriteStore) {
         // the pool for the next one.
         val bytes =
             if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-            else connection.inputStream.use { it.readBytes() }
+            else runCatching { connection.inputStream.use { it.readBytes() } }.getOrNull()
+                ?: return null
+        // A connection dropped mid-transfer does not always surface as a
+        // thrown IOException — some paths hand back whatever arrived before
+        // the socket closed and call it EOF. That used to land in the sprite
+        // folder looking downloaded: a real file, a real name, the first few
+        // rows of a real picture, and noise or blank space for the rest of
+        // it, because a truncated PNG can still decode as far as it goes.
+        // The server's own Content-Length is the one thing that says how
+        // much there was supposed to be, so a short read against it is
+        // refused here rather than trusted to bounds-only decoding later.
+        val expected = connection.contentLengthLong
+        if (expected > 0 && bytes.size.toLong() != expected) return null
         return bytes.takeIf { it.isNotEmpty() }
     }
 

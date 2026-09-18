@@ -76,7 +76,9 @@ fun Gen1EvolutionScene(
     LaunchedEffect(scene, revision) {
         withContext(Dispatchers.IO) {
             before = scene.fromSpeciesId?.let { sprites.load(it, scene.gameVersionId) }
-            after = scene.toSpeciesId?.let { sprites.load(it, scene.gameVersionId) }
+            after = scene.toSpeciesId?.let {
+                sprites.load(it, scene.toGameVersionId ?: scene.gameVersionId)
+            }
         }
         delay(HOLD_MILLIS)
         // Down, one whole step at a time, ticking as it goes.
@@ -114,7 +116,7 @@ fun Gen1EvolutionScene(
         ) {
             Gen1Frame(Modifier.wrapContentWidth()) {
                 GbText(
-                    if (finished) "${scene.name} EVOLVED!" else "EVOLVING ${scene.name}",
+                    if (finished) scene.captionAfter else scene.captionWhile,
                     maxLines = 1,
                 )
             }

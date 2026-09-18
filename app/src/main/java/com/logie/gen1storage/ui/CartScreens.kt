@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -56,6 +54,8 @@ fun ChooseCartScreen(
     game: String?,
     sendUids: List<String> = emptyList(),
     thenOpenStorage: Boolean = false,
+    /** Which face of the PC picking a card opens on. See [Screen.ChooseCart.then]. */
+    then: PcMode = PcMode.MENU,
 ) {
     val sending = sendUids.isNotEmpty()
     // The lead Pokémon is in the save itself; the account's summary carries
@@ -74,34 +74,72 @@ fun ChooseCartScreen(
     // never runs the width of an opened screen.
     val columns = if (isUnfolded()) 2 else 1
     val chooseSave: (RemoteSave) -> Unit = { remote ->
-        if (sending) model.chooseWithdrawSave(sendUids, remote.key)
-        else model.chooseCart(remote.key, thenOpenStorage)
+        // Sending already asks its own question — "SEND PIKACHU TO RED?" — and
+        // a card tapped there is the answer to it rather than a card being
+        // put in the machine, so it is taken as it always was.
+        if (sending) {
+            model.chooseWithdrawSave(sendUids, remote.key)
+        } else {
+            // Putting a card in swaps the cartridge everything else on the
+            // screen is about, and a shelf of pictures is an easy thing to
+            // brush. So it is asked first, by name, the way the machine asks
+            // before anything else it cannot quietly undo.
+            val named = model.cartName(remote.key)?.uppercase()
+                ?: remote.summary.trainerName?.uppercase()
+                ?: "THIS CARD"
+            model.prompt(
+                Prompt.Confirm(
+                    lines = listOf("INSERT $named?"),
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { model.chooseCart(remote.key, thenOpenStorage, then) },
+                )
+            )
+        }
     }
     val choose: (TitleCardArt) -> Unit = { card ->
-        model.replace(Screen.ChooseCart(card.version.id, sendUids, thenOpenStorage))
+        model.replace(Screen.ChooseCart(card.version.id, sendUids, thenOpenStorage, then))
     }
-    // Whichever of the two things on this screen is the one to take: the games
-    // until one is picked and shown to have saves, the saves after that. The
-    // cursor used to be registered only in the second case, so a swipe on the
-    // screen that asks which game did nothing at all and the three cards could
-    // only be tapped.
-    val pickingGame = game == null || state.saves.none { it.version.id == game }
+    // Whether a game has been named yet, which decides whether the list under
+    // the shelf is that game's cards or the whole account's. With the shelf
+    // turned off there is no game to be picking at all, whatever the screen
+    // was opened with: every card is listed at once and each names its own
+    // game down its spine.
+    val shelved = state.gameSelection
+    val pickingGame = !shelved || game == null || state.saves.none { it.version.id == game }
     // Six across with the room for it, two rows of three without: a card is
     // a picture worth seeing, and a sixth of a folded phone is a thumbnail.
     val across = if (isUnfolded()) shelf.size else 3
-    val cursor = rememberCursorLayer(
-        count = if (pickingGame) shelf.size else saves(state, game).size,
-        columns = if (pickingGame) across else columns,
-    ) { index ->
-        if (pickingGame) shelf.getOrNull(index)?.let(choose)
-        else saves(state, game).getOrNull(index)?.let(chooseSave)
+    // Every card on the account until a game is named: naming one was a step
+    // that had to be taken before any card could be taken at all, and for an
+    // account with a handful of cards there was never a question in it —
+    // picking Silver meant pressing SILVER on the shelf and only then being
+    // offered the card that was wanted all along. The shelf still narrows to
+    // one game when one is pressed.
+    //
+    // Off the shelf, the account's cards run in the games' own order — RED,
+    // BLUE, YELLOW, GOLD, SILVER, CRYSTAL — rather than in whatever order the
+    // account happens to hand them over. With the shelf up the order is the
+    // account's, because the shelf above already says which game these are.
+    val listed = when {
+        !shelved -> state.saves.sortedBy { it.version.ordinal }
+        pickingGame -> state.saves
+        else -> saves(state, game)
     }
-    // The cards under the shelf follow the cursor rather than waiting for it
-    // to be pressed: running along the shelf shows each game's trainer cards
-    // as it is reached, which is what the row of games is for. Once a game is
-    // taken the cursor drops into that game's list and the shelf holds still.
-    val showing = if (pickingGame) shelf.getOrNull(cursor)?.version?.id else game
-    val saves = saves(state, showing)
+    // No cursor on this screen, and deliberately none: it is a shelf of
+    // pictures, and picking one off a shelf is pointing at it. Everything
+    // here is tapped and the list is scrolled, whatever SWIPE CONTROLS is
+    // set to — see the exemption in MainActivity, which is what keeps a
+    // drag here a scroll rather than a D-pad step.
+    //
+    // Two to a row wherever there is room for two, whether or not a game has
+    // been named. Listing every game's cards used to force a single file,
+    // because the cursor stepped one at a time through the rows under the
+    // shelf and a list two wide would have had it skipping every other card.
+    // There is no cursor here to keep up with any more, and an opened screen
+    // was drawing one card a row with half the width left empty beside it.
+    val listColumns = columns
+    val saves = listed
 
     Column(
         Modifier
@@ -110,44 +148,32 @@ fun ChooseCartScreen(
             .padding(gen1Dp(4)),
     ) {
         // The whole shelf, in rows of [across]: the three that can be picked
-        // and the three that are only there to be looked at, each with the
-        // cursor's mark over it.
-        shelf.chunked(across).forEachIndexed { rowIndex, row ->
-            val first = rowIndex * across
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
-            ) {
-                row.forEachIndexed { index, _ ->
-                    Box(Modifier.weight(1f)) {
-                        CardCursor(pickingGame && cursor == first + index)
+        // and the three that are only there to be looked at. Off entirely
+        // when GAME SELECTION is, and the room it was taking goes to the list
+        // underneath rather than being left empty.
+        if (shelved) {
+            shelf.chunked(across).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
+                ) {
+                    row.forEach { card ->
+                        TitleCard(
+                            label = card.label,
+                            art = card.art,
+                            palette = card.palette,
+                            chosen = game == card.version.id,
+                            modifier = Modifier.weight(1f),
+                            onClick = { choose(card) },
+                        )
                     }
+                    repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
+                Spacer(Modifier.height(gen1Dp(2)))
             }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(gen1Dp(2)),
-            ) {
-                row.forEach { card ->
-                    TitleCard(
-                        label = card.label,
-                        art = card.art,
-                        palette = card.palette,
-                        chosen = game == card.version.id,
-                        modifier = Modifier.weight(1f),
-                        onClick = { choose(card) },
-                    )
-                }
-                repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
-            }
-            // Nothing between the rows: the mark's own strip above the next
-            // row is the gap, and two gaps stacked is what left a band of
-            // empty screen across the middle of the shelf.
 
+            Spacer(Modifier.height(gen1Dp(3)))
         }
-
-        Spacer(Modifier.height(gen1Dp(3)))
 
         if (saves.isEmpty()) {
             // An account with nothing in it anywhere is asked for a card; one
@@ -163,33 +189,18 @@ fun ChooseCartScreen(
             return@Column
         }
 
-        // Said once, above the cards themselves: a Generation II card holds
-        // Generation II Pokemon, and the only way one of this app's
-        // Generation I Pokemon reaches it is the TIME CAPSULE.
-        if (GameVersion.fromId(showing)?.generation == 2) {
-            Notice("GEN II. USE THE TIME CAPSULE TO SEND ONE ON.")
-            Spacer(Modifier.height(gen1Dp(3)))
-        }
-
         if (sending) {
             Notice("Send to whose card?")
             Spacer(Modifier.height(gen1Dp(4)))
         }
 
-        val scroll = rememberLazyListState()
-        LaunchedEffect(cursor, columns, pickingGame) {
-            if (!pickingGame) scroll.scrollToRow(cursor / columns) else scroll.scrollToRow(0)
-        }
         LazyColumn(
-            state = scroll,
             verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
-            // With swipes on the list follows the cursor and nothing else: a
-            // drag that both scrolls and steps does neither predictably, and
-            // one list that dragged while the rest did not was worse than
-            // either rule on its own.
-            userScrollEnabled = !LocalGen1Swipe.current,
+            // Always, rather than only where swipes are off: there is no
+            // cursor here for the list to follow instead.
+            userScrollEnabled = true,
         ) {
-            items(saves.chunked(columns)) { row ->
+            items(saves.chunked(listColumns)) { row ->
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(gen1Dp(4)),
@@ -201,13 +212,12 @@ fun ChooseCartScreen(
                             slot = index + 1,
                             state = state,
                             model = model,
-                            cursor = !pickingGame && cursor == index,
                             loaded = !sending && state.activeSaveKey == remote.key,
                             onChoose = { chooseSave(remote) },
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(listColumns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -312,25 +322,6 @@ private fun TitleCard(
     }
 }
 
-/** The cursor's mark above a card, which has no room for one inside it. */
-@Composable
-private fun CardCursor(on: Boolean) {
-    // The small face in a strip shorter than the line it would otherwise
-    // claim: a text line brings its leading with it, and at this size that
-    // was most of the space between the two rows of cards. The glyph is
-    // centred and free to reach a little past the strip, which is exactly
-    // where there is nothing to collide with.
-    Box(
-        Modifier.fillMaxWidth().height(gen1Dp(CURSOR_STRIP_PIXELS)),
-        contentAlignment = Alignment.Center,
-    ) {
-        GbText(if (on) "▼" else " ", style = Gen1TextSmall, maxLines = 1)
-    }
-}
-
-/** How tall the mark's strip above a row of cards is. */
-private const val CURSOR_STRIP_PIXELS = 6
-
 /**
  * One playthrough on the shelf, as its trainer card.
  *
@@ -345,8 +336,6 @@ private fun TrainerCardRow(
     slot: Int,
     state: UiState,
     model: StorageViewModel,
-    /** Where the cursor is. */
-    cursor: Boolean,
     /** Whether this is the card already in the machine. */
     loaded: Boolean,
     onChoose: () -> Unit,
@@ -372,7 +361,6 @@ private fun TrainerCardRow(
                     onLongPress = { model.open(Screen.TrainerCard(remote.key)) },
                 )
             },
-        cursor = cursor,
         inserted = loaded,
     )
 }
@@ -409,6 +397,12 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
 
     ScreenColumn {
         item {
+            // The card itself is the way in, because putting it in the machine
+            // is what somebody opening a card came to do: it was one row of a
+            // four-row menu under it, and reaching the card at all already
+            // took a tap on the shelf. Everything else it can be told stays
+            // in the menu, where it is still named rather than hidden behind
+            // a gesture.
             Gen1TrainerCard(
                 remote = remote,
                 save = state.save(key)?.save,
@@ -417,7 +411,9 @@ fun TrainerCardScreen(state: UiState, model: StorageViewModel, key: String) {
                 trainers = model.trainers,
                 trainerSprite = chosen,
                 spriteRevision = state.spriteRevision,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .gen1Clickable { model.chooseCart(key, thenOpenStorage = true) },
                 inserted = state.activeSaveKey == key,
                 full = true,
             )

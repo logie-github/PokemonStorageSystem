@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,6 +36,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,6 +50,7 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassification
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
+import com.logie.gen1storage.pokemon.Gen2Mail
 import com.logie.gen1storage.sound.LocalGen1Audio
 import com.logie.gen1storage.sound.SoundEffect
 import com.logie.gen1storage.storage.Provenance
@@ -56,6 +61,7 @@ import com.logie.gen1storage.storage.StoredPokemon
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.RemoteSave
 import com.logie.gen1storage.sync.SyncApi
+import com.logie.gen1storage.transfer.crossGenerationRefusal
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.WithdrawTarget
 import java.time.Instant
@@ -93,41 +99,119 @@ fun StorageHomeScreen(state: UiState, model: StorageViewModel) {
 
 @Composable
 fun LinkScreen(state: UiState, model: StorageViewModel) {
+    ScreenColumn { item { LinkForm(state, model) } }
+}
+
+/**
+ * The two code fields and the button, without the screen around them.
+ *
+ * Its own composable because the introduction shows this for real rather than
+ * a picture of it (see `TutorialSyncScreen`), and the screen's own list put
+ * the window in something that fills the height — so inside the tour's stage
+ * the frame ran off the bottom of the space it was given and the window
+ * simply had no lower edge. A window that draws its own four sides has to be
+ * measured by its contents, wherever it is put.
+ */
+@Composable
+fun LinkForm(state: UiState, model: StorageViewModel, modifier: Modifier = Modifier) {
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
+    // Taken back if either code is edited after the question has been asked,
+    // because then it is a different pair and the answer was about the old one.
+    var declined by remember { mutableStateOf(false) }
+
     val ready = SyncApi.normalizeCode(first) != null && SyncApi.normalizeCode(second) != null
-    // One thing to take on this screen once both codes are in. The fields are
-    // the keyboard's; the button is the cursor's, as it is everywhere else.
+    val asking = ready && !declined && !state.linking
+
+    // The second field, so the first can hand the keyboard over the moment it
+    // is full. A code is exactly eight digits and there is nothing else to do
+    // in that box afterwards, so making somebody reach for the next one is
+    // asking them to do the app's work.
+    val secondField = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Split screen is where this screen is most used and least able to fit:
+    // the game is in the other pane with the codes on it, and this pane is
+    // half a phone tall. Everything that is not the codes and the button that
+    // takes them comes off, because with them on screen the fields themselves
+    // were pushed off the top of the pane and could not be typed into. The
+    // title is Bill's line above it, or the row that opened this.
+    val short = isShort()
+
+    // The one choice here, on the cursor: with SWIPE CONTROLS on a tap is the
+    // A button and A takes whatever the cursor is on — see [gen1Clickable] —
+    // so a button the cursor cannot reach is a button that cannot be pressed
+    // at all.
     val at = rememberCursorLayer(1) { if (ready && !state.linking) model.link(first, second) }
 
-    ScreenColumn {
-        item {
-            Gen1Frame {
+    Column(
+        modifier.wrapContentHeight(),
+        verticalArrangement = Arrangement.spacedBy(gen1Dp(4)),
+        horizontalAlignment = Gen1Layout.menuSide,
+    ) {
+        if (!short) {
+            Gen1Frame(Modifier.wrapContentWidth()) {
                 GbText("SAVE SYNC")
             }
         }
-        item {
-            Gen1Frame {
-                CodeField("FIRST CODE", first) { first = it }
-                Spacer(Modifier.height(10.dp))
-                CodeField("SECOND CODE", second) { second = it }
-                Spacer(Modifier.height(12.dp))
+        // These two codes are Gen1Recomp's own, read off its own screen.
+        Gen1Frame {
+            CodeField("FIRST CODE", first) { text ->
+                val wasFull = SyncApi.normalizeCode(first) != null
+                first = text
+                declined = false
+                // On the eighth digit, and only as it arrives: jumping every
+                // time a full code is touched would take the keyboard away
+                // from somebody correcting the last digit of it.
+                if (!wasFull && SyncApi.normalizeCode(text) != null) {
+                    runCatching { secondField.requestFocus() }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            CodeField(
+                "SECOND CODE",
+                second,
+                focusRequester = secondField,
+            ) { text ->
+                second = text
+                declined = false
+                // Sixteen digits in and there is nothing left to type, so the
+                // keyboard goes rather than sitting over the question.
+                if (SyncApi.normalizeCode(text) != null) keyboard?.hide()
+            }
+            Spacer(Modifier.height(12.dp))
+            // Both codes in, so the machine asks rather than waiting to be
+            // told. Asked here, in the window the codes were typed into,
+            // rather than in a window over the top of it: this screen is also
+            // shown inside the introduction, where an overlay would land on
+            // Bill mid-sentence.
+            if (asking) {
+                GbText("PROCEED WITH LINK?")
+                Spacer(Modifier.height(6.dp))
+                Gen1ChoiceRows(
+                    listOf(
+                        "YES" to { model.link(first, second) },
+                        "NO" to { declined = true },
+                    )
+                )
+            } else {
                 Gen1Button(
                     if (state.linking) "LINKING..." else "LINK THIS DEVICE",
                     { model.link(first, second) },
-                    enabled = ready && !state.linking,
+                    enabled = ready && !state.linking && declined,
                     selected = at == 0,
                 )
-                if (!ready) {
-                    Spacer(Modifier.height(6.dp))
-                }
             }
         }
     }
 }
 
 @Composable
-private fun CodeField(label: String, value: String, onChange: (String) -> Unit) {
+private fun CodeField(
+    label: String,
+    value: String,
+    focusRequester: FocusRequester? = null,
+    onChange: (String) -> Unit,
+) {
     GbText(label, style = Gen1TextSmall)
     Spacer(Modifier.height(4.dp))
     OutlinedTextField(
@@ -146,7 +230,9 @@ private fun CodeField(label: String, value: String, onChange: (String) -> Unit) 
             unfocusedIndicatorColor = Gen1Palette.Shadow,
             cursorColor = Gen1Palette.Ink,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
     )
 }
 
@@ -190,7 +276,17 @@ fun StorageSystemScreen(
     // finished. So the order the player sees is the animation, then what it
     // did, then the PC's own menu waiting underneath — rather than the menu
     // reappearing behind a Pokémon still on its way out.
+    //
+    // Keyed on the count having actually moved rather than on the count
+    // itself: a LaunchedEffect runs when it enters composition as well as
+    // when its key changes, and this screen enters composition every time it
+    // is returned to. So arriving at the PC with something already underway —
+    // DEPOSIT having just been sent to the shelf for a card, and come back
+    // with one — landed on the menu with the list closed before it ever drew.
+    var settled by remember { mutableStateOf(state.transfers) }
     LaunchedEffect(state.transfers) {
+        if (state.transfers == settled) return@LaunchedEffect
+        settled = state.transfers
         marked = emptySet()
         chosen = null
         gridSlot = null
@@ -235,6 +331,7 @@ fun StorageSystemScreen(
         }
     }
 
+
     /** The label a group starts under, or null once that group is open. */
     fun depositHeader(index: Int): String? {
         val row = depositRows[index]
@@ -250,7 +347,13 @@ fun StorageSystemScreen(
     // grid of empty spots is already the answer the message would give.
     val emptiness = when (mode) {
         PcMode.WITHDRAW -> "What? There are no POKéMON here!".takeIf { stored.isEmpty() }
-        PcMode.DEPOSIT -> "There are no POKéMON here.".takeIf { depositRows.isEmpty() }
+        // Named rather than left as the cartridge's bare "here": the list
+        // reads the card in the machine and nothing else, so an empty one
+        // over a shelf of cards that plainly have Pokémon on them has to say
+        // which card it is talking about. Changing that card is the TRAINER
+        // CARD row's job, and DEPOSIT no longer does it for you.
+        PcMode.DEPOSIT -> "There are no POKéMON in this card's BOXES."
+            .takeIf { depositRows.isEmpty() }
         else -> null
     }
 
@@ -314,6 +417,21 @@ fun StorageSystemScreen(
             model.open(Screen.ChooseCart(null, uids))
             return
         }
+        // Asked here rather than on arrival. The engine refuses a Pokémon
+        // that belongs to the other generation at the point of writing, which
+        // it has to — but by then the question has been put, the ball has
+        // gone up and the whole trade has played out, and the answer lands as
+        // if something went wrong mid-flight. Nothing is animated that was
+        // never going anywhere.
+        val generation = state.remote(active)?.version?.generation
+            ?: if (loaded.isGen2) 2 else 1
+        val blocked = uids.firstNotNullOfOrNull { uid ->
+            state.storage.find(uid)?.second?.let { crossGenerationRefusal(it, generation) }
+        }
+        if (blocked != null) {
+            refusal = blocked
+            return
+        }
         // The first one stands for the set when there are several; there is
         // one sprite's worth of room and it is better than none.
         val first = uids.firstOrNull()?.let { state.storage.find(it)?.second }
@@ -323,7 +441,7 @@ fun StorageSystemScreen(
             what = what,
             where = loaded.trainerName.uppercase(),
             speciesId = first?.pokemon?.speciesId,
-            gameVersionId = first?.provenance?.gameVersion,
+            gameVersionId = first?.spriteGameVersionId,
             motion = TransferMotion.OUT,
             alsoSpeciesIds = uids.drop(1).mapNotNull {
                 state.storage.find(it)?.second?.pokemon?.speciesId
@@ -363,8 +481,22 @@ fun StorageSystemScreen(
         onDeposit = {
             refusal = null
             when {
-                needsCart -> model.open(Screen.ChooseCart(null))
+                needsCart ->
+                    model.open(
+                        Screen.ChooseCart(null, thenOpenStorage = true, then = PcMode.DEPOSIT)
+                    )
+
                 (box?.freeSlots ?: 0) <= 0 -> refusal = "Oops! This Box is full of POKéMON."
+                // Otherwise the list, always, for the card that is in the
+                // machine. DEPOSIT used to hand the player back to the shelf
+                // when that card had nothing boxed and another one did — or,
+                // where only one other did, quietly swap the card for them.
+                // Both were the same mistake: a row that answers "deposit"
+                // with "pick a different cartridge" sends somebody who has
+                // already chosen theirs round the houses, and swapping it
+                // without asking changes what every other screen is about.
+                // An empty list says so and leaves the choice where it
+                // belongs, on the TRAINER CARD row.
                 else -> model.pcMode = PcMode.DEPOSIT
             }
         },
@@ -511,7 +643,7 @@ fun StorageSystemScreen(
                     },
                     onConfirm = { chosen = it },
                     onCancel = { model.pcMode = PcMode.MENU },
-                    emptyMessage = "There are no POKéMON here.",
+                    emptyMessage = "There are no POKéMON in this card's BOXES.",
                     marked = marked,
                     onToggle = ::toggle,
                     actionLabel = TRANSFER_LABEL.takeIf { marked.isNotEmpty() },
@@ -699,13 +831,13 @@ private fun previewOf(
         PcMode.VIEW -> {
             val here = box?.slots?.getOrNull(index)
             pokemon = here?.pokemon
-            gameVersionId = here?.provenance?.gameVersion
+            gameVersionId = here?.spriteGameVersionId
             held = here?.provenance
         }
         PcMode.WITHDRAW -> {
             val here = stored.getOrNull(index)
             pokemon = here?.pokemon
-            gameVersionId = here?.provenance?.gameVersion
+            gameVersionId = here?.spriteGameVersionId
             held = here?.provenance
         }
         PcMode.DEPOSIT -> {
@@ -763,7 +895,7 @@ fun StatusScreen(
     }
     // A stored Pokémon is shown in the art of the game it was deposited from.
     val gameVersionId = if (key == null) {
-        state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.provenance?.gameVersion
+        state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.spriteGameVersionId
     } else {
         state.remote(key)?.version?.id
     }
@@ -797,6 +929,14 @@ fun StatusScreen(
             add(NICKNAME_LABEL to { model.prompt(Prompt.RenameMon(storedUid)) })
             add(SHARE_LABEL to { model.shareCard(storedUid) })
         }
+        // A live save's own party — key means the game, area 0 the party —
+        // and only while it is actually carrying a letter. `MonMailAction`'s
+        // own row, `mon_menu.asm`'s MAIL.
+        if (key != null && area == 0 && pokemon.holdsMail) {
+            // The screen's own slot is 0-based; sPartyMail and everything
+            // that reads it (Gen2Mail, MailEngine) count from one.
+            add("MAIL" to { model.prompt(Prompt.MailAction(key, slot + 1)) })
+        }
     }
     val actions = buildList<Pair<String, () -> Unit>> {
         if (slot > 0) {
@@ -813,10 +953,18 @@ fun StatusScreen(
     // how the cartridge turns them and the only place on this screen a
     // sideways swipe has anything to do.
     var page by remember(pokemon.fingerprint) { mutableIntStateOf(0) }
+    // How many there are to turn: an egg has one screen, a Generation II
+    // Pokémon has the cartridge's three plus this app's dex page, and a
+    // Generation I one has three.
+    val pages = when {
+        pokemon.isEgg -> 1
+        pokemon.generation >= 2 -> GEN2_PAGES
+        else -> PAGES
+    }
     val at = rememberCursorLayer(
         actions.size,
         onSide = { _, button ->
-            page = (page + if (button == GbButton.RIGHT) 1 else PAGES - 1) % PAGES
+            page = (page + if (button == GbButton.RIGHT) 1 else pages - 1) % pages
             true
         },
     ) { index -> actions.getOrNull(index)?.second?.invoke() }
@@ -1071,7 +1219,8 @@ enum class OptionsDrawer(val label: String) {
     MOTION("ACCESSIBILITY"),
     LAYOUT("LAYOUT"),
     DOWNLOADS("DOWNLOADS"),
-    SAVES("SAVES"),
+    ROMS("ROMS"),
+    SAVES("SAVE SYNC"),
     ABOUT("ABOUT"),
 }
 
@@ -1132,6 +1281,13 @@ private fun OptionsDrawerContent(
     onBack: () -> Unit,
 ) {
     val audio = LocalGen1Audio.current
+    // One trip into a folder rather than one file at a time: every ROM the
+    // player has, in whatever folder they keep their dumps in, identified
+    // and imported by content in one pass rather than asked for six times
+    // over. See RomFolderImporter.
+    val pickRomsFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) model.importRomsFolder(uri)
+    }
     val rows = buildList {
         when (drawer) {
             OptionsDrawer.VISUAL -> {
@@ -1171,15 +1327,29 @@ private fun OptionsDrawerContent(
             }
 
             OptionsDrawer.PALETTES -> {
-                GbPalette.ALL.forEach { palette ->
-                    add(
-                        OptionRow(
-                            palette.label,
-                            trailing = if (state.paletteId == palette.id) "ON" else null,
-                            swatch = palette,
-                        ) { model.setPalette(palette.id) }
-                    )
-                }
+                // A palette drawn from a game's own colours (or from a
+                // legendary that game's own box art carried) is that game's
+                // own cartridge proven, not a free extra — dumping one is the
+                // only way in.
+                //
+                // Not in the list at all until then, rather than sat in it
+                // greyed out. Eight rows reading "NEEDS GOLD" over a swatch
+                // nobody can take is a worse list than a short one, and the
+                // names were losing a fight for the width with the reason
+                // they were unavailable — HO-OH came out as "HO-…". They
+                // arrive announced instead: importing the ROM says which
+                // palettes it just opened up. See [StorageViewModel.unlockedBy].
+                GbPalette.ALL
+                    .filter { it.requiredRom == null || model.roms.has(it.requiredRom) }
+                    .forEach { palette ->
+                        add(
+                            OptionRow(
+                                palette.label,
+                                trailing = if (state.paletteId == palette.id) "ON" else null,
+                                swatch = palette,
+                            ) { model.setPalette(palette.id) }
+                        )
+                    }
             }
 
             OptionsDrawer.AUDIO -> {
@@ -1242,6 +1412,9 @@ private fun OptionsDrawerContent(
                 })
                 add(OptionRow("ALL ITEMS", if (state.showAllItems) "ON" else "OFF") {
                     model.setShowAllItems(!state.showAllItems)
+                })
+                add(OptionRow("GAME SELECTION", if (state.gameSelection) "ON" else "OFF") {
+                    model.setGameSelection(!state.gameSelection)
                 })
                 add(
                     OptionRow("BILL'S PC", if (state.billsPc) "ON" else "OFF") {
@@ -1308,6 +1481,38 @@ private fun OptionsDrawerContent(
                 }
             }
 
+            OptionsDrawer.ROMS -> {
+                // Sprites read straight out of the player's own ROM instead
+                // of a downloaded archive — a copy of a game only its owner
+                // could have dumped, kept only on this device and never sent
+                // anywhere by this app. One folder, once, rather than picking
+                // each of the six out one at a time: whichever of them are in
+                // it are found by their own bytes, never by what the file is
+                // named, and imported together. See RomFolderImporter.
+                add(
+                    OptionRow("IMPORT ROMS FOLDER") { pickRomsFolder.launch(null) }
+                )
+                com.logie.gen1storage.rom.RomVersion.entries.forEach { version ->
+                    val here = model.roms.has(version)
+                    add(
+                        OptionRow(
+                            version.label,
+                            trailing = if (here) "${model.roms.sizeOf(version) / (1024 * 1024)} MB" else "NOT HERE",
+                            enabled = here,
+                        ) {
+                            model.prompt(
+                                Prompt.Confirm(
+                                    lines = listOf("REMOVE THE ${version.label} ROM?"),
+                                    confirmLabel = "YES",
+                                    cancelLabel = "NO",
+                                    onConfirm = { model.deleteRom(version) },
+                                )
+                            )
+                        }
+                    )
+                }
+            }
+
             OptionsDrawer.SAVES -> {
                 if (state.linked) {
                     add(OptionRow("SYNC NOW", enabled = !state.syncing) {
@@ -1340,6 +1545,10 @@ private fun OptionsDrawerContent(
 
             OptionsDrawer.ABOUT -> {
                 add(OptionRow("CREDITS") { model.open(Screen.Credits) })
+                // The first-run introduction, on demand. It plays itself once
+                // and is then never seen again, which is right for a tour and
+                // wrong for the one person who wanted to watch it twice.
+                add(OptionRow("REPLAY TUTORIAL") { model.replayTutorial() })
                 add(OptionRow("SEND REPORT", action = onShareReport))
             }
         }
@@ -1514,8 +1723,8 @@ fun CreditsScreen() {
                 item {
                     Credit(
                         "CRIES",
-                        "POKEAPI/CRIES",
-                        "github.com/PokeAPI/cries",
+                        "NOTE DATA FROM PRET,",
+                        "SYNTHESISED ON DEVICE",
                     )
                 }
                 item {
@@ -1570,7 +1779,7 @@ fun CreditsScreen() {
                 item { Spacer(Modifier.height(gen1Dp(4))) }
                 item {
                     Column {
-                        GbText("POKEMON")
+                        GbText("POKéMON")
                         Spacer(Modifier.height(gen1Dp(2)))
                         LEGAL.forEach { paragraph ->
                             GbText(paragraph, style = Gen1TextSmall)
@@ -1756,7 +1965,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 // answers "that app is not here" is a row that never did
                 // anything.
                 val game = prompt.openGame?.takeIf { TheGame.isInstalled(context) }
-                Gen1DialogueBox(prompt.lines.map { it.uppercase() } + syncLines(game)) {
+                Gen1DialogueBox(prompt.lines.map { it.uppercase() } + syncLines(game), fit = true) {
                 Spacer(Modifier.height(gen1Dp(2)))
                 Gen1ChoiceRows(
                     if (game == null) listOf("OK" to model::dismissPrompt)
@@ -1771,7 +1980,7 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 }
             }
 
-            is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }) {
+            is Prompt.Confirm -> Gen1DialogueBox(prompt.lines.map { it.uppercase() }, fit = true) {
                 Spacer(Modifier.height(gen1Dp(2)))
                 Gen1ChoiceRows(
                     listOf(
@@ -1838,20 +2047,97 @@ fun PromptWindow(state: UiState, model: StorageViewModel) {
                 onCancel = model::dismissPrompt,
             )
 
-            is Prompt.ChooseTrainerSprite -> TrainerSpritePicker(
-                chosen = model.trainerSprite(prompt.key),
-                store = model.trainers,
-                revision = state.spriteRevision,
-                version = state.remote(prompt.key)?.version,
-                female = state.save(prompt.key)?.save?.isFemale == true,
-                onChoose = { model.setTrainerSprite(prompt.key, it) },
-                onCancel = model::dismissPrompt,
-            )
+            is Prompt.ChooseTrainerSprite -> {
+                // A trainer this app has not fetched yet is a blank row here
+                // rather than a picture, and a player should never have to go
+                // find DOWNLOAD ALL in OPTIONS to make one appear. Cheap to
+                // call every time the picker opens: downloadTrainers skips
+                // whatever is already on disk and only reaches the network
+                // for what is actually missing.
+                LaunchedEffect(Unit) { model.downloadTrainers(dismissPrompt = false) }
+                TrainerSpritePicker(
+                    chosen = model.trainerSprite(prompt.key),
+                    store = model.trainers,
+                    revision = state.spriteRevision,
+                    version = state.remote(prompt.key)?.version,
+                    female = state.save(prompt.key)?.save?.isFemale == true,
+                    onChoose = { model.setTrainerSprite(prompt.key, it) },
+                    onCancel = model::dismissPrompt,
+                )
+            }
 
             is Prompt.ChooseSpriteSet -> SpriteSetPicker(
                 speciesId = prompt.speciesId,
                 store = model.sprites,
                 onChoose = { model.chooseSpriteSet(prompt.speciesId, it) },
+                onCancel = model::dismissPrompt,
+            )
+
+            is Prompt.ReadMail -> {
+                val letter = prompt.letter
+                val heading = letter.author.ifBlank { itemLabel(letter.type) }.uppercase()
+                Gen1DialogueBox(listOf("$heading:", letter.message)) {
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    Gen1ChoiceRows(listOf("OK" to model::dismissPrompt))
+                }
+            }
+
+            is Prompt.MailAction -> {
+                val letter = state.save(prompt.key)?.save
+                    ?.let { Gen2Mail.letter(it.root, prompt.slot) }
+                Gen1DialogueBox(listOf("MAIL")) {
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    Gen1ChoiceRows(
+                        buildList {
+                            letter?.let {
+                                add("READ" to { model.prompt(Prompt.ReadMail(it)) })
+                            }
+                            add(
+                                "SEND TO PC" to {
+                                    model.prompt(
+                                        Prompt.Confirm(
+                                            lines = listOf("SEND THE REMOVED", "MAIL TO YOUR PC?"),
+                                            confirmLabel = "YES",
+                                            cancelLabel = "NO",
+                                            onConfirm = { model.sendMailToPc(prompt.key, prompt.slot) },
+                                        )
+                                    )
+                                }
+                            )
+                            add("CANCEL" to model::dismissPrompt)
+                        }
+                    )
+                }
+            }
+
+            is Prompt.MailboxAction -> {
+                val letter = state.save(prompt.key)?.save
+                    ?.let { Gen2Mail.mailbox(it.root).getOrNull(prompt.index - 1) }
+                Gen1DialogueBox(listOf("MAIL")) {
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    Gen1ChoiceRows(
+                        buildList {
+                            letter?.let {
+                                add("READ MAIL" to { model.prompt(Prompt.ReadMail(it)) })
+                            }
+                            add(
+                                "ATTACH MAIL" to {
+                                    model.prompt(Prompt.AttachMail(prompt.key, prompt.index))
+                                }
+                            )
+                            add("CANCEL" to model::dismissPrompt)
+                        }
+                    )
+                }
+            }
+
+            is Prompt.AttachMail -> AttachMailPicker(
+                key = prompt.key,
+                mailboxIndex = prompt.mailboxIndex,
+                party = state.save(prompt.key)?.save?.party.orEmpty(),
+                onChoose = { index ->
+                    model.attachMailFromBox(prompt.key, prompt.mailboxIndex, index + 1)
+                },
                 onCancel = model::dismissPrompt,
             )
         }

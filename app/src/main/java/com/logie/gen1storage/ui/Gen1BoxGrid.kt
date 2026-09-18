@@ -113,18 +113,29 @@ fun FollowerSprite(
 /**
  * What a spot shows when the follower sheets are not on the device: a filled
  * marker, so the box still reads as arranged rather than empty.
+ *
+ * Hollow while the art is still being fetched and solid once it is not. A
+ * box of solid blocks says the art is missing; a box of outlines says it is
+ * on its way, which on a first run is what is actually happening. See
+ * [Gen1Loading].
  */
 @Composable
 private fun OccupiedMark() {
     val pixel = gen1PixelPx().toFloat()
+    val waiting = Gen1Loading.fetching
     Box(
         Modifier.fillMaxSize().drawBehind {
             val inset = pixel * 4
-            drawRect(
-                Gen1Palette.Ink,
-                Offset(inset, inset),
-                Size(size.width - inset * 2, size.height - inset * 2),
-            )
+            val width = size.width - inset * 2
+            val height = size.height - inset * 2
+            if (!waiting) {
+                drawRect(Gen1Palette.Ink, Offset(inset, inset), Size(width, height))
+                return@drawBehind
+            }
+            drawRect(Gen1Palette.Ink, Offset(inset, inset), Size(width, pixel))
+            drawRect(Gen1Palette.Ink, Offset(inset, inset + height - pixel), Size(width, pixel))
+            drawRect(Gen1Palette.Ink, Offset(inset, inset), Size(pixel, height))
+            drawRect(Gen1Palette.Ink, Offset(inset + width - pixel, inset), Size(pixel, height))
         }
     )
 }
@@ -290,8 +301,10 @@ fun Gen1BoxGrid(
                             detectTapGestures { at ->
                                 if (tapTakesCursor) {
                                     cursorSlot?.let { slot ->
-                                        box.slots.getOrNull(slot)?.pokemon?.species?.dexNumber
-                                            ?.let { dex -> cries?.cry(dex) }
+                                        box.slots.getOrNull(slot)?.pokemon?.let { mon ->
+                                            mon.species?.dexNumber
+                                                ?.let { cries?.cry(it, mon.generation) }
+                                        }
                                     }
                                     whole.confirm()
                                     return@detectTapGestures
@@ -299,8 +312,10 @@ fun Gen1BoxGrid(
                                 slotAt(onGrid(at))?.let {
                                     // It speaks when it is touched, the way the
                                     // sprite on the status screen does.
-                                    box.slots.getOrNull(it)?.pokemon?.species?.dexNumber
-                                        ?.let { dex -> cries?.cry(dex) }
+                                    box.slots.getOrNull(it)?.pokemon?.let { mon ->
+                                        mon.species?.dexNumber
+                                            ?.let { dex -> cries?.cry(dex, mon.generation) }
+                                    }
                                     onTap(it)
                                 }
                             }
@@ -353,6 +368,10 @@ fun Gen1BoxGrid(
                             // The one being carried is not drawn in its old
                             // spot: it is under the finger.
                             if (stored != null && slot != dragFrom && column < revealed) {
+                                // An egg has no species to draw, by design:
+                                // Gen1Pokemon.species is null for one, so the
+                                // spot shows the marker rather than giving
+                                // away what is inside.
                                 FollowerSprite(
                                     stored.pokemon.species?.dexNumber,
                                     followers,
@@ -419,8 +438,8 @@ private fun BoxHead(
                 Spacer(Modifier.size(gen1Dp(HEAD_SPRITE_PIXELS)))
             } else {
                 Gen1Sprite(
-                    pokemon.speciesId,
-                    stored.provenance.gameVersion,
+                    pokemon.spriteSpeciesId(),
+                    stored.spriteGameVersionId,
                     sprites,
                     revision = spriteRevision,
                     sizeInPixels = HEAD_SPRITE_PIXELS,

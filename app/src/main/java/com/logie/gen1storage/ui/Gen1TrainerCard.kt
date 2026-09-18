@@ -82,10 +82,24 @@ fun Gen1TrainerCard(
     val lead = save?.party?.firstOrNull()
     val read = save != null
 
-    Gen1Frame(
-        modifier,
+    Gen1SpineCard(
+        // Every card on the shelf the same height, whatever is on it. A
+        // Generation II card carries sixteen badges in two rows where a
+        // Generation I card carries eight in one, and a card whose save has
+        // not been read yet carries none at all — so left to its contents a
+        // list of cards came out as a list of different-sized cards, and one
+        // of them changed size as its save arrived. The long form is exempt:
+        // it is the only card on the screen and has more to say.
+        if (full) modifier else modifier.height(gen1Dp(CARD_PIXELS)),
         fill = palette.lightest,
         ink = palette.darkest,
+        // The game's own name down the edge, so a list holding every game's
+        // cards at once is read by its spines the way a shelf of books is.
+        spine = remote.version.label,
+        // The second darkest of the four: dark enough to carry the lightest
+        // as letters, light enough not to be taken for the border.
+        spineFill = palette.dark,
+        spineInk = palette.lightest,
     ) {
         // The badge case is eight tiles and the seven gaps between them, and
         // it is the one thing on the card with a size of its own: a badge is
@@ -180,11 +194,12 @@ fun Gen1TrainerCard(
                     }
                 }
             } else {
-                Column(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().fillMaxHeight()) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f), content = header)
                         portrait(Modifier, gen1Dp(SMALL_PORTRAIT_PIXELS))
                     }
+                    Spacer(Modifier.weight(1f))
                     badges()
                 }
             }
@@ -244,6 +259,14 @@ private fun Portrait(
         // enough to read as standing with them rather than as a second
         // portrait, and never a smeared one.
         val leadSide = with(density) { (((scale + 1) / 2) * ART_PIXELS).toDp() }
+        // And nothing at all where half of him is still the whole of him. The
+        // smallest whole multiple this art has is its own size, so on a card
+        // drawn at one times — the shelf's, beside another card — the lead
+        // came out exactly as big as the trainer and was laid over him in the
+        // corner, the two of them reading as one torn picture rather than as
+        // somebody standing with their Pokémon. A trainer alone is what the
+        // card has always been able to be.
+        val showLead = lead != null && scale >= 2
 
         Box(Modifier.size(side).align(Alignment.BottomCenter)) {
             if (trainerSprite != null) {
@@ -256,9 +279,9 @@ private fun Portrait(
                     cutout = true,
                 )
             }
-            if (lead != null) {
+            if (showLead && lead != null) {
                 Gen1Sprite(
-                    speciesId = lead.speciesId,
+                    speciesId = lead.spriteSpeciesId(),
                     gameVersionId = gameVersionId,
                     store = sprites,
                     revision = spriteRevision,
@@ -302,8 +325,9 @@ fun Gen1TrainerSprite(
                 bitmap = it,
                 contentDescription = id,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-                // Pixel art at a whole multiple; smoothing would undo it.
+                // A whole multiple or nothing — Generation II draws its
+                // trainers at their own sizes too. See [Gen1WholePixels].
+                contentScale = Gen1WholePixels,
                 filterQuality = FilterQuality.None,
             )
         }
@@ -401,6 +425,21 @@ private const val BADGE_PIXELS = 16
 
 /** The air between two badges, in game pixels. */
 private const val BADGE_GAP = 1
+
+/**
+ * How tall a card on the shelf stands, in game pixels.
+ *
+ * Room for the name, the three fields under it and two rows of badges — the
+ * most any card has to hold — so that a Generation I card, a Generation II
+ * card and one whose save has not arrived yet are all the same object.
+ *
+ * Four lines of text at this app's own leading come to about fifty pixels
+ * and two rows of sixteen-pixel badges with a gap between them to thirty
+ * three, plus the frame's inset either side: ninety six leaves the tallest
+ * card its room rather than clipping it, and the shorter ones carry the
+ * difference as air under the name.
+ */
+private const val CARD_PIXELS = 96
 
 /** What a decomp's sprite is drawn at, and the unit the portrait scales by. */
 private const val ART_PIXELS = 56f

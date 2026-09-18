@@ -53,6 +53,9 @@ fun MainMenuScreen(state: UiState, model: StorageViewModel) {
             else model.open(Screen.ChooseCart(null, thenOpenStorage = true))
         })
         itemPcLabel?.let { add(it to { model.open(Screen.ItemPc) }) }
+        // Generation II only, and only with a card in — the MAILBOX is the
+        // save's own, not this app's, and Generation I never had one.
+        if (save?.isGen2 == true) add("MAILBOX" to { model.open(Screen.Mailbox) })
         add("OPTIONS" to { model.open(Screen.Options) })
     }
     // The shared cursor rather than a count of its own, so the arrow is on a
@@ -113,6 +116,12 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
 
     val here = sources.map { it.second }
     val stored = state.items
+    // Sending out is one cartridge's own vocabulary: a Gold save has no use
+    // for a Generation I item and cannot be offered one, so what can leave
+    // the app's PC is narrowed to the generation actually in the machine.
+    val outbound = save?.version?.generation?.let { generation ->
+        stored.filter { it.generation == generation }
+    } ?: stored
     val rows = listOf<Pair<String, () -> Unit>>(
         state.outLabel to { mode = ItemMode.WITHDRAW },
         state.inLabel to { mode = ItemMode.DEPOSIT },
@@ -144,7 +153,7 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
                             onConfirm = take,
                             // Sending one out needs a cartridge to send it
                             // to, whatever the lists happen to be showing.
-                            enabled = if (index == 0) stored.isNotEmpty() && save != null
+                            enabled = if (index == 0) outbound.isNotEmpty() && save != null
                             else here.isNotEmpty(),
                         )
                     }
@@ -158,7 +167,7 @@ fun ItemPcScreen(state: UiState, model: StorageViewModel) {
             // Coming in, a row knows its own save; going out, everything
             // goes to the cartridge in the machine.
             val rows: List<Pair<String, ItemStack>> =
-                if (intoApp) sources else stored.map { key.orEmpty() to it }
+                if (intoApp) sources else outbound.map { key.orEmpty() to it }
             ItemListOverlay(
                 title = if (intoApp) "TAKE WHAT?" else "PUT BACK WHAT?",
                 items = rows.map { it.second },

@@ -15,12 +15,17 @@ import androidx.lifecycle.viewModelScope
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
+import com.logie.gen1storage.rom.RomStore
+import com.logie.gen1storage.rom.RomVersion
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
 import com.logie.gen1storage.pokemon.Gen2Data
+import com.logie.gen1storage.pokemon.Gen2Mail
 import com.logie.gen1storage.pokemon.Gen1Data
-import com.logie.gen1storage.pokemon.Gen1TradeEvolution
 import com.logie.gen1storage.pokemon.TimeCapsule
+import com.logie.gen1storage.pokemon.tradeEvolutionName
+import com.logie.gen1storage.pokemon.tradeEvolutionOf
+import com.logie.gen1storage.pokemon.tradeEvolves
 import com.logie.gen1storage.storage.StoredPokemon
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -49,6 +54,7 @@ import com.logie.gen1storage.transfer.RecoveryReport
 import com.logie.gen1storage.update.UpdateChecker
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.ItemTransferEngine
+import com.logie.gen1storage.transfer.MailEngine
 import com.logie.gen1storage.transfer.Placement
 import com.logie.gen1storage.transfer.PlacementLedger
 import com.logie.gen1storage.transfer.TransferEngine
@@ -81,6 +87,8 @@ sealed interface Screen {
     data object Storage : Screen
     /** The loaded save's item PC, and this app's. */
     data object ItemPc : Screen
+    /** The loaded save's PC MAILBOX, Generation II only. */
+    data object Mailbox : Screen
     data object Link : Screen
     /**
      * Choosing a cartridge. A null [game] shows only the three games; once one
@@ -101,6 +109,17 @@ sealed interface Screen {
          * interruption partway through one.
          */
         val thenOpenStorage: Boolean = false,
+        /**
+         * Which face of the PC the choice opens on.
+         *
+         * DEPOSIT asks for a card when there is none in the machine, and used
+         * to forget that it had: picking one put the card in and dropped the
+         * player back at the PC's own menu, so the thing they pressed DEPOSIT
+         * to do had to be started over. Worse where the card they picked had
+         * nothing boxed and two others did — DEPOSIT sent them straight back
+         * to the shelf, and the trip went round in a circle.
+         */
+        val then: PcMode = PcMode.MENU,
     ) : Screen
     /**
      * The status screen. A null [key] means the Pokémon is in this app's PC and
@@ -180,6 +199,19 @@ data class EvolutionScene(
     val gameVersionId: String?,
     /** The cry to play when it arrives, by Pokédex number. */
     val toDexNumber: Int?,
+    /**
+     * The art the "after" sprite is drawn from, once it is not [gameVersionId]
+     * any more. Null for a trade evolution, where the before and after are two
+     * different Pokémon out of the one cartridge. Set for a Time Capsule
+     * crossing, where they are the one Pokémon out of two different games'
+     * drawings of it — Generation I's on the way in, Generation II's on the
+     * way out.
+     */
+    val toGameVersionId: String? = null,
+    /** What the window says while the trade is running. */
+    val captionWhile: String = "EVOLVING $name",
+    /** What the window says once it has landed. */
+    val captionAfter: String = "$name EVOLVED!",
 )
 
 /** The transfer a status screen was opened from, and can finish. */
@@ -245,6 +277,25 @@ sealed interface Prompt {
         val max: Int,
         val onChoose: (Int) -> Unit,
     ) : Prompt
+
+    // ------- mail
+
+    /** A letter, read in full — from a party Pokémon or the MAILBOX alike. */
+    data class ReadMail(val letter: Gen2Mail.Letter) : Prompt
+
+    /**
+     * The MAIL row on a live party Pokémon's status screen: READ or SEND TO
+     * PC, `MonMailAction`'s own two live verbs. TAKE — losing the message
+     * for the stationery — is not offered; see [MailEngine]'s own note on
+     * why.
+     */
+    data class MailAction(val key: String, val slot: Int) : Prompt
+
+    /** One letter in the MAILBOX: READ or ATTACH. `MailboxMenu`'s own two. */
+    data class MailboxAction(val key: String, val index: Int) : Prompt
+
+    /** ATTACH MAIL's party list: which Pokémon takes this letter. */
+    data class AttachMail(val key: String, val mailboxIndex: Int) : Prompt
 }
 
 data class UiState(
@@ -268,12 +319,18 @@ data class UiState(
     val currentStorageBox: Int = StorageLayout.THE_BOX,
     val showAllSaves: Boolean = false,
     val showAllItems: Boolean = false,
+    val gameSelection: Boolean = true,
     /** The [GbPalette] id everything is drawn through. */
     val paletteId: String = GbPalette.ORIGINAL.id,
     val windowsFollowPalette: Boolean = false,
     val windowsOnRight: Boolean = true,
     /** Whether this app's storage is called BILL'S PC instead of LOGIE'S PC. */
-    val billsPc: Boolean = false,
+    val billsPc: Boolean = true,
+    /**
+     * Whether the introduction has been sat through. False is what a fresh
+     * install looks like, and it is the only thing that plays it.
+     */
+    val tutorialSeen: Boolean = true,
     /** How fast the text prints, as the games' OPTIONS screen puts it. */
     val textSpeed: TextSpeed = TextSpeed.DEFAULT,
     /** Shown while a transfer is in flight, and cleared by its result. */
@@ -303,7 +360,7 @@ data class UiState(
     /** Whether Generation II art follows the palette instead of its own colours. */
     val gbcFollowsPalette: Boolean = false,
     /** Swipes drive the cursor, and lists do not scroll under a finger. */
-    val swipeControls: Boolean = false,
+    val swipeControls: Boolean = true,
     val motionsOn: Set<String> = emptySet(),
     /** The tick under the finger. */
     val haptics: Boolean = true,
@@ -312,12 +369,25 @@ data class UiState(
     val loadingAll: Boolean = false,
     val spriteProgress: DownloadProgress? = null,
     val spritesInstalled: Int = 0,
-    val cryProgress: DownloadProgress? = null,
-    val criesInstalled: Int = 0,
     val followerProgress: DownloadProgress? = null,
     val followersInstalled: Int = 0,
     val trainerProgress: DownloadProgress? = null,
     val trainersInstalled: Int = 0,
+    /**
+     * The opening fetch: the handful of pictures the introduction itself puts
+     * on screen, which is the only art anybody is waiting on.
+     *
+     * The introduction holds behind this and nothing else. Everything after it
+     * — two hundred and fifty followers, fifteen hundred sprites — lands while
+     * Bill talks over the top of it and is never reported on screen until the
+     * tour is done, because a bar creeping along under a conversation is the
+     * app telling a new player to watch the loading rather than the thing it
+     * has gone to the trouble of showing them.
+     *
+     * Finished from the start on any run that already has the art, so a replay
+     * of the introduction opens straight onto him.
+     */
+    val openingProgress: DownloadProgress = DownloadProgress(0, 0, finished = true),
     /** This app's own item PC. */
     val items: List<ItemStack> = emptyList(),
     /** Bumped whenever sprites change, so drawn sprites re-read the store. */
@@ -335,6 +405,21 @@ data class UiState(
     val outLabel: String get() = "TRANSFER OUT"
     val inLabel: String get() = "TRANSFER IN"
     val palette: GbPalette get() = GbPalette.fromId(paletteId)
+
+    /**
+     * The art download that is actually running, or null when none is.
+     *
+     * Whichever stage is in flight rather than a figure across all four sets:
+     * a first run fetches two of them, so a combined percentage would stop at
+     * half and look stuck. The header shows this, and every screen that draws
+     * a gap where a sprite should be reads [fetchingArt] to say "waiting"
+     * instead of "missing".
+     */
+    val artProgress: DownloadProgress?
+        get() = listOfNotNull(followerProgress, spriteProgress, trainerProgress)
+            .firstOrNull { !it.finished }
+
+    val fetchingArt: Boolean get() = artProgress != null
     val saves: List<RemoteSave> get() = account?.saves.orEmpty()
     fun remote(key: String?): RemoteSave? = saves.firstOrNull { it.key == key }
     fun save(key: String?): LoadedSave? = loaded[key]
@@ -352,7 +437,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val spriteDownloader = SpriteDownloader(sprites)
     private var spriteJob: Job? = null
     private val cries = CryStore(application)
-    private var cryJob: Job? = null
     val followers = FollowerStore(application)
     val trainers = TrainerStore(application)
     private var followerJob: Job? = null
@@ -366,6 +450,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val engine = TransferEngine(saves, storage, journal, ledger)
     private val itemStorage = ItemRepository(storageDir)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
+    private val mailEngine = MailEngine(saves)
+    val roms = RomStore(File(application.filesDir, "roms")).also { sprites.romStore = it }
 
     /** When the ball went up, so the result can wait for it to finish. */
     private var sceneStartedAt = 0L
@@ -439,7 +525,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     ?.copy(finished = true, error = said) ?: progress
             state.copy(
                 spriteProgress = stop(state.spriteProgress),
-                cryProgress = stop(state.cryProgress),
                 followerProgress = stop(state.followerProgress),
                 trainerProgress = stop(state.trainerProgress),
             )
@@ -463,7 +548,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         shownPercent = progress?.percent?.takeIf { !progress.finished } ?: -1
         if (progress == null || progress.finished) {
             val stillGoing = mutable.value.let {
-                listOfNotNull(it.spriteProgress, it.cryProgress, it.followerProgress, it.trainerProgress)
+                listOfNotNull(it.spriteProgress, it.followerProgress, it.trainerProgress)
                     .any { p -> !p.finished }
             }
             // DOWNLOAD ALL holds it up across all four stages. Between one
@@ -498,17 +583,28 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // wearing its own greens and browns beside them.
         trainers.gbcFollowsPalette = settings.gbcFollowsPalette
         applySpriteTint(GbPalette.fromId(settings.paletteId))
+        // Settled here rather than when the download starts, because the
+        // introduction is drawn before that: a first frame that found nothing
+        // waiting would let Bill open his mouth and then be overtaken by the
+        // bar a moment later.
+        val installedSprites = sprites.installedSets().sumOf { set -> sprites.countIn(set) }
+        val installedFollowers = followers.count()
+        val bareInstall = installedSprites == 0 && installedFollowers == 0
         mutable.update {
             it.copy(
+                openingProgress =
+                    if (bareInstall) DownloadProgress(0, 1) else DownloadProgress(0, 0, finished = true),
                 storage = storage.state(),
                 items = itemStorage.state(),
                 linked = credentials.isLinked,
                 showAllSaves = settings.showAllSaves,
                 showAllItems = settings.showAllItems,
+                gameSelection = settings.gameSelection,
                 paletteId = settings.paletteId,
                 windowsFollowPalette = settings.windowsFollowPalette,
                 windowsOnRight = settings.windowsOnRight,
                 billsPc = settings.billsPc,
+                tutorialSeen = settings.tutorialSeen,
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
@@ -522,7 +618,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
                 spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
-                criesInstalled = cries.count(),
                 followersInstalled = followers.count(),
                 trainersInstalled = trainers.count(),
             )
@@ -557,6 +652,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val current = mutable.value
         if (current.prompt != null) {
             mutable.update { it.copy(prompt = null) }
+            return true
+        }
+        // A list open over the PC is a window on it, and B closes the window
+        // it is standing in before it walks the stack — the same order the
+        // prompt above takes. Without this, backing out of DEPOSIT, WITHDRAW
+        // or the box left the machine altogether and said SEE YA! on the way,
+        // and a list that came up empty had no CANCEL row to close instead:
+        // "There are no POKéMON here." could only be answered by leaving.
+        if (current.screen == Screen.Storage && pcMode != PcMode.MENU) {
+            pcMode = PcMode.MENU
             return true
         }
         if (current.stack.size <= 1) return false
@@ -844,7 +949,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun selectSave(key: String, onReady: (String) -> Unit = {}) = viewModelScope.launch {
         val remote = mutable.value.remote(key) ?: return@launch message("THAT SAVE IS GONE.")
-        if (mutable.value.loaded[key] != null) {
+        // Cached is only good while it is at the revision the account
+        // reports. Any cache hit used to short-circuit this outright, so a
+        // cartridge read once early on — before anything was deposited into
+        // its in-game PC box, say — stayed that stale copy for the rest of
+        // the session: reselecting it never looked at the account again, so
+        // DEPOSIT went on reading boxes as they were at the first look,
+        // however long ago that was and however much has changed on the
+        // cartridge since. [loadAllSaves] already gets this right; this is
+        // the same check.
+        if (mutable.value.loaded[key]?.rev == remote.rev) {
             mutable.update { it.copy(activeSaveKey = key, prompt = null) }
             onReady(key)
             return@launch
@@ -881,13 +995,27 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * silently pointing at a playthrough the player has moved on from is worse
      * than asking again.
      */
-    fun chooseCart(key: String, thenOpenStorage: Boolean = false) = selectSave(key) {
+    fun chooseCart(
+        key: String,
+        thenOpenStorage: Boolean = false,
+        then: PcMode = PcMode.MENU,
+    ) = selectSave(key) {
         // Arriving at the PC with a card just inserted starts at its menu, the
-        // same as walking up to it does. See [pcMode].
-        if (thenOpenStorage) pcMode = PcMode.MENU
+        // same as walking up to it does — unless the card was asked for by
+        // something that was already underway, which opens on that instead.
+        // See [pcMode] and [Screen.ChooseCart.then].
+        if (thenOpenStorage) pcMode = then
         mutable.update { state ->
             val stack = state.stack.dropLastWhile { it is Screen.ChooseCart }
-            val next = if (thenOpenStorage) stack + Screen.Storage else stack
+            // The PC is where the card was asked for as often as not, and
+            // pushing a second copy of it over the first left the way out
+            // going nowhere: BACK said SEE YA! and landed on the PC again,
+            // so leaving took two goes and a goodbye that was not meant.
+            val next = when {
+                !thenOpenStorage -> stack
+                stack.lastOrNull() == Screen.Storage -> stack
+                else -> stack + Screen.Storage
+            }
             state.copy(stack = next.ifEmpty { listOf(Screen.Home) })
         }
     }
@@ -917,6 +1045,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      */
     fun setPalette(id: String) {
         val palette = GbPalette.fromId(id)
+        // The row this came from is already greyed out and unreachable by a
+        // cursor without the ROM its palette belongs to; this is the same
+        // rule enforced again in case anything else ever calls this.
+        val requiredRom = palette.requiredRom
+        if (requiredRom != null && !roms.has(requiredRom)) return
         settings.paletteId = palette.id
         applySpriteTint(palette)
         mutable.update { it.copy(paletteId = palette.id, spriteRevision = it.spriteRevision + 1) }
@@ -962,7 +1095,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun cardImage(uid: String): Bitmap? {
         val stored = storage.get(uid) ?: return null
         val sprite = stored.pokemon.speciesId
-            ?.let { sprites.load(it, stored.provenance.gameVersion) }
+            ?.let { sprites.load(it, stored.spriteGameVersionId) }
             ?.asAndroidBitmap()
         return runCatching {
             PokemonCardImage.render(
@@ -1037,21 +1170,63 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * reason it can be offered at all.
      */
     fun carryForward(uid: String) = viewModelScope.launch {
+        val current = mutable.value
         val stored = storage.get(uid)
         if (stored == null) {
             message("THAT POKéMON IS NOT IN THE PC.")
             return@launch
         }
         val name = stored.pokemon.displayName.uppercase()
-        mutable.update { it.copy(busy = true, prompt = null) }
-        val record = storage.carryForward(uid)
-        mutable.update { it.copy(busy = false, storage = storage.state()) }
+        // Whichever Generation II card is in the machine is the cartridge the
+        // player is playing, so it is the one this Pokemon is bound for and
+        // the one whose art it comes back wearing. Gold only when there is no
+        // Generation II card in at all, which is the old behaviour for
+        // everybody who never inserts one.
+        val into = current.save(current.activeSaveKey)?.save
+            ?.takeIf { it.isGen2 }
+            ?.let { current.remote(current.activeSaveKey)?.version?.id }
+            ?: GameVersion.GOLD.id
+        val intoLabel = GameVersion.fromId(into)?.label ?: GameVersion.GOLD.label
+
+        // The cartridges never gave the Time Capsule an animation of its own —
+        // crossing over was the ordinary link-trade sequence, the same cable
+        // and the same ball any other trade used, just with a cartridge on
+        // each end that spoke a different generation. This app is both ends of
+        // that cable already (see [tradeEvolve]), so the same scene draws it:
+        // Generation I's picture of the Pokémon going out, Generation II's
+        // coming back — nothing evolved, only the art it left in changed.
+        if (current.tradeAnimation && current.moves(Motion.TRADE)) {
+            val fromSpecies = stored.pokemon.speciesId
+            val toSpecies = fromSpecies?.let { Gen2Data.idOf(it) }
+            mutable.update {
+                it.copy(
+                    busy = true,
+                    prompt = null,
+                    evolutionScene = EvolutionScene(
+                        fromSpeciesId = fromSpecies,
+                        toSpeciesId = toSpecies,
+                        name = name,
+                        gameVersionId = stored.spriteGameVersionId,
+                        toGameVersionId = into,
+                        toDexNumber = Gen2Data.species(toSpecies)?.dexNumber,
+                        captionWhile = "$name IS GOING",
+                        captionAfter = "$name CAME THROUGH!",
+                    ),
+                )
+            }
+            delay(EVOLUTION_SCENE_MILLIS)
+        } else {
+            mutable.update { it.copy(busy = true, prompt = null) }
+        }
+
+        val record = storage.carryForward(uid, gameVersion = into)
+        mutable.update { it.copy(busy = false, evolutionScene = null, storage = storage.state()) }
         if (record == null) {
             message("$name COULD NOT GO ON.")
             return@launch
         }
         val lines = buildList {
-            add("$name came through to GOLD.")
+            add("$name came through to $intoLabel.")
             record.heldItem?.let { add("It is holding ${itemLabel(it)}.") }
         }
         mutable.update { it.copy(prompt = Prompt.Message(lines)) }
@@ -1059,7 +1234,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun tradeCandidates(): List<StoredPokemon> =
         mutable.value.storage.boxes.flatMap { it.contents }
-            .filter { Gen1TradeEvolution.evolves(it.pokemon.speciesId) }
+            .filter { tradeEvolves(it.pokemon) }
 
     /**
      * Trades a stored Pokémon with the machine, so that it evolves.
@@ -1077,7 +1252,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             return@launch
         }
         val from = stored.pokemon.speciesId
-        val to = Gen1TradeEvolution.evolutionOf(from)
+        val generation = stored.pokemon.generation
+        val to = tradeEvolutionOf(stored.pokemon)
         if (to == null) {
             message("${stored.pokemon.displayName.uppercase()} WOULD NOT CHANGE.")
             return@launch
@@ -1093,8 +1269,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         fromSpeciesId = from,
                         toSpeciesId = to,
                         name = name,
-                        gameVersionId = stored.provenance.gameVersion,
-                        toDexNumber = Gen1Data.species(to)?.dexNumber,
+                        gameVersionId = stored.spriteGameVersionId,
+                        toDexNumber = if (generation >= 2) Gen2Data.species(to)?.dexNumber
+                        else Gen1Data.species(to)?.dexNumber,
                     ),
                 )
             }
@@ -1110,7 +1287,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         if (became == null) {
             message("NOTHING HAPPENED.")
         } else {
-            message("$name evolved into ${Gen1Data.speciesName(became).uppercase()}!")
+            message("$name evolved into ${tradeEvolutionName(became, generation).uppercase()}!")
         }
     }
 
@@ -1132,7 +1309,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private fun noteEvolvable(uid: String?) {
         if (uid == null || !mutable.value.tradeEvolution) return
         val stored = storage.get(uid) ?: return
-        if (Gen1TradeEvolution.evolves(stored.pokemon.speciesId)) wantsEvolving = wantsEvolving + uid
+        if (tradeEvolves(stored.pokemon)) wantsEvolving = wantsEvolving + uid
     }
 
     /**
@@ -1153,7 +1330,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             val uid = wantsEvolving.first()
             wantsEvolving = wantsEvolving.drop(1)
             val stored = storage.get(uid) ?: continue
-            if (!Gen1TradeEvolution.evolves(stored.pokemon.speciesId)) continue
+            if (!tradeEvolves(stored.pokemon)) continue
             val name = stored.pokemon.displayName.uppercase()
             mutable.update {
                 it.copy(
@@ -1180,6 +1357,41 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun setBillsPc(on: Boolean) {
         settings.billsPc = on
         mutable.update { it.copy(billsPc = on) }
+    }
+
+    /**
+     * The introduction is over, and stays over.
+     *
+     * Written to disk rather than held in memory: the whole point of it is
+     * that a second run opens straight onto the menu.
+     */
+    fun finishTutorial() {
+        settings.tutorialSeen = true
+        mutable.update { it.copy(tutorialSeen = true) }
+    }
+
+    /**
+     * Which cartridges are not on the device, by name.
+     *
+     * For the introduction, which says so in a sentence rather than leaving a
+     * window of lists over what somebody is trying to read.
+     */
+    fun romsStillMissing(): List<String> =
+        RomVersion.entries.filterNot { roms.has(it) }.map { it.label }
+
+    /**
+     * OPTIONS asking for it again.
+     *
+     * Back out to the main menu on the way, because the introduction is drawn
+     * where a screen is drawn: left where it was, finishing it would drop the
+     * player back into the OPTIONS drawer they started it from, which is the
+     * one place a tour of the machine should not end.
+     */
+    fun replayTutorial() {
+        settings.tutorialSeen = false
+        mutable.update {
+            it.copy(tutorialSeen = false, prompt = null, stack = listOf(Screen.Home))
+        }
     }
 
     /** Takes the next speed round, which is how the games' own row works. */
@@ -1251,6 +1463,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         if (enabled) loadAllSaves()
     }
 
+    /** Whether the shelf of games stands over the cards. See [AppSettings.gameSelection]. */
+    fun setGameSelection(enabled: Boolean) {
+        settings.gameSelection = enabled
+        mutable.update { it.copy(gameSelection = enabled) }
+    }
+
     fun loadAllSaves() = viewModelScope.launch {
         if (mutable.value.loadingAll) return@launch
         val held = mutable.value.loaded
@@ -1282,12 +1500,33 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * Downloads the Generation I front sprites. Progress is reported after
      * every file so the bar moves steadily rather than in jumps.
      */
+    /**
+     * The sets still worth fetching: every one this app downloads by default,
+     * less any a ROM on this device already draws.
+     *
+     * Importing a cartridge is how a player stops downloading art. The sprite
+     * store asks the ROM before it asks the sprite folder, so a downloaded
+     * copy of a set the ROM covers is a few hundred files fetched to sit on
+     * disk unread. See [RomStore.covers].
+     */
+    private fun setsWorthFetching(): List<SpriteSet> =
+        SpriteSet.downloadable.filterNot { roms.covers(it.id) }
+
     fun downloadSprites() {
         if (spriteJob?.isActive == true) return
         spriteJob = downloadStage("SPRITES") {
             mutable.update { it.copy(prompt = null, spriteProgress = DownloadProgress(0, 1)) }
+            val wanted = setsWorthFetching()
+            if (wanted.isEmpty()) {
+                // Every set is coming out of a cartridge, so there is nothing
+                // to fetch and nothing to report but a finished bar.
+                mutable.update { state ->
+                    state.copy(spriteProgress = DownloadProgress(0, 0, finished = true))
+                }
+                return@downloadStage
+            }
             val result = runCatching {
-                spriteDownloader.download(SpriteSet.downloadable) { progress ->
+                spriteDownloader.download(wanted) { progress ->
                     mutable.update { it.copy(spriteProgress = progress) }
                     showDownload("SPRITES", progress)
                 }
@@ -1343,41 +1582,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * none of them ship here and the player fetches the set once rather than
      * waiting on one at a time as each Pokémon is opened.
      */
-    fun downloadCries() {
-        if (cryJob?.isActive == true) return
-        cryJob = downloadStage("CRIES") {
-            mutable.update { it.copy(prompt = null, cryProgress = DownloadProgress(0, 1)) }
-            val result = runCatching {
-                cries.downloadAll { progress ->
-                    mutable.update { it.copy(cryProgress = progress) }
-                    showDownload("CRIES", progress)
-                }
-            }
-            mutable.update { state ->
-                state.copy(
-                    criesInstalled = cries.count(),
-                    cryProgress = result.getOrNull()
-                        ?: DownloadProgress(0, 0, finished = true, error = result.exceptionOrNull()?.message),
-                )
-            }
-        }
-    }
-
-    fun cancelCryDownload() {
-        cryJob?.cancel()
-        cryJob = null
-        DownloadService.hide(getApplication())
-        mutable.update { it.copy(cryProgress = null, criesInstalled = cries.count()) }
-    }
-
-    fun dismissCryProgress() = mutable.update { it.copy(cryProgress = null) }
+    /**
+     * What the cries cost on disk, which is a cache of this app's own
+     * rendering rather than anything it fetched. See [CryStore].
+     */
+    fun cryBytesOnDisk(): Long = cries.bytesOnDisk()
 
     fun deleteCries() {
         cries.clear()
-        mutable.update { it.copy(criesInstalled = 0, prompt = null) }
+        mutable.update { it.copy(prompt = null) }
     }
-
-    fun cryBytesOnDisk(): Long = cries.bytesOnDisk()
 
     // ------- followers
 
@@ -1430,10 +1644,23 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     // ------- trainers
 
     /** Downloads the trainer battle sprites a trainer card's portrait uses. */
-    fun downloadTrainers() {
+    /**
+     * @param dismissPrompt Clears whatever prompt is up when the download
+     * starts - right for the menu row that asks "download everything?" and
+     * wrong for the TRAINER picker's own quiet catch-up fetch, which is
+     * itself a prompt: left at its default this closed the very picker that
+     * triggered it the instant a tap opened it, which read as the app
+     * crashing rather than as a fetch starting behind it.
+     */
+    fun downloadTrainers(dismissPrompt: Boolean = true) {
         if (trainerJob?.isActive == true) return
         trainerJob = downloadStage("TRAINERS") {
-            mutable.update { it.copy(prompt = null, trainerProgress = DownloadProgress(0, 1)) }
+            mutable.update {
+                it.copy(
+                    prompt = if (dismissPrompt) null else it.prompt,
+                    trainerProgress = DownloadProgress(0, 1),
+                )
+            }
             val result = runCatching {
                 trainers.downloadAll { progress ->
                     mutable.update { it.copy(trainerProgress = progress) }
@@ -1517,6 +1744,107 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * and each report a percentage that stalls while the others have the
      * line. In order, each one's bar means what it says.
      */
+    /**
+     * What a brand new install fetches for itself, unasked and in the
+     * background.
+     *
+     * Two of the four sets, not all of them. These are the two every screen
+     * is drawn out of — the box is made of followers and everything else is
+     * made of front sprites — so without them the app opens onto a grid of
+     * bracketed question marks. The cries and the trainer art are additions
+     * rather than the furniture, and stay in OPTIONS where someone can decide
+     * to spend the bytes on them.
+     *
+     * Followers first, because the box is the screen a player is most likely
+     * to be looking at while the rest of it lands.
+     */
+    fun downloadFirstRun() {
+        downloadStage("FIRST RUN") {
+            holdingDownloadService = true
+            try {
+                fetchTheHandfulFirst()
+                downloadFollowers()
+                followerJob?.join()
+                downloadSprites()
+                spriteJob?.join()
+                // Left out of a first run before now, which is why a trainer
+                // card's TRAINER picker came up a column of blank rows for
+                // anyone who had never gone looking for DOWNLOAD ALL in
+                // OPTIONS: every Pokémon this app draws is fetched up front,
+                // and a trainer is the same kind of art.
+                downloadTrainers()
+                trainerJob?.join()
+            } finally {
+                holdingDownloadService = false
+                runCatching { DownloadService.hide(getApplication()) }
+            }
+        }
+    }
+
+    /**
+     * The dozen the introduction is about to put on screen, ahead of the rest.
+     *
+     * Two hundred and fifty followers and fifteen hundred sprites do not
+     * arrive in the twenty seconds it takes to be shown round the app, and
+     * the archive is fetched in whatever order the list happens to be in — so
+     * without this the trainer card, the transfer and the box all came up as
+     * bracketed question marks on the one run where a new player is looking
+     * hardest. Naming the handful first costs a couple of seconds and about
+     * thirty files, and every one of them is a file the full run would have
+     * fetched anyway: it skips what is already on disk, so nothing is
+     * downloaded twice.
+     *
+     * This is the one fetch anybody watches, and [UiState.openingProgress] is
+     * it: nought to a hundred across both halves — the followers, then the
+     * fronts — so the bar means "the introduction is nearly ready" rather than
+     * "some proportion of an archive". It finishes whatever happens, a dead
+     * network included, because a tour held behind a download that is never
+     * coming is an app that does not open.
+     */
+    private suspend fun fetchTheHandfulFirst() {
+        fun report(percent: Int) = mutable.update {
+            it.copy(openingProgress = DownloadProgress(percent.coerceIn(0, 100), 100))
+        }
+        // Half the bar each. The second half is the one that can be empty —
+        // a cartridge on the device covers its own fronts — and a half that
+        // has nothing to do simply passes through.
+        fun half(from: Int, progress: DownloadProgress) {
+            val share = if (progress.total <= 0) 50 else (progress.done * 50) / progress.total
+            report(from + share)
+        }
+        try {
+            report(0)
+            runCatching { followers.downloadAll(TutorialSamples.DEX_NUMBERS) { half(0, it) } }
+            report(50)
+            setsWorthFetching().takeIf { it.isNotEmpty() }?.let { sets ->
+                runCatching { spriteDownloader.download(sets, TutorialSamples.SPECIES) { half(50, it) } }
+            }
+            // The player's own trainer card art, ahead of the tutorial that puts
+            // one on screen. [TrainerStore.load] only ever reads what is
+            // already on disk — nothing is there yet on a bare install — so
+            // this has to be [TrainerStore.fetch], which pulls the file from
+            // pokered (or pokecrystal, for the Generation II pics) the same
+            // way [downloadTrainers] does for the rest of the set.
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    trainers.fetch(TrainerStore.PLAYER)
+                    trainers.fetch(TrainerStore.GEN2_PLAYER_MALE)
+                    trainers.fetch(TrainerStore.GEN2_PLAYER_FEMALE)
+                }
+            }
+        } finally {
+            mutable.update {
+                it.copy(
+                    followersInstalled = followers.count(),
+                    spritesInstalled = sprites.installedSets().sumOf { set -> sprites.countIn(set) },
+                    trainersInstalled = trainers.count(),
+                    spriteRevision = it.spriteRevision + 1,
+                    openingProgress = DownloadProgress(100, 100, finished = true),
+                )
+            }
+        }
+    }
+
     fun downloadEverything() {
         // Each stage in turn, and every one of them attempted: a set that
         // fails is a gap in the art, not a reason to leave the three after it
@@ -1527,8 +1855,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             try {
                 downloadSprites()
                 spriteJob?.join()
-                downloadCries()
-                cryJob?.join()
                 downloadFollowers()
                 followerJob?.join()
                 downloadTrainers()
@@ -1548,13 +1874,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     // the art is not a choice worth offering. So everything below reads the
     // four as one download.
 
+    /** How many files this device still has any reason to fetch. */
+    private fun downloadTotal(): Int = downloadTotalFor(setsWorthFetching())
+
     /** Everything already fetched, as a share of everything there is. */
     fun downloadedPercent(): Int {
         val have = mutable.value.let {
-            it.spritesInstalled + it.criesInstalled + it.followersInstalled + it.trainersInstalled
+            it.spritesInstalled + it.followersInstalled + it.trainersInstalled
         }
-        return if (DOWNLOAD_TOTAL <= 0) 0
-        else ((have.coerceAtMost(DOWNLOAD_TOTAL) * 100) / DOWNLOAD_TOTAL)
+        val total = downloadTotal()
+        return if (total <= 0) 0 else ((have.coerceAtMost(total) * 100) / total)
     }
 
     /** How far the download in flight has got, or null when none is. */
@@ -1562,7 +1891,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val current = mutable.value
         val all = listOfNotNull(
             current.spriteProgress,
-            current.cryProgress,
             current.followerProgress,
             current.trainerProgress,
         )
@@ -1579,13 +1907,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // running reports each file as it lands, and the three not running
         // report what is already here.
         val done = maxOf(current.spritesInstalled, current.spriteProgress?.done ?: 0) +
-            maxOf(current.criesInstalled, current.cryProgress?.done ?: 0) +
             maxOf(current.followersInstalled, current.followerProgress?.done ?: 0) +
             maxOf(current.trainersInstalled, current.trainerProgress?.done ?: 0)
         val running = all.any { !it.finished }
         return DownloadProgress(
-            done = done.coerceAtMost(DOWNLOAD_TOTAL),
-            total = DOWNLOAD_TOTAL,
+            done = done.coerceAtMost(downloadTotal()),
+            total = downloadTotal(),
             failed = all.sumOf { it.failed },
             finished = !running,
             error = all.firstNotNullOfOrNull { it.error },
@@ -1593,12 +1920,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun downloadBytesOnDisk(): Long =
-        sprites.bytesOnDisk() + cries.bytesOnDisk() +
-            followers.bytesOnDisk() + trainers.bytesOnDisk()
+        sprites.bytesOnDisk() + followers.bytesOnDisk() + trainers.bytesOnDisk() +
+            // The cries are this app's own renders rather than a download, but
+            // they are still bytes in its folder and DELETE should take them.
+            cries.bytesOnDisk()
 
     fun cancelDownload() {
         cancelSpriteDownload()
-        cancelCryDownload()
         cancelFollowerDownload()
         cancelTrainerDownload()
     }
@@ -1606,7 +1934,6 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     fun dismissDownloadProgress() = mutable.update {
         it.copy(
             spriteProgress = null,
-            cryProgress = null,
             followerProgress = null,
             trainerProgress = null,
         )
@@ -1617,6 +1944,56 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         deleteCries()
         deleteFollowers()
         deleteTrainers()
+    }
+
+    // ------- ROMs
+
+    /**
+     * Saves [bytes] as [version]'s own ROM, once [RomStore.import] has
+     * confirmed it really is one. Returns whether it was — a file this app
+     * cannot find its own data inside is never kept, and never mistaken for
+     * a reason to blame the player's copy.
+     */
+    fun importRom(version: RomVersion, bytes: ByteArray): Boolean {
+        val accepted = roms.import(version, bytes)
+        // A ROM changes what a sprite decodes to, the same as a download
+        // finishing does, so it rides the same cache-busting revision.
+        mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+        message(
+            if (accepted) "${version.label} IS IN."
+            else "THAT DOES NOT LOOK LIKE A ${version.label} ROM."
+        )
+        return accepted
+    }
+
+    fun deleteRom(version: RomVersion) {
+        roms.delete(version)
+        mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+    }
+
+    /**
+     * Imports every ROM [RomFolderImporter] can find and name under
+     * [treeUri], a folder the player picked with the system's own chooser
+     * rather than one file at a time.
+     *
+     * Returns the [Job] doing the work, for a caller that has to know when it
+     * is actually done rather than only that it was asked for — the
+     * introduction's own ROMS beat reports what turned up, and reporting it
+     * before the import has run would just be reading last run's answer.
+     */
+    fun importRomsFolder(treeUri: Uri): Job {
+        mutable.update { it.copy(busy = true) }
+        return downloadStage("ROMS") {
+            com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)
+            mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+            // Nothing is said about it here. A window listing what turned up
+            // landed over whatever was on screen, which during the
+            // introduction meant a window over Bill mid-sentence; and the
+            // ROMS drawer already names every cartridge on the device, a row
+            // each, for anyone who wants the list. The introduction reports
+            // it in his own words instead: see [Gen1Tutorial.romsFound].
+            mutable.update { it.copy(busy = false) }
+        }
     }
 
     // ------- export and import
@@ -1754,7 +2131,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     transferScene = lead?.let { stored ->
                         TransferScene(
                             speciesId = stored.pokemon.speciesId,
-                            gameVersionId = stored.provenance.gameVersion,
+                            gameVersionId = stored.spriteGameVersionId,
                             name = if (uids.size == 1) stored.pokemon.displayName.uppercase()
                             else "${uids.size} POKéMON",
                             destination = loaded.save?.trainerName?.uppercase() ?: "THE SAVE",
@@ -2161,7 +2538,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 transferScene = stored?.let { gone ->
                     TransferScene(
                         speciesId = gone.pokemon.speciesId,
-                        gameVersionId = gone.provenance.gameVersion,
+                        gameVersionId = gone.spriteGameVersionId,
                         name = name,
                         destination = "",
                         motion = TransferMotion.RELEASE,
@@ -2288,6 +2665,43 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // ------- mail
+
+    /**
+     * `SEND MAIL TO PC`: the way past the deposit refusal for a Pokémon
+     * holding mail. Same shape as [transferItem] — the save is re-read,
+     * the engine checks it is still the save this screen was looking at,
+     * and the result closes the same way any other transfer does.
+     */
+    fun sendMailToPc(key: String, partySlot: Int) {
+        if (mutable.value.save(key) == null) return message("OPEN THE SAVE FIRST.")
+        viewModelScope.launch {
+            mutable.update { it.copy(busy = true, prompt = null) }
+            val loaded = freshSave(key)
+            if (loaded == null) {
+                mutable.update { it.copy(busy = false) }
+                return@launch message("THE SAVE COULD NOT BE READ.")
+            }
+            val result = runTransfer { mailEngine.sendToPc(loaded, partySlot) }
+            finish(result, key)
+        }
+    }
+
+    /** `ATTACH MAIL`: a MAILBOX letter onto a chosen party Pokémon. */
+    fun attachMailFromBox(key: String, mailboxIndex: Int, partySlot: Int) {
+        if (mutable.value.save(key) == null) return message("OPEN THE SAVE FIRST.")
+        viewModelScope.launch {
+            mutable.update { it.copy(busy = true, prompt = null) }
+            val loaded = freshSave(key)
+            if (loaded == null) {
+                mutable.update { it.copy(busy = false) }
+                return@launch message("THE SAVE COULD NOT BE READ.")
+            }
+            val result = runTransfer { mailEngine.attachFromMailbox(loaded, mailboxIndex, partySlot) }
+            finish(result, key)
+        }
+    }
+
     /**
      * Takes what a stored Pokémon is carrying and puts it in this app's PC.
      *
@@ -2302,12 +2716,12 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             message("IT IS NOT HOLDING ANYTHING.")
             return
         }
-        if (itemStorage.add(item, 1) <= 0) {
+        if (itemStorage.add(item, 1, stored.generation) <= 0) {
             message("THERE IS NO ROOM FOR IT.")
             return
         }
         if (storage.takeHeldItem(uid) == null) {
-            itemStorage.remove(item, 1)
+            itemStorage.remove(item, 1, stored.generation)
             message("IT IS NOT HOLDING ANYTHING.")
             return
         }
@@ -2360,9 +2774,58 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Linked: ${current.linked}")
             appendLine("Saves on the account: ${current.saves.size}")
-            appendLine("Stored Pokemon: ${current.storage.total}")
+            appendLine("Stored Pokémon: ${current.storage.total}")
             appendLine("Local backups: ${localBackups().size}")
             appendLine("Pending transfer: ${pendingTransferSummary() ?: "none"}")
+            appendLine()
+            appendLine("### ROMs imported")
+            com.logie.gen1storage.rom.RomVersion.entries.forEach { version ->
+                appendLine("- ${version.id}: ${if (roms.has(version)) "present" else "-"}")
+            }
+            appendLine()
+            appendLine("### Trainer cards")
+            // The cards themselves, and the two pictures each one draws: the
+            // trainer it wears and the lead Pokemon standing with them. The
+            // lead is the one nothing else in this report covers — it is not
+            // in the PC, it is in the save's own party, and it is asked for
+            // under the card's own game rather than under wherever a stored
+            // Pokemon came from. A card whose lead comes out wrong is being
+            // reported here or nowhere.
+            current.saves.forEach { remote ->
+                val save = current.save(remote.key)?.save
+                val named = cartName(remote.key)?.uppercase()
+                    ?: remote.summary.trainerName?.uppercase()
+                    ?: "?"
+                appendLine(
+                    "- $named (${remote.version.id}, gen ${remote.version.generation}): " +
+                        if (save == null) "save not read yet" else "save read"
+                )
+                appendLine("  wears: ${trainerSprite(remote.key) ?: "the game's own player"}")
+                val lead = save?.party?.firstOrNull()
+                val leadId = lead?.spriteSpeciesId()
+                appendLine(
+                    "  lead: " + when {
+                        save == null -> "unknown until the save is read"
+                        lead == null -> "none in the party"
+                        leadId == null -> "no species id"
+                        else -> "$leadId -> ${sprites.sourceOf(leadId, remote.version.id)}"
+                    }
+                )
+            }
+            appendLine()
+            appendLine("### Where the sprites come from")
+            // Every Pokemon actually in the PC, named with the cartridge its
+            // art is being drawn from and what that source gave back. A
+            // garbled sprite is a decode that went wrong somewhere between a
+            // ROM and the screen, and this is the only place that says which
+            // ROM was even asked.
+            current.storage.boxes.flatMap { it.contents }.take(SPRITE_REPORT_LIMIT)
+                .forEach { stored ->
+                    val id = stored.pokemon.spriteSpeciesId()
+                    val from = stored.spriteGameVersionId
+                    appendLine("- ${id ?: "?"} (gen ${stored.generation}, art $from): " +
+                        (id?.let { sprites.sourceOf(it, from) } ?: "no species id"))
+                }
             appendLine()
             appendLine("### Account")
             current.diagnostics.forEach { appendLine("- $it") }
@@ -2386,27 +2849,39 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 appendLine("```")
             }
             appendLine()
-            appendLine("No sync codes, account id, device token, Pokemon data,")
+            appendLine("No sync codes, account id, device token, Pokémon data,")
             appendLine("trainer names or save contents are included.")
         }.take(12000)
     }
 }
 
 /** Where the last download failure is kept, for the report under ABOUT. */
+/** How many stored Pokémon the debug report names a sprite source for. */
+private const val SPRITE_REPORT_LIMIT = 40
+
 private const val DOWNLOAD_FAILURE_FILE = "last-download-failure.txt"
 
 /**
- * Every file the download fetches, counted once.
+ * Every file the download fetches, counted once, for a given list of sprite
+ * sets.
  *
- * The sprite sets, the cries, the follower sheets, and the trainers with the
- * sheets that come down beside them.
+ * The sprite sets, the follower sheets, and the trainers with the sheets that
+ * come down beside them. Not the cries: they are rendered on the device out of
+ * tables that ship in the APK, so there is nothing to fetch. See [CrySynth].
+ *
+ * Takes the sets rather than assuming all of them, because a ROM on the
+ * device takes its own set out of the download entirely. Counted with the
+ * rest of it fixed: a player who has imported every cartridge still has the
+ * cries, the followers and the trainer art to fetch, and the bar should
+ * reach a hundred when those land rather than stopping at the share the
+ * sprites would have been.
  */
-private val DOWNLOAD_TOTAL: Int =
+private fun downloadTotalFor(sets: List<SpriteSet>): Int =
     // Each set over the species its own generation has — 151 for the
     // Generation I sets, 251 for Gold, Silver and Crystal — and, once, the
     // shiny colours the three Generation II sets share.
-    SpriteSet.downloadable.sumOf { if (it.generation == 2) Gen2Data.SPECIES_COUNT else 151 } +
-        (if (SpriteSet.downloadable.any { it.generation == 2 }) Gen2Data.SPECIES_COUNT else 0) +
-        CryStore.LAST_CRY + FollowerStore.LAST_SHEET +
+    sets.sumOf { if (it.generation == 2) Gen2Data.SPECIES_COUNT else 151 } +
+        (if (sets.any { it.generation == 2 }) Gen2Data.SPECIES_COUNT else 0) +
+        FollowerStore.LAST_SHEET +
         TrainerStore.ALL.size + TrainerStore.EXTRA_ART.size + TrainerStore.GEN2_ART.size +
         TrainerStore.GEN2_TRAINER_IDS.size

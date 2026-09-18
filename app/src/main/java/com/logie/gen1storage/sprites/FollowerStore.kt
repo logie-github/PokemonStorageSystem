@@ -75,14 +75,28 @@ class FollowerStore(private val directory: File) {
         memory[key]?.let { return it }
 
         val source = file(dexNumber).takeIf { it.isFile } ?: return null
+        val bytes = runCatching { source.readBytes() }.getOrNull()
+        if (bytes == null || !isCompletePng(bytes)) {
+            // fetch() treats "the file exists" as "already have it" and
+            // never re-checks completeness, so a sheet cached from before a
+            // download was made to reject a short read stayed exactly this
+            // broken forever. Deleted here so the next fetch actually
+            // replaces it instead of skipping it as done.
+            source.delete()
+            return null
+        }
         val sheet = runCatching {
-            BitmapFactory.decodeFile(source.path, BitmapFactory.Options().apply {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
                 inScaled = false
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             })
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: run {
+            source.delete()
+            return null
+        }
         if (sheet.width != SIZE || sheet.height != SIZE * FRAMES) {
             sheet.recycle()
+            source.delete()
             return null
         }
 
@@ -109,8 +123,20 @@ class FollowerStore(private val directory: File) {
         // Left connected on purpose: see the note in CryStore.fetch — a
         // disconnect here costs the next file a whole handshake.
         if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-        val bytes = connection.inputStream.use { it.readBytes() }
+        val bytes = runCatching { connection.inputStream.use { it.readBytes() } }.getOrNull()
+            ?: return null
         if (bytes.isEmpty()) return null
+        // A dropped connection does not always throw — see the same note in
+        // SpriteDownloader.read and TrainerStore.fetch. The sheet's bounds
+        // sit near the front of the file and decode fine long before the
+        // pixel data runs out, so a truncated download used to pass the
+        // check below and land on disk looking complete.
+        val expectedLength = connection.contentLengthLong
+        if (expectedLength > 0 && bytes.size.toLong() != expectedLength) return null
+        // Content-Length is not always sent (chunked responses carry none at
+        // all), so the file's own structure is checked too: an IEND-less tail
+        // means the transfer was cut short regardless of what the header said.
+        if (!isCompletePng(bytes)) return null
 
         // Confirm it decodes to the sheet this expects before it lands, so a
         // proxy's error page cannot sit on disk looking like a Pokémon.
@@ -128,14 +154,25 @@ class FollowerStore(private val directory: File) {
         return target
     }
 
-    /** Fetches every sheet that is not already here, reporting after each. */
-    suspend fun downloadAll(onProgress: (DownloadProgress) -> Unit): DownloadProgress =
-        withContext(Dispatchers.IO) {
-            onProgress(DownloadProgress(0, LAST_SHEET))
-            val failed = fetchInParallel(1..LAST_SHEET, LAST_SHEET, onProgress) { fetch(it) }
-            memory.clear()
-            DownloadProgress(LAST_SHEET, LAST_SHEET, failed, finished = true).also(onProgress)
-        }
+    /**
+     * Fetches sheets that are not already here, reporting after each.
+     *
+     * [sheets] is every one the pack has unless a caller names fewer — which
+     * the first launch does, for the dozen the introduction is about to draw,
+     * so that handful is on disk in seconds instead of behind two hundred and
+     * fifty others. See [com.logie.gen1storage.ui.StorageViewModel.downloadFirstRun].
+     */
+    suspend fun downloadAll(
+        sheets: Iterable<Int> = 1..LAST_SHEET,
+        onProgress: (DownloadProgress) -> Unit,
+    ): DownloadProgress = withContext(Dispatchers.IO) {
+        val wanted = sheets.filter { it in 1..LAST_SHEET }.distinct()
+        val total = wanted.size
+        onProgress(DownloadProgress(0, total))
+        val failed = fetchInParallel(wanted, total, onProgress) { fetch(it) }
+        memory.clear()
+        DownloadProgress(total, total, failed, finished = true).also(onProgress)
+    }
 
     companion object {
         /** One frame's side, in real pixels. */

@@ -90,3 +90,20 @@ suspend fun LazyListState.scrollToRow(index: Int) {
 fun Gen1NoOverscroll(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalOverscrollFactory provides null, content = content)
 }
+
+/**
+ * Whether art is still arriving, for the places that draw a gap where a
+ * sprite should be.
+ *
+ * Snapshot state on an object rather than a parameter, for the same reason
+ * [Gen1Motion] is: the things that need it are a box cell and a sprite
+ * placeholder buried under half a dozen composables, and threading a download
+ * flag through every one of them to reach them would be worse than the flag.
+ *
+ * It is the difference between "there is no art for this" and "the art has
+ * not landed yet", which look identical on screen and mean opposite things:
+ * one is a gap to report and the other is a wait.
+ */
+object Gen1Loading {
+    var fetching by mutableStateOf(false)
+}

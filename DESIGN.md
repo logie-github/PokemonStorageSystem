@@ -34,7 +34,7 @@ Everything else follows from it:
   and the entry is written to `released.lua.log` before it goes. Nothing in the
   app reads that log back; it exists so the action is undoable by hand.
 - **A failed parse is never a licence to rewrite.** Unreadable saves are
-  classified — malformed, incomplete, wrong generation, unsupported, read-only,
+  classified — malformed, incomplete, unsupported, inaccessible,
   readable-only-from-backup — and left as they are.
 
 ## How it matches Gen1Recomp

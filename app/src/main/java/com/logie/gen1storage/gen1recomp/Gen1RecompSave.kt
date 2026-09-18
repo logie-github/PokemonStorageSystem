@@ -11,16 +11,16 @@ import com.logie.gen1storage.lua.asTable
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stats
+import com.logie.gen1storage.pokemon.Gen2Mail
 
 /**
  * The games this app knows.
  *
- * The Generation I three are the ones it can *change*: everything that writes
- * a save refuses anything else, and [generation] is the flag it refuses on.
- * The Generation II three are here to be read — listed on the shelf, opened
- * as a trainer card, their boxes looked through — because a player with a
- * Gold save on the same account should see it rather than be told their
- * account has something in it this app will not name.
+ * All six are writable, Generation II's three included — see [isWritable].
+ * What still tells them apart is [generation]: a Pokémon only ever goes into
+ * a cartridge of its own generation (see [TransferEngine]), items keep their
+ * own table per generation (see [Gen1RecompSave.itemGeneration]), and moving
+ * one forward at all is the Time Capsule's job and nobody else's.
  */
 enum class GameVersion(
     val id: String,
@@ -275,11 +275,14 @@ class Gen1RecompSave(val root: LuaValue.Table) {
 
     // ------- items
 
+    /** Which generation's item vocabulary this save's own stacks are named in. */
+    private val itemGeneration: Int get() = if (isGen2) 2 else 1
+
     /** The bag the player is carrying, badges left out of it. */
-    val bag: List<ItemStack> get() = Gen1Items.read(root["inventory"].asTable())
+    val bag: List<ItemStack> get() = Gen1Items.read(root["inventory"].asTable(), itemGeneration)
 
     /** The PC in the player's bedroom, which is what this app talks to. */
-    val pcItems: List<ItemStack> get() = Gen1Items.read(root["pcItems"].asTable())
+    val pcItems: List<ItemStack> get() = Gen1Items.read(root["pcItems"].asTable(), itemGeneration)
 
     /** The PC's item table, made if the save has never had one. */
     fun ensurePcItems(): LuaValue.Table =
@@ -398,6 +401,12 @@ class Gen1RecompSave(val root: LuaValue.Table) {
         if (index !in 1..list.size) return null
         val removed = list.removeAt(index - 1)
         table.setArray(list)
+        // `RemoveMonFromPartyOrBox`'s "Mail time!" tail. A Generation II
+        // save keeps its letters in six structs indexed by party slot, not on
+        // the Pokemon, so taking one out of slot 2 has to move slots 3 to 6
+        // up behind it. Left alone, the next Pokemon along inherits somebody
+        // else's letter. See [Gen2Mail].
+        if (isGen2) Gen2Mail.removePartySlot(root, index)
         return removed.asTable()
     }
 

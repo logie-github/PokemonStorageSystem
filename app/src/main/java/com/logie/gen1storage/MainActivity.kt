@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -46,14 +47,17 @@ import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
+import com.logie.gen1storage.ui.Gen1TextSmall
 import com.logie.gen1storage.ui.Gen1Theme
 import com.logie.gen1storage.ui.LocalGen1Narrow
 import com.logie.gen1storage.ui.Gen1Typing
 import com.logie.gen1storage.ui.Gen1Haptics
+import com.logie.gen1storage.ui.Gen1Loading
 import com.logie.gen1storage.ui.Gen1Motion
 import com.logie.gen1storage.ui.Gen1NoOverscroll
 import com.logie.gen1storage.ui.rememberConfirmTick
 import com.logie.gen1storage.ui.rememberCursorTick
+import com.logie.gen1storage.ui.Gen1Tutorial
 import com.logie.gen1storage.ui.Gen1EvolutionScene
 import com.logie.gen1storage.ui.DexEntryScreen
 import com.logie.gen1storage.ui.DexStatsScreen
@@ -79,6 +83,7 @@ import com.logie.gen1storage.ui.LocalGen1WindowBounds
 import com.logie.gen1storage.ui.LinkScreen
 import com.logie.gen1storage.ui.Gen1TransferScene
 import com.logie.gen1storage.ui.ItemPcScreen
+import com.logie.gen1storage.ui.MailboxScreen
 import com.logie.gen1storage.ui.MainMenuScreen
 import com.logie.gen1storage.ui.StorageHomeScreen
 import com.logie.gen1storage.ui.StatusScreen
@@ -141,6 +146,9 @@ private fun StorageApp(model: StorageViewModel) {
         Gen1Haptics.enabled = state.haptics
         Gen1Motion.reduced = state.reduceMotion
         Gen1Motion.allowed = state.motionsOn
+        // Read by the box cells and the sprite placeholders, which draw a gap
+        // either way and have no view model in reach to ask why.
+        Gen1Loading.fetching = state.fetchingArt
     }
 
     // The game can save at any moment, and every revision this app is holding
@@ -172,17 +180,26 @@ private fun StorageApp(model: StorageViewModel) {
     val locked = state.busy ||
         (state.transferScene != null && state.transferScene?.question == null)
 
+    // The first run, and only the first: a fresh install has never been shown
+    // round the machine, and this is what shows it. Written to disk by the
+    // last beat, so it is gone by the next launch; REPLAY TUTORIAL in OPTIONS
+    // is what brings it back.
+    val showTutorial = !state.tutorialSeen
+
     // The B button: Android's Back closes a window, then walks the menu stack.
     BackHandler(
         enabled = locked ||
+            showTutorial ||
             state.transferScene?.question != null ||
             state.prompt != null ||
             state.stack.size > 1,
     ) {
         // Enabled but deliberately deaf while locked: swallowing Back is what
         // stops it walking out of a screen the transfer is still working on,
-        // and it must not fall through to closing the app either.
-        if (locked) return@BackHandler
+        // and it must not fall through to closing the app either. The
+        // introduction is the same: it is four taps long and Back is not one
+        // of the ways out of it, least of all the one that closes the app.
+        if (locked || showTutorial) return@BackHandler
         // Backing out of the question is saying no to it.
         if (state.transferScene?.question != null) model.cancelSend() else model.back()
     }
@@ -207,6 +224,23 @@ private fun StorageApp(model: StorageViewModel) {
         model.checkForUpdate(BuildConfig.VERSION_NAME)
     }
 
+    // Nothing drawn a box is opened to is a reason to send someone hunting
+    // through OPTIONS for a DOWNLOAD button first. A device with none of the
+    // sprites on it yet — the very first run, or one where they were cleared
+    // — fetches them itself.
+    //
+    // In the background, and that is the point: the app is not held shut
+    // behind a progress bar while fifteen hundred small files land. A first
+    // run has the introduction to be getting on with (see [Gen1Tutorial]),
+    // which is where the bar is shown, and every run after that simply opens
+    // on the menu with the art filling in behind it — a sprite that has not
+    // arrived draws as the bracketed mark it already draws when a download
+    // has never been run at all.
+    LaunchedEffect(Unit) {
+        if (state.spritesInstalled == 0 && state.followersInstalled == 0) model.downloadFirstRun()
+    }
+
+
     // A transfer that went through, heard once.
     LaunchedEffect(state.transfers) {
         if (state.transfers > 0) audio.play(SoundEffect.TRANSFER)
@@ -220,13 +254,20 @@ private fun StorageApp(model: StorageViewModel) {
         lastDepth = state.stack.size
     }
 
+    // The shelf of games and trainer cards is worked by finger alone —
+    // tapping a card, scrolling the list — whatever SWIPE CONTROLS is set
+    // to. It registers no cursor at all, so there is nothing there for a
+    // swipe to move, and a swipe still swallowed on its behalf is only a
+    // list that cannot be scrolled.
+    val swipesHere = state.swipeControls && state.screen !is Screen.ChooseCart
+
     CompositionLocalProvider(
         LocalGen1Cursor provides cursor,
         LocalGen1WindowBounds provides windows,
         LocalGen1Audio provides audio,
         // Every list reads this: with swipes driving the cursor, none of them
         // scroll under a finger. They still follow the cursor.
-        LocalGen1Swipe provides state.swipeControls,
+        LocalGen1Swipe provides swipesHere,
     ) {
     Gen1NoOverscroll {
     Box(
@@ -236,11 +277,13 @@ private fun StorageApp(model: StorageViewModel) {
             // The system bars are hidden, so only the camera cutout is still
             // something the interface has to stay out of.
             .displayCutoutPadding()
-            // The whole of it is the SWIPE CONTROLS setting, off unless
-            // someone asked for it — the hold included. On, a swipe anywhere
-            // is the D-pad and the lists stop scrolling under a finger.
+            // The hold is read on every screen whatever this says — see
+            // [gen1Gestures]. What the setting governs is the rest: on, a
+            // swipe anywhere is the D-pad and the lists stop scrolling under
+            // a finger; off, and on the card shelf either way, drags belong
+            // to whatever they land on.
             .gen1Gestures(
-                state.swipeControls,
+                swipesHere,
                 windows::isFreeSpace,
                 windows::isHoldClaimed,
             ) { button ->
@@ -259,7 +302,7 @@ private fun StorageApp(model: StorageViewModel) {
                         cursor.confirm()
                     }
                     GbButton.START ->
-                        if (state.screen != Screen.Options) {
+                        if (state.screen != Screen.Options && !showTutorial) {
                             audio.play(SoundEffect.OPTIONS)
                             model.open(Screen.Options)
                         }
@@ -273,31 +316,46 @@ private fun StorageApp(model: StorageViewModel) {
     ) {
         Column(Modifier.fillMaxSize()) {
             TopBar()
+            // A line under the header for as long as art is still arriving,
+            // and nothing at all once it has. Every screen draws gaps while
+            // a first run is fetching, and this is the app saying why rather
+            // than leaving someone to work it out from the question marks.
+            // Never while the introduction is up. A new player is being shown
+            // round the machine, and a bar ticking along over his head is the
+            // app asking them to watch it fetch files instead — the
+            // introduction shows the one fetch it actually waits on and
+            // nothing else. See [Gen1Tutorial].
+            if (!showTutorial) state.artProgress?.let { LoadingStrip(it.percent) }
             Box(Modifier.weight(1f)) {
-                // Opened up, the status pages take the left half — so the
-                // screen they were opened from stays live on the right rather
-                // than disappearing behind them. Drawn first, in the half the
-                // pages do not cover, so the app is still usable while reading
-                // a Pokémon.
-                val beneath = state.stack.getOrNull(state.stack.size - 2)
-                if (isUnfolded() && state.screen is Screen.Status && beneath != null) {
-                    Row(Modifier.fillMaxSize()) {
-                        Spacer(Modifier.weight(1f))
-                        Box(Modifier.weight(1f)) {
-                            // Half a window is not an unfolded one. Without
-                            // this the screen in here splits its own half in
-                            // two again — a box that lays its preview beside
-                            // itself put the status pages in a quarter of the
-                            // screen, breaking a word to a letter a line, and
-                            // drew a second copy of what is already on the
-                            // left. See [LocalGen1Narrow].
-                            CompositionLocalProvider(LocalGen1Narrow provides true) {
-                                ScreenContent(beneath, state, model, context)
+                if (showTutorial) {
+                    Gen1Tutorial(state, model, onFinished = model::finishTutorial)
+                } else {
+                    // Opened up, the status pages take the left half — so the
+                    // screen they were opened from stays live on the right
+                    // rather than disappearing behind them. Drawn first, in
+                    // the half the pages do not cover, so the app is still
+                    // usable while reading a Pokémon.
+                    val beneath = state.stack.getOrNull(state.stack.size - 2)
+                    if (isUnfolded() && state.screen is Screen.Status && beneath != null) {
+                        Row(Modifier.fillMaxSize()) {
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.weight(1f)) {
+                                // Half a window is not an unfolded one.
+                                // Without this the screen in here splits its
+                                // own half in two again — a box that lays its
+                                // preview beside itself put the status pages
+                                // in a quarter of the screen, breaking a word
+                                // to a letter a line, and drew a second copy
+                                // of what is already on the left. See
+                                // [LocalGen1Narrow].
+                                CompositionLocalProvider(LocalGen1Narrow provides true) {
+                                    ScreenContent(beneath, state, model, context)
+                                }
                             }
                         }
                     }
+                    ScreenContent(state.screen, state, model, context)
                 }
-                ScreenContent(state.screen, state, model, context)
             }
         }
         // The pane that makes the lock real for tapping: everything below it
@@ -359,6 +417,7 @@ private fun ScreenContent(
         Screen.Home -> MainMenuScreen(state, model)
         Screen.Storage -> StorageHomeScreen(state, model)
         Screen.ItemPc -> ItemPcScreen(state, model)
+        Screen.Mailbox -> MailboxScreen(state, model)
         Screen.Link -> LinkScreen(state, model)
         is Screen.ChooseCart ->
             ChooseCartScreen(
@@ -367,6 +426,7 @@ private fun ScreenContent(
                 screen.game,
                 screen.sendUids,
                 screen.thenOpenStorage,
+                screen.then,
             )
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
@@ -398,6 +458,24 @@ private fun TopBar() {
         GbText(
             "POKéMON STORAGE SYSTEM",
             style = Gen1Text.copy(color = Gen1Palette.Lightest),
+            maxLines = 1,
+        )
+    }
+}
+
+/** What the header says while the art is still coming down. */
+@Composable
+private fun LoadingStrip(percent: Int) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Gen1Palette.Darkest)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        GbText(
+            "LOADING ART  $percent%",
+            style = Gen1TextSmall.copy(color = Gen1Palette.Lightest),
             maxLines = 1,
         )
     }

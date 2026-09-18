@@ -1,5 +1,6 @@
 package com.logie.gen1storage.storage
 
+import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.asInt
 import com.logie.gen1storage.lua.asString
@@ -86,15 +87,44 @@ data class StoredPokemon(
      * A fact about the Pokémon rather than about the save it came from, and
      * kept beside the raw table rather than inside it: a Pokémon withdrawn
      * back into a cartridge carries exactly the fields it arrived with, and
-     * this is the app's bookkeeping. It changes in one place and one place
-     * only — [TimeCapsule.carry] — because moving a Pokémon forward is
-     * something a player does on purpose.
+     * this is the app's bookkeeping. Set once, at [StorageRepository.deposit],
+     * to whichever generation the save it came out of is. The one way it
+     * changes after that is [TimeCapsule.carry], because moving a Pokémon
+     * forward on its own — rather than as a side effect of where it happened
+     * to be deposited from — is something a player does on purpose.
      */
     val generation: Int = 1,
     /** What it was before it went through the Time Capsule, if it has. */
     val timeCapsule: TimeCapsule.Record? = null,
 ) {
     val pokemon: Gen1Pokemon get() = Gen1Pokemon(data, generation)
+
+    /**
+     * Which game's sprite art to draw this Pokémon under.
+     *
+     * Ordinarily the game it was deposited from — [provenance]'s
+     * `gameVersion`, which never changes once a Pokémon is in the PC. A Time
+     * Capsule crossing is the one thing that leaves that stale: the record
+     * still names the Generation I cartridge it left, but [generation] has
+     * moved to II and the species field it is drawn from is spelled
+     * Generation II's way wherever the two differ — MR_MIME becomes
+     * MR__MIME — a spelling Generation I's own sprite sets have never heard.
+     * Once the recorded game's generation no longer matches this Pokémon's
+     * own, the art follows the Pokémon forward instead of staying where it
+     * was deposited from.
+     */
+    val spriteGameVersionId: String?
+        get() {
+            val recorded = GameVersion.fromId(provenance.gameVersion)
+            return when {
+                recorded == null || recorded.generation == generation -> provenance.gameVersion
+                // The Generation II card it was carried into, which is the
+                // one the player was actually holding. Gold only for a record
+                // written before that was kept.
+                generation == 2 -> timeCapsule?.gameVersion ?: GameVersion.GOLD.id
+                else -> provenance.gameVersion
+            }
+        }
 
     /** Whether this one is mid-move and cannot be sent anywhere else. */
     val inFlight: Boolean get() = noteId != null

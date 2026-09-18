@@ -64,6 +64,21 @@ def type_name(token):
     return "PSYCHIC" if token == "PSYCHIC_TYPE" else token
 
 
+# A species' likelihood of being female, as a byte out of 255 -
+# constants/pokemon_data_constants.asm, `percent EQUS "* $ff / 100"`. Read
+# out of the constant name rather than computed, so a mistake in either place
+# would show up as a mismatch instead of agreeing with itself.
+GENDER_RATIOS = {
+    "GENDER_F0": 0,
+    "GENDER_F12_5": 31,
+    "GENDER_F25": 63,
+    "GENDER_F50": 127,
+    "GENDER_F75": 191,
+    "GENDER_F100": 254,
+    "GENDER_UNKNOWN": 255,
+}
+
+
 def parse_base_stats(path):
     lines = list(read_asm(path))
     out = {}
@@ -85,6 +100,12 @@ def parse_base_stats(path):
             out["type1"] = type_name(m.group(1))
             out["type2"] = type_name(m.group(2))
             continue
+        m = re.match(r"db\s+(GENDER_\w+)$", line)
+        if m:
+            if m.group(1) not in GENDER_RATIOS:
+                raise SystemExit("%s: unknown gender constant %s" % (path, m.group(1)))
+            out["gender"] = GENDER_RATIOS[m.group(1)]
+            continue
         m = re.match(r"db\s+(\d+)$", line)
         if m:
             if "catchRate" not in out:
@@ -97,7 +118,7 @@ def parse_base_stats(path):
             out["growth"] = m.group(1)
             continue
 
-    for key in ("id", "hp", "type1", "catchRate", "baseExp", "growth"):
+    for key in ("id", "hp", "type1", "catchRate", "baseExp", "growth", "gender"):
         if key not in out:
             raise SystemExit("%s: missing %s" % (path, key))
     return out
@@ -120,7 +141,7 @@ def main():
         second = stats["type2"] if stats["type2"] != stats["type1"] else None
         rows.append(
             "    Gen2Species({id}, {dex}, {name}, {hp}, {atk}, {dfn}, {spd}, {sat}, {sdf}, "
-            "{catch}, {exp}, {t1}, {t2}, {growth}),".format(
+            "{catch}, {exp}, {t1}, {t2}, {growth}, {gender}),".format(
                 id=kotlin_string(stats["id"]),
                 dex=index,
                 name=kotlin_string(display[index - 1]),
@@ -130,6 +151,7 @@ def main():
                 t1=kotlin_string(stats["type1"]),
                 t2=kotlin_string(second) if second else "null",
                 growth=kotlin_string(stats["growth"]),
+                gender=stats["gender"],
             )
         )
 

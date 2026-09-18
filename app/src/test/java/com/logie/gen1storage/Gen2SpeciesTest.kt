@@ -9,6 +9,8 @@ import com.logie.gen1storage.lua.luaStr
 import com.logie.gen1storage.pokemon.Gen1Data
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Species
+import com.logie.gen1storage.pokemon.Gen1Stat
+import com.logie.gen1storage.pokemon.Gender
 import com.logie.gen1storage.pokemon.Gen2Data
 import com.logie.gen1storage.pokemon.Gen2Species
 import com.logie.gen1storage.sprites.gen2SpriteFolder
@@ -156,11 +158,58 @@ class Gen2SpeciesTest {
 
     @Test
     fun `a stored Pokemon is Generation I until something deliberately says otherwise`() {
-        // Nothing from a Generation II save can be deposited: those saves are
-        // read and never written. This pins the default the Time Capsule work
-        // would have to change on purpose rather than inherit by accident.
+        // The default before anything else says otherwise, since Generation
+        // I is what every save this app read before Generation II's tables
+        // existed was.
         assertEquals(1, Gen1Pokemon(mon("PIKACHU")).generation)
         assertEquals(2, Gen1Pokemon(mon("PIKACHU"), generation = 2).copy().generation)
+    }
+
+    @Test
+    fun `a species' gender ratio matches what the games are known to show`() {
+        assertEquals(127, Gen2Data.species("PIKACHU")!!.genderRatio)
+        assertEquals(254, Gen2Data.species("NIDORAN_F")!!.genderRatio)
+        assertEquals(0, Gen2Data.species("NIDORAN_M")!!.genderRatio)
+        assertEquals(Gen2Species.GENDER_UNKNOWN, Gen2Data.species("MAGNEMITE")!!.genderRatio)
+        assertEquals(Gen2Species.GENDER_UNKNOWN, Gen2Data.species("DITTO")!!.genderRatio)
+    }
+
+    @Test
+    fun `gender comes from the Attack and Speed DVs, weighed against the ratio`() {
+        val pikachu = Gen2Data.species("PIKACHU")!! // 50-50, ratio 127
+        assertEquals(Gender.FEMALE, pikachu.genderOf(attackDv = 0, speedDv = 0))
+        assertEquals(Gender.FEMALE, pikachu.genderOf(attackDv = 7, speedDv = 15))
+        assertEquals(Gender.MALE, pikachu.genderOf(attackDv = 8, speedDv = 0))
+        assertEquals(Gender.MALE, pikachu.genderOf(attackDv = 15, speedDv = 15))
+
+        // Always one or the other regardless of DVs.
+        assertEquals(Gender.FEMALE, Gen2Data.species("NIDORAN_F")!!.genderOf(15, 15))
+        assertEquals(Gender.MALE, Gen2Data.species("NIDORAN_M")!!.genderOf(0, 0))
+
+        // No gender at all, whatever the DVs say.
+        assertNull(Gen2Data.species("MAGNEMITE")!!.genderOf(0, 0))
+        assertNull(Gen2Data.species("MAGNEMITE")!!.genderOf(15, 15))
+    }
+
+    @Test
+    fun `a Pokemon's own gender is read off its species and its DVs`() {
+        val gen1Pikachu = Gen1Pokemon(mon("PIKACHU"), generation = 1)
+        assertNull("Generation I never asked this", gen1Pikachu.gender)
+
+        val gen2Pikachu = Gen1Pokemon(
+            SaveFixtures.pokemon(species = "PIKACHU", dvs = listOf(15, 15, 15, 15)),
+            generation = 2,
+        )
+        assertEquals(
+            Gen2Data.species("PIKACHU")!!.genderOf(
+                gen2Pikachu.dvs.getValue(Gen1Stat.ATTACK),
+                gen2Pikachu.dvs.getValue(Gen1Stat.SPEED),
+            ),
+            gen2Pikachu.gender,
+        )
+
+        val magnemite = Gen1Pokemon(mon("MAGNEMITE"), generation = 2)
+        assertNull(magnemite.gender)
     }
 
     @Test

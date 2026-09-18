@@ -49,9 +49,12 @@ object PokemonCardImage {
         palette: GbPalette,
         printerBorder: Boolean,
     ): Bitmap {
+        // The roll is exactly as wide as the print — a Game Boy Printer never
+        // left a margin down the sides, only the tear above and below where
+        // it came off the roll. Margin here is a height only, never a width.
         val margin = if (printerBorder) PAPER else 0
         val bitmap = Bitmap.createBitmap(
-            (WIDTH + margin * 2) * SCALE,
+            WIDTH * SCALE,
             (HEIGHT + margin * 2) * SCALE,
             Bitmap.Config.ARGB_8888,
         )
@@ -65,9 +68,9 @@ object PokemonCardImage {
         fun rect(x: Int, y: Int, w: Int, h: Int, colour: Int) {
             fill.color = colour
             canvas.drawRect(
-                ((x + margin) * SCALE).toFloat(),
+                (x * SCALE).toFloat(),
                 ((y + margin) * SCALE).toFloat(),
-                ((x + margin + w) * SCALE).toFloat(),
+                ((x + w) * SCALE).toFloat(),
                 ((y + margin + h) * SCALE).toFloat(),
                 fill,
             )
@@ -103,14 +106,14 @@ object PokemonCardImage {
         fun write(x: Int, baseline: Int, value: String, paint: Paint = text) {
             canvas.drawText(
                 value,
-                ((x + margin) * SCALE).toFloat(),
+                (x * SCALE).toFloat(),
                 ((baseline + margin) * SCALE).toFloat(),
                 paint,
             )
         }
 
         sprite?.let {
-            val left = (8 + margin) * SCALE
+            val left = 8 * SCALE
             val top = (12 + margin) * SCALE
             val side = 56 * SCALE
             canvas.drawBitmap(

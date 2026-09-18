@@ -30,16 +30,17 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * A Generation II save is read and never written.
+ * A Generation II save is written, and only ever by its own Pokémon.
  *
- * Read: the shelf lists it, the card draws it, its boxes can be looked
- * through. Never written: its Pokémon carry fields Generation I has no place
- * for — a held item, happiness, a Special that has been split in two — and a
- * transfer written by this app's engine would drop them. The refusal is in
- * three places and this pins all three, because one of them being right is
- * not the same as the app being safe.
+ * The shelf lists it, the card draws it, its boxes and its items can be read
+ * and written to, the same as any Generation I save. What is still refused,
+ * because the games themselves refuse it: a Generation I Pokémon going
+ * straight into one (the Time Capsule is the only way across), a Pokémon
+ * going back the other way at all, and a write that would change which
+ * generation a save is. Each of those is pinned here directly, because one
+ * of them being right is not the same as the app being safe.
  */
-class Gen2ReadOnlyTest {
+class Gen2WriteTest {
 
     @get:Rule
     val temporaryFolder = TemporaryFolder()
@@ -70,6 +71,7 @@ class Gen2ReadOnlyTest {
                     }
                 }
                 this["party"] = LuaValue.Table().apply { setArray(listOf(mon)) }
+                this["pcItems"] = LuaValue.Table().apply { this["POTION"] = luaNum(1) }
                 this["playTime"] = LuaValue.Table().apply {
                     this["hours"] = luaNum(12)
                     this["minutes"] = luaNum(34)
@@ -141,7 +143,7 @@ class Gen2ReadOnlyTest {
         val loaded = (saves.load(remote) as SyncResult.Ok).value
 
         assertTrue(loaded.isUsable)
-        assertTrue("Generation II saves are written now", loaded.isWritable)
+        assertTrue(loaded.isWritable)
         assertTrue(GameVersion.GOLD.isWritable)
 
         // A Generation I Pokemon may not be written into a Gold save. The
@@ -242,7 +244,11 @@ class Gen2ReadOnlyTest {
     }
 
     @Test
-    fun `items do not cross between the generations yet`() = runTest {
+    fun `items cross into and out of a Generation II save`() = runTest {
+        // The end-to-end mechanics — both directions, and that the two
+        // generations' stacks stay apart — are pinned in ItemTransferTest;
+        // this only confirms a Gold save is no longer refused outright the
+        // way it once was.
         val blob = goldSave()
         server.put("gold", "quiet-forest-dawn", blob)
         val api = SyncApi(transport = server, credentials = { "acct-1" to "tok-1" })
@@ -257,7 +263,6 @@ class Gen2ReadOnlyTest {
         val loaded = (saves.load(remote) as SyncResult.Ok).value
 
         val outcome = engine.deposit(loaded, "POTION", 1)
-        assertTrue(outcome is TransferResult.Refused)
-        assertEquals(blob, server.blobOf("gold", "quiet-forest-dawn"))
+        assertTrue(outcome is TransferResult.Success)
     }
 }

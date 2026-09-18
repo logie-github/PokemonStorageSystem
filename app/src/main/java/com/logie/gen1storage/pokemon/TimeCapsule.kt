@@ -73,6 +73,17 @@ object TimeCapsule {
         val catchRate: Int?,
         /** What that catch rate turned into. */
         val heldItem: String?,
+        /**
+         * Which Generation II game it was carried into.
+         *
+         * The card in the machine at the time, because that is the cartridge
+         * the player is playing and the one this Pokémon is bound for. Gold,
+         * Silver and Crystal each drew their own art, so a Pokémon carried
+         * out of a Crystal playthrough that came back wearing Gold's drawing
+         * is in the wrong game's clothes. Null on a record written before
+         * this was kept, which still falls back to Gold.
+         */
+        val gameVersion: String? = null,
     ) {
         fun toLua(): LuaValue.Table = LuaValue.Table().apply {
             this["carriedAt"] = luaNum(carriedAtEpochMillis.toDouble())
@@ -83,6 +94,7 @@ object TimeCapsule {
             }
             catchRate?.let { this["catchRate"] = luaNum(it) }
             heldItem?.let { this["item"] = luaStr(it) }
+            gameVersion?.let { this["game"] = luaStr(it) }
         }
 
         companion object {
@@ -99,6 +111,7 @@ object TimeCapsule {
                     }.toMap(),
                     catchRate = table["catchRate"].asInt(),
                     heldItem = table["item"].asString(),
+                    gameVersion = table["game"].asString(),
                 )
             }
         }
@@ -154,7 +167,7 @@ object TimeCapsule {
      * still the Pokémon that went in, and anything that has to roll this back
      * has something to roll back to.
      */
-    fun carry(source: LuaValue.Table, at: Long): Carried? {
+    fun carry(source: LuaValue.Table, at: Long, gameVersion: String? = null): Carried? {
         val before = Gen1Pokemon(source, generation = 1)
         if (!canCarry(before)) return null
         val speciesId = before.speciesId ?: return null
@@ -167,6 +180,7 @@ object TimeCapsule {
             stats = before.stats.map { (stat, value) -> stat.key to value }.toMap(),
             catchRate = before.catchRate,
             heldItem = heldItemFor(before.catchRate),
+            gameVersion = gameVersion,
         )
 
         val data = source.deepCopy()

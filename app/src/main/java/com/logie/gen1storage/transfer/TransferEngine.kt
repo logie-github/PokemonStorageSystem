@@ -6,6 +6,7 @@ import com.logie.gen1storage.lua.LuaWriter
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.storage.Provenance
 import com.logie.gen1storage.storage.StorageRepository
+import com.logie.gen1storage.storage.StoredPokemon
 import com.logie.gen1storage.sync.CommitOutcome
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.RemoteSave
@@ -221,15 +222,8 @@ class TransferEngine(
         // has never heard of. Neither is a transfer; both are a corrupted
         // save, which is the one thing this app must never do.
         val saveGeneration = loaded.remote.version.generation
-        if (stored.generation != saveGeneration) {
-            val name = stored.pokemon.displayName.uppercase()
-            return TransferResult.Refused(
-                if (stored.generation < saveGeneration) {
-                    "$name IS A GEN I POKéMON. SEND IT THROUGH THE TIME CAPSULE FIRST."
-                } else {
-                    "$name CAME FROM GEN II AND CANNOT GO BACK."
-                }
-            )
+        crossGenerationRefusal(stored, saveGeneration)?.let {
+            return TransferResult.Refused(it)
         }
 
         val fresh = reload(loaded) ?: return TransferResult.Refused("THE SAVE COULD NOT BE READ")
@@ -474,12 +468,22 @@ class TransferEngine(
      * ("You can't deposit the last POKéMON!"). A save with an empty party is
      * not a state the game can be handed back, so the rule holds here too.
      */
-    private fun constraintForDeposit(save: Gen1RecompSave, location: SaveLocation): String? =
-        when (location) {
+    private fun constraintForDeposit(save: Gen1RecompSave, location: SaveLocation): String? {
+        // The cartridge's own rule, and not a nicety: a letter lives in a
+        // slot of the save rather than on the Pokemon, so one that leaves
+        // the cartridge cannot take it. "There is a #MON holding MAIL.
+        // Please remove the MAIL." — `_PCMonHoldingMailText`, refused by
+        // `BillsPC_CheckMail_PreventBlackout` before the PC will store
+        // anything. See [Gen2Mail].
+        pokemonAt(save, location)?.let {
+            if (it.holdsMail) return "THAT POKéMON IS HOLDING MAIL. REMOVE THE MAIL FIRST."
+        }
+        return when (location) {
             is SaveLocation.Party ->
                 if (save.partyCount <= 1) "YOU CAN'T DEPOSIT THE LAST POKéMON!" else null
             is SaveLocation.Box -> null
         }
+    }
 
     private fun constraintForWithdraw(save: Gen1RecompSave, target: WithdrawTarget): String? =
         when (target) {
@@ -490,4 +494,25 @@ class TransferEngine(
             is WithdrawTarget.Box ->
                 if (save.boxFreeSlots(target.box) <= 0) "BOX ${target.box} IS FULL." else null
         }
+}
+
+/**
+ * Why [stored] cannot be written into a save of [saveGeneration], or null
+ * when it can go.
+ *
+ * The rule itself is [TransferEngine.withdraw]'s and is enforced there, at
+ * the point of writing, where it has to be. This is the same question asked
+ * early so the app can decline to ask rather than sending a Pokemon out over
+ * the cable, drawing the whole trade, and only then saying it never had
+ * anywhere to go. Pure, and needs nothing loaded: a generation is all either
+ * side of the question turns on.
+ */
+fun crossGenerationRefusal(stored: StoredPokemon, saveGeneration: Int): String? {
+    if (stored.generation == saveGeneration) return null
+    val name = stored.pokemon.displayName.uppercase()
+    return if (stored.generation < saveGeneration) {
+        "$name IS A GEN I POKéMON. SEND IT THROUGH THE TIME CAPSULE FIRST."
+    } else {
+        "$name CAME FROM GEN II AND CANNOT GO BACK."
+    }
 }

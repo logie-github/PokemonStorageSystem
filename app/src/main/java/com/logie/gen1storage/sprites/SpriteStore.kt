@@ -146,7 +146,9 @@ class SpriteStore(
         shiny: Boolean = false,
     ): ImageBitmap? {
         romVersionOf(gameVersionId)?.let { version ->
-            romStore?.frontSprite(version, speciesId)?.let { return loadFromRom(speciesId, it, cutout) }
+            romStore?.frontSprite(version, speciesId)?.let {
+                return loadFromRom(speciesId, version, it, cutout)
+            }
         }
         val set = resolve(speciesId, gameVersionId) ?: return null
         return load(set, speciesId, cutout, shiny)
@@ -162,11 +164,17 @@ class SpriteStore(
      */
     private fun loadFromRom(
         speciesId: String,
+        version: com.logie.gen1storage.rom.RomVersion,
         sprite: com.logie.gen1storage.rom.Gen1SpriteCodec.DecodedSprite,
         cutout: Boolean,
     ): ImageBitmap {
+        // The cartridge is part of the key. Six ROMs draw the same species six
+        // ways, and without this the first one decoded answered for all of
+        // them: a Pokemon carried into Gold kept whichever drawing happened to
+        // be cached under its name, which on an account with every ROM
+        // imported is a coin toss rather than a picture of the right game.
         val key = buildString {
-            append(tintId).append("/rom/")
+            append(tintId).append("/rom/").append(version.id).append('/')
             if (cutout) append("cut/")
             append(spriteFileName(speciesId))
         }
@@ -194,6 +202,36 @@ class SpriteStore(
             }
         }
         return bitmap
+    }
+
+    /**
+     * Where a species' picture is actually coming from, for the debug report.
+     *
+     * A sprite has three possible sources — an imported ROM, a downloaded
+     * file, or nothing — and which one answered is invisible on screen until
+     * something looks wrong, at which point it is the first thing worth
+     * knowing and the one thing nobody can see. One line per species asked
+     * about, naming the source and the size it decoded to: a ROM sprite that
+     * comes out the wrong size, or comes out of a cartridge nobody expected,
+     * says so here rather than only in the picture.
+     */
+    fun sourceOf(speciesId: String, gameVersionId: String?): String {
+        val version = romVersionOf(gameVersionId)
+        val store = romStore
+        if (version != null && store != null && store.has(version)) {
+            val decoded = runCatching { store.frontSprite(version, speciesId) }
+            val sprite = decoded.getOrNull()
+            return when {
+                sprite != null ->
+                    "ROM ${version.id}: ${sprite.widthPx}x${sprite.heightPx}"
+                decoded.isFailure ->
+                    "ROM ${version.id}: FAILED (${decoded.exceptionOrNull()?.message})"
+                else -> "ROM ${version.id}: no entry, fell back to download"
+            }
+        }
+        val set = resolve(speciesId, gameVersionId)
+            ?: return "no art (no ROM, nothing downloaded)"
+        return "download ${set.id}"
     }
 
     private fun romVersionOf(gameVersionId: String?): com.logie.gen1storage.rom.RomVersion? =

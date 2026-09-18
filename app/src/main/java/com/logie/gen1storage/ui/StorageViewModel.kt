@@ -2778,6 +2778,25 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             appendLine("Local backups: ${localBackups().size}")
             appendLine("Pending transfer: ${pendingTransferSummary() ?: "none"}")
             appendLine()
+            appendLine("### ROMs imported")
+            com.logie.gen1storage.rom.RomVersion.entries.forEach { version ->
+                appendLine("- ${version.id}: ${if (roms.has(version)) "present" else "-"}")
+            }
+            appendLine()
+            appendLine("### Where the sprites come from")
+            // Every Pokemon actually in the PC, named with the cartridge its
+            // art is being drawn from and what that source gave back. A
+            // garbled sprite is a decode that went wrong somewhere between a
+            // ROM and the screen, and this is the only place that says which
+            // ROM was even asked.
+            current.storage.boxes.flatMap { it.contents }.take(SPRITE_REPORT_LIMIT)
+                .forEach { stored ->
+                    val id = stored.pokemon.spriteSpeciesId()
+                    val from = stored.spriteGameVersionId
+                    appendLine("- ${id ?: "?"} (gen ${stored.generation}, art $from): " +
+                        (id?.let { sprites.sourceOf(it, from) } ?: "no species id"))
+                }
+            appendLine()
             appendLine("### Account")
             current.diagnostics.forEach { appendLine("- $it") }
             if (current.recoveryNotes.isNotEmpty()) {
@@ -2807,6 +2826,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 }
 
 /** Where the last download failure is kept, for the report under ABOUT. */
+/** How many stored Pokémon the debug report names a sprite source for. */
+private const val SPRITE_REPORT_LIMIT = 40
+
 private const val DOWNLOAD_FAILURE_FILE = "last-download-failure.txt"
 
 /**

@@ -27,6 +27,7 @@ import com.logie.gen1storage.pokemon.tradeEvolutionName
 import com.logie.gen1storage.pokemon.tradeEvolutionOf
 import com.logie.gen1storage.pokemon.tradeEvolves
 import com.logie.gen1storage.backup.BackupExport
+import com.logie.gen1storage.backup.DriveBackup
 import com.logie.gen1storage.backup.StorageBackupAgent
 import com.logie.gen1storage.storage.Hop
 import com.logie.gen1storage.storage.Lineage
@@ -2746,6 +2747,50 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     restartApp()
                 } else {
                     message("COULD NOT READ THAT FILE.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+                }
+            }
+        }
+    }
+
+    /**
+     * Uploads the same set [backUpNow] writes straight into this player's
+     * Drive, replacing whatever this app already put there.
+     *
+     * The token is the caller's to get — see `withDriveAccess` in
+     * `Screens.kt`, which is where an `Activity` exists to ask Google for
+     * it. This just spends it.
+     */
+    fun backUpToDrive(accessToken: String) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val bytes = java.io.ByteArrayOutputStream().also { BackupExport.write(app, it) }.toByteArray()
+                val existing = DriveBackup.findExisting(accessToken)
+                DriveBackup.upload(accessToken, existing, bytes)
+            }
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) message("BACKUP SAVED TO DRIVE.")
+                else message("COULD NOT REACH DRIVE.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+            }
+        }
+    }
+
+    /** Reads the file [backUpToDrive] put on Drive back onto this device, and restarts. */
+    fun restoreFromDrive(accessToken: String) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val fileId = DriveBackup.findExisting(accessToken) ?: error("NO BACKUP FOUND ON DRIVE")
+                val bytes = DriveBackup.download(accessToken, fileId)
+                BackupExport.read(app, java.io.ByteArrayInputStream(bytes))
+            }
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    message("BACKUP RESTORED.", "RESTARTING...")
+                    delay(1200)
+                    restartApp()
+                } else {
+                    message("COULD NOT RESTORE FROM DRIVE.", result.exceptionOrNull()?.message.orEmpty().uppercase())
                 }
             }
         }

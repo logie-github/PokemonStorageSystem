@@ -1,7 +1,15 @@
 package com.logie.gen1storage.ui
 
+import android.app.Activity
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.result.IntentSenderRequest
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
+import com.logie.gen1storage.backup.DriveBackup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1262,6 +1270,13 @@ private data class OptionRow(
     val action: () -> Unit,
 )
 
+/** The `Activity` a composable's context is showing in, if it is one at all. */
+private tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 /**
  * A drawer's contents, all on one cursor.
  *
@@ -1308,6 +1323,50 @@ private fun OptionsDrawerContent(
             )
         }
     }
+
+    // Straight into the player's own Drive rather than a picker they steer
+    // there themselves — see DriveBackup. Getting the token is the one part
+    // that needs an Activity: Google's own consent screen is a real screen
+    // this app hands off to and gets a result back from, the same shape as
+    // every other activity-result launcher here.
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    var onDriveToken by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    val driveAuthLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val onToken = onDriveToken
+        onDriveToken = null
+        val act = activity ?: return@rememberLauncherForActivityResult
+        try {
+            val token = Identity.getAuthorizationClient(act)
+                .getAuthorizationResultFromIntent(result.data).accessToken
+            if (token != null && onToken != null) onToken(token)
+            else model.prompt(Prompt.Message(listOf("GOOGLE DID NOT GRANT ACCESS.")))
+        } catch (e: ApiException) {
+            model.prompt(Prompt.Message(listOf("GOOGLE DID NOT GRANT ACCESS.", e.message.orEmpty().uppercase())))
+        }
+    }
+    fun withDriveAccess(onToken: (String) -> Unit) {
+        val act = activity ?: return
+        onDriveToken = onToken
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope(DriveBackup.SCOPE)))
+            .build()
+        Identity.getAuthorizationClient(act).authorize(request)
+            .addOnSuccessListener { authResult ->
+                if (authResult.hasResolution()) {
+                    val sender = authResult.pendingIntent?.intentSender
+                    if (sender != null) driveAuthLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                } else {
+                    onDriveToken = null
+                    authResult.accessToken?.let(onToken)
+                }
+            }
+            .addOnFailureListener { e ->
+                onDriveToken = null
+                model.prompt(Prompt.Message(listOf("COULD NOT REACH YOUR GOOGLE", "ACCOUNT.", e.message.orEmpty().uppercase())))
+            }
+    }
+
     val rows = buildList {
         when (drawer) {
             OptionsDrawer.VISUAL -> {
@@ -1583,6 +1642,22 @@ private fun OptionsDrawerContent(
                 // own choosing. See BackupExport.
                 add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
                 add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
+                // The same backup, signed in and uploaded straight to this
+                // player's own Drive rather than left for them to steer a
+                // picker there. See DriveBackup.
+                add(OptionRow("BACK UP TO GOOGLE DRIVE") { withDriveAccess { token -> model.backUpToDrive(token) } })
+                add(
+                    OptionRow("RESTORE FROM GOOGLE DRIVE") {
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH YOUR DRIVE", "BACKUP?"),
+                                confirmLabel = "YES",
+                                cancelLabel = "NO",
+                                onConfirm = { withDriveAccess { token -> model.restoreFromDrive(token) } },
+                            )
+                        )
+                    }
+                )
             }
 
             OptionsDrawer.ABOUT -> {

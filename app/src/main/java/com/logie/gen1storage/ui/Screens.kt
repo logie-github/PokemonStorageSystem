@@ -1403,9 +1403,6 @@ private fun OptionsDrawerContent(
                 add(OptionRow("ALL ITEMS", if (state.showAllItems) "ON" else "OFF") {
                     model.setShowAllItems(!state.showAllItems)
                 })
-                add(OptionRow("CARD WALLET", if (state.cardWallet) "ON" else "OFF") {
-                    model.setCardWallet(!state.cardWallet)
-                })
                 add(
                     OptionRow("BILL'S PC", if (state.billsPc) "ON" else "OFF") {
                         model.setBillsPc(!state.billsPc)

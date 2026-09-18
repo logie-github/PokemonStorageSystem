@@ -59,8 +59,6 @@ fun Modifier.gen1Gestures(
     swipes: Boolean,
     isFreeSpace: (Offset) -> Boolean,
     isHoldClaimed: (Offset) -> Boolean,
-    /** Whether something under a drag's start reads it directly. See [Gen1WindowBounds.isSwipeClaimed]. */
-    isSwipeClaimed: (Offset) -> Boolean = { false },
     onButton: (GbButton) -> Unit,
 ): Modifier = if (!swipes) this else this.then(
     Modifier.pointerInput(Unit) {
@@ -87,11 +85,6 @@ fun Modifier.gen1Gestures(
                 return@awaitEachGesture
             }
             val free = isFreeSpace(start)
-            // Read by a card the wallet is dragging directly: past this point,
-            // anything beyond a plain release is left alone, unconsumed, for
-            // that window's own gesture detector rather than turned into a
-            // D-pad direction here.
-            val claimed = isSwipeClaimed(start)
             var travelled = Offset.Zero
 
             /** Follows the pointer to its end, returning how far it ever got. */
@@ -131,7 +124,7 @@ fun Modifier.gen1Gestures(
                 // is never perfectly still, and cancelling the hold over a few
                 // pixels is why it sometimes did nothing at all.
                 val held = abs(travelled.x) < swipeThreshold && abs(travelled.y) < swipeThreshold
-                if (held && !isHoldClaimed(start) && !claimed) {
+                if (held && !isHoldClaimed(start)) {
                     onButton(GbButton.B)
                     drain(travelled, consume = true)
                     return@awaitEachGesture
@@ -151,7 +144,6 @@ fun Modifier.gen1Gestures(
             // reaches the A below.
             if (!free) {
                 if (outcome == GestureOutcome.RELEASED) return@awaitEachGesture
-                if (claimed) return@awaitEachGesture
                 direction(drain(travelled, consume = true), swipeThreshold)?.let(onButton)
                 return@awaitEachGesture
             }
@@ -161,7 +153,7 @@ fun Modifier.gen1Gestures(
                 // `travelled` is the whole of it. Draining here would block on
                 // the next gesture's events and report this one a touch late.
                 GestureOutcome.RELEASED -> travelled
-                else -> if (claimed) return@awaitEachGesture else drain(travelled, consume = true)
+                else -> drain(travelled, consume = true)
             }
 
             val horizontal = abs(furthest.x)

@@ -76,22 +76,17 @@ fun Gen1TrainerCard(
     inserted: Boolean = false,
     /** The long form: the badges get their own line and the lead is bigger. */
     full: Boolean = false,
-    /** Drawn in the wallet's chunky-pixel rounded frame instead of the cartridge's own. */
-    pixelRounded: Boolean = false,
 ) {
     val palette = paletteFor(remote.version.id)
     val trainer = (save?.trainerName ?: remote.summary.trainerName ?: "?").uppercase()
     val lead = save?.party?.firstOrNull()
     val read = save != null
 
-    val frame: @Composable (Modifier, @Composable ColumnScope.() -> Unit) -> Unit =
-        if (pixelRounded) {
-            { m, c -> Gen1WalletCardFrame(m, fill = palette.lightest, ink = palette.darkest, content = c) }
-        } else {
-            { m, c -> Gen1Frame(m, fill = palette.lightest, ink = palette.darkest, content = c) }
-        }
-
-    frame(modifier) {
+    Gen1Frame(
+        modifier,
+        fill = palette.lightest,
+        ink = palette.darkest,
+    ) {
         // The badge case is eight tiles and the seven gaps between them, and
         // it is the one thing on the card with a size of its own: a badge is
         // sixteen pixels because that is how it was drawn. So it is measured

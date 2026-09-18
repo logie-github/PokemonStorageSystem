@@ -33,16 +33,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_SHOW_ALL_ITEMS, value).apply()
 
     /**
-     * Trainer cards as a wallet: a stack a finger drags through card by
-     * card, rather than a plain list of them. On by default; the list is
-     * still there underneath, a toggle away, for whoever would rather have
-     * it back.
-     */
-    var cardWallet: Boolean
-        get() = prefs.getBoolean(KEY_CARD_WALLET, true)
-        set(value) = prefs.edit().putBoolean(KEY_CARD_WALLET, value).apply()
-
-    /**
      * Let Android copy this app into the player's Google account, the way it
      * backs up any app that allows it.
      *
@@ -299,7 +289,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_RESTORED_UIDS = "restored-uids"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"
-        const val KEY_CARD_WALLET = "card-wallet"
         const val KEY_PALETTE = "palette"
         const val KEY_WINDOW_PALETTE = "windows-follow-palette"
         const val KEY_WINDOWS_RIGHT = "windows-on-right"

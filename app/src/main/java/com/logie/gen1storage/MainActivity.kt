@@ -277,7 +277,6 @@ private fun StorageApp(model: StorageViewModel) {
                 state.swipeControls,
                 windows::isFreeSpace,
                 windows::isHoldClaimed,
-                windows::isSwipeClaimed,
             ) { button ->
                 // The cursor turns its own moves and confirms away, but B and
                 // START are the gesture layer's alone — a hold or a double tap

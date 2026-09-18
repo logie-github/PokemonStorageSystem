@@ -1,15 +1,7 @@
 package com.logie.gen1storage.ui
 
-import android.app.Activity
-import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.result.IntentSenderRequest
-import com.google.android.gms.auth.api.identity.AuthorizationRequest
-import com.google.android.gms.auth.api.identity.Identity
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.Scope
-import com.logie.gen1storage.backup.DriveBackup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1270,13 +1262,6 @@ private data class OptionRow(
     val action: () -> Unit,
 )
 
-/** The `Activity` a composable's context is showing in, if it is one at all. */
-private tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
-
 /**
  * A drawer's contents, all on one cursor.
  *
@@ -1324,47 +1309,30 @@ private fun OptionsDrawerContent(
         }
     }
 
-    // Straight into the player's own Drive rather than a picker they steer
-    // there themselves — see DriveBackup. Getting the token is the one part
-    // that needs an Activity: Google's own consent screen is a real screen
-    // this app hands off to and gets a result back from, the same shape as
-    // every other activity-result launcher here.
-    val context = LocalContext.current
-    val activity = remember(context) { context.findActivity() }
-    var onDriveToken by remember { mutableStateOf<((String) -> Unit)?>(null) }
-    val driveAuthLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        val onToken = onDriveToken
-        onDriveToken = null
-        val act = activity ?: return@rememberLauncherForActivityResult
-        try {
-            val token = Identity.getAuthorizationClient(act)
-                .getAuthorizationResultFromIntent(result.data).accessToken
-            if (token != null && onToken != null) onToken(token)
-            else model.prompt(Prompt.Message(listOf("GOOGLE DID NOT GRANT ACCESS.")))
-        } catch (e: ApiException) {
-            model.prompt(Prompt.Message(listOf("GOOGLE DID NOT GRANT ACCESS.", e.message.orEmpty().uppercase())))
-        }
+    // The same folder chooser ROMS uses to pick a folder full of cartridge
+    // dumps, pointed at a folder to push a backup into instead — a folder
+    // inside the Google Drive app is exactly as pickable as one in local
+    // storage, since it is the system's own picker either way. Taking a
+    // persistable permission on the result is what makes every push after
+    // the first one silent: no sign-in of this app's own, because there is
+    // none — the permission already covers it.
+    val pickBackupFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) model.linkBackupFolder(uri)
     }
-    fun withDriveAccess(onToken: (String) -> Unit) {
-        val act = activity ?: return
-        onDriveToken = onToken
-        val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(DriveBackup.SCOPE)))
-            .build()
-        Identity.getAuthorizationClient(act).authorize(request)
-            .addOnSuccessListener { authResult ->
-                if (authResult.hasResolution()) {
-                    val sender = authResult.pendingIntent?.intentSender
-                    if (sender != null) driveAuthLauncher.launch(IntentSenderRequest.Builder(sender).build())
-                } else {
-                    onDriveToken = null
-                    authResult.accessToken?.let(onToken)
-                }
-            }
-            .addOnFailureListener { e ->
-                onDriveToken = null
-                model.prompt(Prompt.Message(listOf("COULD NOT REACH YOUR GOOGLE", "ACCOUNT.", e.message.orEmpty().uppercase())))
-            }
+    // A folder picked fresh rather than the one linked above: restoring is
+    // how a reinstall gets its Pokémon back, and a reinstall has nothing
+    // linked yet to restore from. See StorageViewModel.restoreFromBackupFolder.
+    val pickRestoreFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            model.prompt(
+                Prompt.Confirm(
+                    lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH THAT FOLDER'S", "BACKUP?"),
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { model.restoreFromBackupFolder(uri) },
+                )
+            )
+        }
     }
 
     val rows = buildList {
@@ -1642,33 +1610,22 @@ private fun OptionsDrawerContent(
                 // own choosing. See BackupExport.
                 add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
                 add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
-                // One sign-in, and every change from here on pushes on its
-                // own — a deposit, a sync, anything BACKUP TO GOOGLE already
-                // hears about — the same debounced signal, spent on Drive
-                // too. Off just stops the pushing; what is already on Drive
-                // stays there untouched. See DriveBackup and
-                // StorageViewModel.pushToDriveSilently.
+                // One pick, and every change from here on pushes on its own
+                // — a deposit, a sync, anything BACKUP TO GOOGLE already
+                // hears about — the same debounced signal, spent on this
+                // folder too. Off just stops the pushing; what is already
+                // there stays untouched. See BackupFolderWriter and
+                // StorageViewModel.pushToBackupFolder.
                 add(
-                    OptionRow("GOOGLE DRIVE BACKUP", if (state.driveLinked) "ON" else "OFF") {
-                        if (state.driveLinked) model.unlinkDrive()
-                        else withDriveAccess { token -> model.linkDrive(token) }
+                    OptionRow("BACKUP FOLDER", if (state.backupFolderLinked) "LINKED" else "NOT LINKED") {
+                        if (state.backupFolderLinked) model.unlinkBackupFolder()
+                        else pickBackupFolder.launch(null)
                     }
                 )
-                if (state.driveLinked) {
-                    add(OptionRow("LAST DRIVE BACKUP", state.driveNote) { model.explainDrive() })
+                if (state.backupFolderLinked) {
+                    add(OptionRow("LAST FOLDER BACKUP", state.folderBackupNote) { model.explainFolderBackup() })
                 }
-                add(
-                    OptionRow("RESTORE FROM GOOGLE DRIVE") {
-                        model.prompt(
-                            Prompt.Confirm(
-                                lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH YOUR DRIVE", "BACKUP?"),
-                                confirmLabel = "YES",
-                                cancelLabel = "NO",
-                                onConfirm = { withDriveAccess { token -> model.restoreFromDrive(token) } },
-                            )
-                        )
-                    }
-                )
+                add(OptionRow("RESTORE FROM BACKUP FOLDER") { pickRestoreFolder.launch(null) })
             }
 
             OptionsDrawer.ABOUT -> {

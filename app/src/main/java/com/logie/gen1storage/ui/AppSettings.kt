@@ -63,19 +63,24 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_CLOUD_BACKUP, value).apply()
 
     /**
-     * Whether this app pushes its own backup into the player's Drive on its
-     * own, from here on, rather than waiting to be asked.
+     * The folder this app pushes its own backup into on its own, from here
+     * on, rather than waiting to be asked — a document tree uri from the
+     * system's own folder picker, which is free to be a folder inside the
+     * Google Drive app, or any other synced storage, as much as it is free
+     * to be plain local storage.
      *
-     * Set once, by [StorageViewModel.linkDrive] after the one-time sign-in
-     * that turning this on asks for. Everything after that tap is silent:
-     * a deposit, a sync, anything that already tells Android's own backup
-     * something changed tells Drive too — see
-     * [StorageViewModel.pushToDriveSilently]. Off by default, the same
-     * reason [cloudBackup] is: nothing pushes anywhere without being asked.
+     * Set once, by [StorageViewModel.linkBackupFolder] after the one-time
+     * pick that turning this on asks for, and the persisted permission that
+     * goes with it — see [android.content.ContentResolver.takePersistableUriPermission].
+     * Everything after that tap is silent: a deposit, a sync, anything that
+     * already tells Android's own backup something changed writes into this
+     * folder too — see [StorageViewModel.pushToBackupFolder]. Null by
+     * default, the same reason [cloudBackup] is off by default: nothing
+     * writes anywhere without being asked.
      */
-    var driveLinked: Boolean
-        get() = prefs.getBoolean(KEY_DRIVE_LINKED, false)
-        set(value) = prefs.edit().putBoolean(KEY_DRIVE_LINKED, value).apply()
+    var backupFolderUri: String?
+        get() = prefs.getString(KEY_BACKUP_FOLDER_URI, null)
+        set(value) = prefs.edit().putString(KEY_BACKUP_FOLDER_URI, value).apply()
 
     /**
      * Whether this install found data from a backup and has not yet asked
@@ -315,7 +320,7 @@ class AppSettings(private val prefs: SharedPreferences) {
     private companion object {
         const val KEY_TEXT_SPEED = "text-speed"
         const val KEY_CLOUD_BACKUP = "cloud-backup"
-        const val KEY_DRIVE_LINKED = "drive-linked"
+        const val KEY_BACKUP_FOLDER_URI = "backup-folder-uri"
         const val KEY_GBC_FOLLOWS_PALETTE = "gbc-follows-palette"
         const val KEY_RESTORE_OFFER = "restore-offer"
         const val KEY_SHOW_ALL = "show-all-saves"

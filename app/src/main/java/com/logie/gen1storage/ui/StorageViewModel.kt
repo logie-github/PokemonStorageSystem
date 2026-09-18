@@ -27,7 +27,7 @@ import com.logie.gen1storage.pokemon.tradeEvolutionName
 import com.logie.gen1storage.pokemon.tradeEvolutionOf
 import com.logie.gen1storage.pokemon.tradeEvolves
 import com.logie.gen1storage.backup.BackupExport
-import com.logie.gen1storage.backup.DriveBackup
+import com.logie.gen1storage.backup.BackupFolderWriter
 import com.logie.gen1storage.backup.StorageBackupAgent
 import com.logie.gen1storage.storage.Hop
 import com.logie.gen1storage.storage.Lineage
@@ -83,7 +83,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
@@ -382,10 +381,10 @@ data class UiState(
     val cloudBackup: Boolean = false,
     /** What the system has actually done about backing this app up. */
     val backupNote: String = "OFF",
-    /** Whether this app is linked to push its own backup into the player's Drive. */
-    val driveLinked: Boolean = false,
+    /** Whether this app is linked to push its own backup into a folder the player picked. */
+    val backupFolderLinked: Boolean = false,
     /** What the last push actually did, the same idea as [backupNote]. */
-    val driveNote: String = "OFF",
+    val folderBackupNote: String = "OFF",
     /** Whether Generation II art follows the palette instead of its own colours. */
     val gbcFollowsPalette: Boolean = false,
     /** Swipes drive the cursor, and lists do not scroll under a finger. */
@@ -482,44 +481,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             withContext(Dispatchers.IO) {
                 runCatching { BackupManager(getApplication()).dataChanged() }
                 checkBackupSize()
+                settings.backupFolderUri?.let { pushToBackupFolder(it) }
             }
-            if (settings.driveLinked) pushToDriveSilently()
         }
     }
-
-    /**
-     * The push a linked Drive gets on its own, with nobody watching.
-     *
-     * Getting here at all means the player already said yes once — see
-     * [linkDrive] — so this asks Google for a token the same way, and Google
-     * hands one back without a screen of its own as long as that yes still
-     * stands. If it does not — access was revoked from the account's own
-     * side, say — there is no screen to put up from here, mid-debounce, to
-     * get it back: [StorageBackupAgent.DRIVE_MARKER] says so instead, and OPTIONS reads it.
-     */
-    private suspend fun pushToDriveSilently() {
-        val app = getApplication<Application>()
-        val token = silentDriveToken(app)
-        if (token == null) {
-            withContext(Dispatchers.IO) { StorageBackupAgent.note(app, StorageBackupAgent.DRIVE_MARKER, "needs relink") }
-            mutable.update { it.copy(driveNote = driveNote()) }
-            return
-        }
-        withContext(Dispatchers.IO) { pushToDrive(token) }
-    }
-
-    private suspend fun silentDriveToken(context: Application): String? =
-        suspendCancellableCoroutine { continuation ->
-            val request = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
-                .setRequestedScopes(listOf(com.google.android.gms.common.api.Scope(DriveBackup.SCOPE)))
-                .build()
-            com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
-                .authorize(request)
-                .addOnSuccessListener { result ->
-                    continuation.resume(result.accessToken.takeUnless { result.hasResolution() }) {}
-                }
-                .addOnFailureListener { continuation.resume(null) {} }
-        }
 
     /**
      * A rough tally of what would actually go up: everything under the
@@ -534,7 +499,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         val excludedDirs = listOf("roms", "sprites", "cries", "followers", "trainers", "pc/backups")
             .map { File(filesDir, it) }
         val excludedFiles = setOf(
-            "install.marker", "backup.marker", "restore.marker", "drive-backup.marker", "last-crash.txt",
+            "install.marker", "backup.marker", "restore.marker", "folder-backup.marker", "last-crash.txt",
         )
         val filesTotal = runCatching {
             filesDir.walkTopDown()
@@ -766,8 +731,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 reduceMotion = settings.reduceMotion,
                 cloudBackup = settings.cloudBackup,
                 backupNote = backupNote(),
-                driveLinked = settings.driveLinked,
-                driveNote = driveNote(),
+                backupFolderLinked = settings.backupFolderUri != null,
+                folderBackupNote = folderBackupNote(),
                 gbcFollowsPalette = settings.gbcFollowsPalette,
                 swipeControls = settings.swipeControls,
                 motionsOn = enabledMotions(),
@@ -2746,9 +2711,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /** The same idea as [backupNote], for the push this app makes itself. */
-    private fun driveNote(): String {
-        if (!settings.driveLinked) return "OFF"
-        val last = StorageBackupAgent.read(getApplication(), StorageBackupAgent.DRIVE_MARKER) ?: return "NOT YET"
+    private fun folderBackupNote(): String {
+        if (settings.backupFolderUri == null) return "OFF"
+        val last = StorageBackupAgent.read(getApplication(), StorageBackupAgent.FOLDER_MARKER) ?: return "NOT YET"
         val when_ = java.time.Instant.ofEpochMilli(last.first)
             .atZone(java.time.ZoneId.systemDefault())
             .toLocalDate()
@@ -2757,9 +2722,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         return if (last.second == "pushed") when_ else "$when_ (${last.second.uppercase()})"
     }
 
-    /** What the LAST DRIVE BACKUP row is actually saying, for anybody who taps it. */
-    fun explainDrive() {
-        val last = StorageBackupAgent.read(getApplication(), StorageBackupAgent.DRIVE_MARKER)
+    /** What the LAST FOLDER BACKUP row is actually saying, for anybody who taps it. */
+    fun explainFolderBackup() {
+        val last = StorageBackupAgent.read(getApplication(), StorageBackupAgent.FOLDER_MARKER)
         prompt(
             Prompt.Message(
                 when {
@@ -2768,21 +2733,15 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         "THE NEXT CHANGE TO THE PC",
                         "PUSHES ONE ON ITS OWN.",
                     )
-                    last.second == "needs relink" -> listOf(
-                        "GOOGLE STOPPED ANSWERING FOR",
-                        "THIS APP.",
-                        "TURN GOOGLE DRIVE BACKUP OFF",
-                        "AND ON AGAIN TO RELINK.",
-                    )
                     last.second == "failed" -> listOf(
                         "THE LAST PUSH FAILED, ON",
-                        "${driveNote()}.",
+                        "${folderBackupNote()}.",
                         "IT TRIES AGAIN NEXT TIME THE",
                         "PC CHANGES.",
                     )
                     else -> listOf(
                         "LAST PUSHED ON",
-                        "${driveNote()}.",
+                        "${folderBackupNote()}.",
                         "EVERY CHANGE TO THE PC PUSHES",
                         "AGAIN ON ITS OWN.",
                     )
@@ -2845,57 +2804,91 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * The one tap that starts this: asks Google for access, remembers that
-     * it was granted, and pushes once itself so linking is not a promise
-     * with nothing behind it yet. Everything after this tap — a deposit, a
-     * sync, anything [backupWanted] already hears about — pushes again on
-     * its own. See [pushToDriveSilently].
+     * The one tap that starts this: picks a folder with the system's own
+     * chooser — a folder inside the Google Drive app included, since it is
+     * a folder picker like any other — keeps permission to write there
+     * after the app closes, and pushes once itself so linking is not a
+     * promise with nothing behind it yet. Everything after this tap — a
+     * deposit, a sync, anything [backupWanted] already hears about —
+     * pushes again on its own, no sign-in of this app's own asked for
+     * again: the permission this took out is what makes that silent.
      */
-    fun linkDrive(accessToken: String) {
-        settings.driveLinked = true
-        mutable.update { it.copy(driveLinked = true) }
+    fun linkBackupFolder(treeUri: Uri) {
+        val app = getApplication<Application>()
+        runCatching {
+            app.contentResolver.takePersistableUriPermission(
+                treeUri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+        settings.backupFolderUri = treeUri.toString()
+        mutable.update { it.copy(backupFolderLinked = true) }
         viewModelScope.launch(Dispatchers.IO) {
-            val result = pushToDrive(accessToken)
+            val result = pushToBackupFolder(treeUri.toString())
             withContext(Dispatchers.Main) {
-                if (result.isSuccess) message("LINKED. BACKUP SAVED TO DRIVE.")
+                if (result.isSuccess) message("LINKED. BACKUP SAVED THERE.")
                 else message("LINKED, BUT THE FIRST PUSH FAILED.", result.exceptionOrNull()?.message.orEmpty().uppercase())
             }
         }
     }
 
-    /** Stops the automatic push. What is already on Drive is left exactly as it is. */
-    fun unlinkDrive() {
-        settings.driveLinked = false
-        mutable.update { it.copy(driveLinked = false) }
+    /** Stops the automatic push. What is already in that folder is left exactly as it is. */
+    fun unlinkBackupFolder() {
+        val app = getApplication<Application>()
+        settings.backupFolderUri?.let { stored ->
+            runCatching {
+                app.contentResolver.releasePersistableUriPermission(
+                    Uri.parse(stored),
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+        }
+        settings.backupFolderUri = null
+        mutable.update { it.copy(backupFolderLinked = false) }
     }
 
     /**
-     * Uploads the same set [backUpNow] writes straight into this player's
-     * Drive, replacing whatever this app already put there. Shared by
-     * [linkDrive]'s first push and [pushToDriveSilently]'s every push after
-     * that — both already have a token in hand and an IO dispatcher under
-     * them by the time they call this.
+     * Writes the same set [backUpNow] writes into the linked folder,
+     * replacing whatever this app already put there. Shared by
+     * [linkBackupFolder]'s first push and [backupWanted]'s every push after
+     * that — both already run on an IO dispatcher by the time they call
+     * this.
      */
-    private suspend fun pushToDrive(accessToken: String): Result<Unit> {
+    private fun pushToBackupFolder(treeUriString: String): Result<Unit> {
         val app = getApplication<Application>()
         val result = runCatching {
+            val resolver = app.contentResolver
+            val fileUri = BackupFolderWriter.findOrCreate(resolver, Uri.parse(treeUriString))
             val bytes = java.io.ByteArrayOutputStream().also { BackupExport.write(app, it) }.toByteArray()
-            val existing = DriveBackup.findExisting(accessToken)
-            DriveBackup.upload(accessToken, existing, bytes)
+            resolver.openOutputStream(fileUri, "wt")?.use { it.write(bytes) }
+                ?: error("could not open the backup file")
         }
-        StorageBackupAgent.note(app, StorageBackupAgent.DRIVE_MARKER, if (result.isSuccess) "pushed" else "failed")
-        withContext(Dispatchers.Main) { mutable.update { it.copy(driveNote = driveNote()) } }
-        return result.map {}
+        StorageBackupAgent.note(app, StorageBackupAgent.FOLDER_MARKER, if (result.isSuccess) "pushed" else "failed")
+        mutable.update { it.copy(folderBackupNote = folderBackupNote()) }
+        return result
     }
 
-    /** Reads the file this app's own push put on Drive back onto this device, and restarts. */
-    fun restoreFromDrive(accessToken: String) {
+    /**
+     * Reads a push already put in [treeUri] back onto this device, and
+     * restarts.
+     *
+     * Takes a folder just picked rather than the one this device has
+     * linked, and deliberately: the linked folder is this device's own
+     * setting, gone the moment the app is reinstalled, while the backup
+     * sitting in that folder is not. A fresh install restoring from it has
+     * to be able to point at it again from nothing, the same as
+     * [restoreFromFile] pointing at a bare file.
+     */
+    fun restoreFromBackupFolder(treeUri: Uri) {
         val app = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
-                val fileId = DriveBackup.findExisting(accessToken) ?: error("NO BACKUP FOUND ON DRIVE")
-                val bytes = DriveBackup.download(accessToken, fileId)
-                BackupExport.read(app, java.io.ByteArrayInputStream(bytes))
+                val fileUri = BackupFolderWriter.find(app.contentResolver, treeUri)
+                    ?: error("NOTHING HAS BEEN PUSHED TO THAT FOLDER YET")
+                app.contentResolver.openInputStream(fileUri)?.use { input -> BackupExport.read(app, input) }
+                    ?: error("could not open the backup file")
             }
             withContext(Dispatchers.Main) {
                 if (result.isSuccess) {
@@ -2903,7 +2896,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     delay(1200)
                     restartApp()
                 } else {
-                    message("COULD NOT RESTORE FROM DRIVE.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+                    message("COULD NOT RESTORE FROM THAT FOLDER.", result.exceptionOrNull()?.message.orEmpty().uppercase())
                 }
             }
         }
@@ -3382,11 +3375,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                         ?.let { Instant.ofEpochMilli(it.first).toString() }
                         ?: "never")
             )
-            appendLine("- GOOGLE DRIVE BACKUP: ${if (current.driveLinked) "linked" else "not linked"}")
-            if (current.driveLinked) {
+            appendLine("- BACKUP FOLDER: ${if (current.backupFolderLinked) "linked" else "not linked"}")
+            if (current.backupFolderLinked) {
                 appendLine(
-                    "- Drive last pushed: " +
-                        (StorageBackupAgent.read(app2, StorageBackupAgent.DRIVE_MARKER)
+                    "- Folder last pushed: " +
+                        (StorageBackupAgent.read(app2, StorageBackupAgent.FOLDER_MARKER)
                             ?.let { "${Instant.ofEpochMilli(it.first)} (${it.second})" }
                             ?: "never")
                 )

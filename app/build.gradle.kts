@@ -127,10 +127,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    // Drive authorization only — no google-api-client, no Drive client
-    // library. The Drive REST API itself is a handful of HTTPS calls with a
-    // bearer token, the same way this app talks to its own sync server.
-    implementation("com.google.android.gms:play-services-auth:21.4.0")
     testImplementation("junit:junit:4.13.2")
     // Android ships org.json, but the unit-test android.jar only stubs it.
     // The real implementation on the test classpath makes the sync client

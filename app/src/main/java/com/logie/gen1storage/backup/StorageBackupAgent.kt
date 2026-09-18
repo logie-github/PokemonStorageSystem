@@ -81,12 +81,14 @@ class StorageBackupAgent : BackupAgent() {
         const val RESTORE_MARKER = "restore.marker"
 
         /**
-         * When this app last pushed to Drive on its own, and what happened.
+         * When this app last pushed into a linked backup folder on its own,
+         * and what happened.
          *
          * The same idea as [MARKER], for a push this app makes itself rather
-         * than one the system decides to take — see `StorageViewModel.pushToDrive`.
+         * than one the system decides to take — see
+         * `StorageViewModel.pushToBackupFolder`.
          */
-        const val DRIVE_MARKER = "drive-backup.marker"
+        const val FOLDER_MARKER = "folder-backup.marker"
 
         fun note(context: Context, name: String, what: String) {
             runCatching {

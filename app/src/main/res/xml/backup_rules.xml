@@ -53,6 +53,6 @@
     <exclude domain="file" path="install.marker" />
     <exclude domain="file" path="backup.marker" />
     <exclude domain="file" path="restore.marker" />
-    <exclude domain="file" path="drive-backup.marker" />
+    <exclude domain="file" path="folder-backup.marker" />
     <exclude domain="file" path="last-crash.txt" />
 </full-backup-content>

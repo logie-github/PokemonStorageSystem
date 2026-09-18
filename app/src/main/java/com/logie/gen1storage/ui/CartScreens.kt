@@ -74,8 +74,28 @@ fun ChooseCartScreen(
     // never runs the width of an opened screen.
     val columns = if (isUnfolded()) 2 else 1
     val chooseSave: (RemoteSave) -> Unit = { remote ->
-        if (sending) model.chooseWithdrawSave(sendUids, remote.key)
-        else model.chooseCart(remote.key, thenOpenStorage, then)
+        // Sending already asks its own question — "SEND PIKACHU TO RED?" — and
+        // a card tapped there is the answer to it rather than a card being
+        // put in the machine, so it is taken as it always was.
+        if (sending) {
+            model.chooseWithdrawSave(sendUids, remote.key)
+        } else {
+            // Putting a card in swaps the cartridge everything else on the
+            // screen is about, and a shelf of pictures is an easy thing to
+            // brush. So it is asked first, by name, the way the machine asks
+            // before anything else it cannot quietly undo.
+            val named = model.cartName(remote.key)?.uppercase()
+                ?: remote.summary.trainerName?.uppercase()
+                ?: "THIS CARD"
+            model.prompt(
+                Prompt.Confirm(
+                    lines = listOf("INSERT $named?"),
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { model.chooseCart(remote.key, thenOpenStorage, then) },
+                )
+            )
+        }
     }
     val choose: (TitleCardArt) -> Unit = { card ->
         model.replace(Screen.ChooseCart(card.version.id, sendUids, thenOpenStorage, then))

@@ -592,6 +592,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // recoloured the Pokemon and the Generation II trainer art went on
         // wearing its own greens and browns beside them.
         trainers.gbcFollowsPalette = settings.gbcFollowsPalette
+        // What GBC SPRITES / ORIGINAL draws through: each game's own colours,
+        // the same ones its title card and its trainer card are drawn in. Set
+        // once, because the games' palettes do not change — only which of the
+        // two sets of colours is asked for does.
+        val own = gameOwnRamps()
+        sprites.gameRamps = own
+        trainers.gameRamps = own
         applySpriteTint(GbPalette.fromId(settings.paletteId))
         // Settled here rather than when the download starts, because the
         // introduction is drawn before that: a first frame that found nothing
@@ -1076,7 +1083,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Whether Generation II art is shown in the palette or in its own colours.
+     * Whether every sprite is drawn through the chosen palette, or each in
+     * the colours of the game it came from.
      *
      * The sprite cache is keyed on it, so the change is on screen at once
      * rather than at the next thing that happens to reload a sprite.
@@ -1450,6 +1458,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.windowsFollowPalette = enabled
         mutable.update { it.copy(windowsFollowPalette = enabled) }
     }
+
+    /**
+     * Each game's four colours, darkest first, keyed by its version id.
+     *
+     * The same palettes the shelf draws a cartridge's title card and a
+     * trainer card in — see `paletteFor` — so a Pokemon out of Red is the red
+     * of the card it came off, not a second red invented here.
+     */
+    private fun gameOwnRamps(): Map<String, IntArray> =
+        GameVersion.entries.associate { version ->
+            version.id.lowercase() to
+                paletteFor(version.id).ramp.map { it.toArgb() }.toIntArray()
+        }
 
     private fun applySpriteTint(palette: GbPalette) {
         val ramp =

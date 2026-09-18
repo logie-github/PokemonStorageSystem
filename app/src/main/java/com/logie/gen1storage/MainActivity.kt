@@ -260,9 +260,15 @@ private fun StorageApp(model: StorageViewModel) {
     // to. It registers no cursor at all, so there is nothing there for a
     // swipe to move, and a swipe still swallowed on its behalf is only a
     // list that cannot be scrolled.
-    val swipesHere = state.swipeControls &&
-        state.screen !is Screen.ChooseCart &&
-        state.screen !is Screen.Printer
+    val fingersOnly = state.screen is Screen.ChooseCart || state.screen is Screen.Printer
+    // Except while something is asking. A question opened over the shelf —
+    // "INSERT RED?", with YES and NO under it — is a window like every other
+    // window in the app and it does register a cursor, so the arrow was drawn
+    // on YES and there was nothing in the world that could move it off. The
+    // reason above only holds for as long as nothing has a cursor: the moment
+    // something does, a swipe has somewhere to go again.
+    val asking = state.prompt != null || state.transferScene?.question != null
+    val swipesHere = state.swipeControls && (!fingersOnly || asking)
 
     CompositionLocalProvider(
         LocalGen1Cursor provides cursor,

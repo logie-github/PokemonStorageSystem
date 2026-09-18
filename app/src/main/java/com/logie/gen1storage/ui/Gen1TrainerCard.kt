@@ -134,16 +134,24 @@ fun Gen1TrainerCard(
                 // different sets: Johto's eight off pokecrystal's own sheet,
                 // Kanto's eight off the one this app already had — the same
                 // eight badges Red wins, because they are the same gyms.
+                val game = remote.version.id
                 if (save?.isGen2 == true) {
                     Column(verticalArrangement = Arrangement.spacedBy(gen1Dp(BADGE_GAP))) {
-                        Badges(save.johtoBadges, trainers, spriteRevision, johto = true)
-                        Badges(save.kantoBadges, trainers, spriteRevision)
+                        Badges(
+                            save.johtoBadges, trainers, spriteRevision,
+                            johto = true, gameVersionId = game,
+                        )
+                        Badges(
+                            save.kantoBadges, trainers, spriteRevision,
+                            gameVersionId = game,
+                        )
                     }
                 } else {
                     Badges(
                         save?.badges ?: List(Gen1RecompSave.BADGE_IDS.size) { false },
                         trainers,
                         spriteRevision,
+                        gameVersionId = game,
                     )
                 }
             }
@@ -190,14 +198,20 @@ fun Gen1TrainerCard(
                     // trainer with their feet on it is a trainer standing on
                     // the card rather than floating over the corner of it.
                     Box(Modifier.matchParentSize(), contentAlignment = Alignment.BottomEnd) {
-                        portrait(Modifier.fillMaxHeight(), spare)
+                        portrait(
+                            Modifier.fillMaxHeight().padding(end = gen1Dp(PORTRAIT_INSET_PIXELS)),
+                            spare,
+                        )
                     }
                 }
             } else {
                 Column(Modifier.fillMaxWidth().fillMaxHeight()) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f), content = header)
-                        portrait(Modifier, gen1Dp(SMALL_PORTRAIT_PIXELS))
+                        portrait(
+                            Modifier.padding(end = gen1Dp(PORTRAIT_INSET_PIXELS)),
+                            gen1Dp(SMALL_PORTRAIT_PIXELS),
+                        )
                     }
                     Spacer(Modifier.weight(1f))
                     badges()
@@ -284,6 +298,7 @@ private fun Portrait(
                     modifier = Modifier.fillMaxSize(),
                     sizeInPixels = null,
                     cutout = true,
+                    gameVersionId = gameVersionId,
                 )
             }
             if (showLead && lead != null) {
@@ -318,10 +333,18 @@ fun Gen1TrainerSprite(
     sizeInPixels: Int? = TrainerStore.SIZE,
     /** Drops the white field the decomp's picture carries. */
     cutout: Boolean = false,
+    /**
+     * Whose card this is standing on, which is whose colours it is drawn in
+     * while GBC SPRITES is on ORIGINAL. Null outside a card — the picker's
+     * rows, where a trainer belongs to no game yet.
+     */
+    gameVersionId: String? = null,
 ) {
-    var image by remember(id, revision, cutout) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(id, revision, store, cutout) {
-        image = withContext(Dispatchers.IO) { store.load(id, cutout) }
+    var image by remember(id, revision, cutout, gameVersionId) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(id, revision, store, cutout, gameVersionId) {
+        image = withContext(Dispatchers.IO) { store.load(id, cutout, gameVersionId) }
     }
     Box(
         modifier.then(if (sizeInPixels == null) Modifier else Modifier.size(gen1Dp(sizeInPixels))),
@@ -376,10 +399,12 @@ private fun Badges(
     revision: Int,
     /** Johto's row, which is drawn from the Generation II sheet. */
     johto: Boolean = false,
+    /** Whose card the case is on. See [Gen1TrainerSprite]. */
+    gameVersionId: String? = null,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(gen1Dp(BADGE_GAP))) {
         for (gym in 0 until TrainerStore.BADGES) {
-            Badge(gym, won.getOrElse(gym) { false }, trainers, revision, johto)
+            Badge(gym, won.getOrElse(gym) { false }, trainers, revision, johto, gameVersionId)
         }
     }
 }
@@ -398,11 +423,15 @@ private fun Badge(
     trainers: TrainerStore,
     revision: Int,
     johto: Boolean = false,
+    gameVersionId: String? = null,
 ) {
-    var image by remember(gym, revision, johto) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(gym, revision, earned, trainers, johto) {
+    var image by remember(gym, revision, johto, gameVersionId) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(gym, revision, earned, trainers, johto, gameVersionId) {
         image = if (!earned) null else withContext(Dispatchers.IO) {
-            if (johto) trainers.johtoBadge(gym) else trainers.badge(gym)
+            if (johto) trainers.johtoBadge(gym, gameVersionId)
+            else trainers.badge(gym, gameVersionId)
         }
     }
     Box(Modifier.size(gen1Dp(BADGE_PIXELS))) {
@@ -455,6 +484,16 @@ private const val CARD_PIXELS = 96
  * their heel, short enough that the trainer is still whose card this is.
  */
 private const val LEAD_FRACTION = 0.75f
+
+/**
+ * How far in off the card's right-hand edge the portrait stands.
+ *
+ * The trainer used to be flush against it. The lead stands at the trainer's
+ * own right shoulder, so it was the Pokémon rather than the trainer that met
+ * the border, and a card whose picture touches its own frame reads as a
+ * picture that did not fit. In game pixels, like everything else on the card.
+ */
+private const val PORTRAIT_INSET_PIXELS = 4
 
 /** What a decomp's sprite is drawn at, and the unit the portrait scales by. */
 private const val ART_PIXELS = 56f

@@ -832,6 +832,12 @@ private fun previewOf(
     state: UiState,
     model: StorageViewModel,
 ): (@Composable () -> Unit)? {
+    // Nothing to preview while a Pokémon's own pages are open over this
+    // screen. The status screen keeps to one half and leaves this one live in
+    // the other, and what this one then put in that other half was the same
+    // Pokémon's pages again — the same sprite, the same number, the same
+    // name, twice on one screen. The full pages are the preview by then.
+    if (state.screen is Screen.Status) return null
     val index = highlighted ?: return null
     val pokemon: Gen1Pokemon?
     val gameVersionId: String?
@@ -1306,12 +1312,16 @@ private fun OptionsDrawerContent(
                         model.setPrintBorder(all[(all.indexOf(state.printBorder) + 1) % all.size])
                     }
                 )
-                // Generation II art arrives already coloured, so it has a
-                // choice the Generation I art does not: its own colours, or
-                // the palette everything else is drawn through.
+                // Which colours a sprite is drawn in. PALETTE draws every
+                // one of them through the palette chosen above, so a box of
+                // Pokemon out of six different games is one picture.
+                // ORIGINAL draws each in the colours of the game it came
+                // from: Generation II art has those in its own files, and
+                // Generation I art is four greys, so Red's are the reds off
+                // Red's own card and Blue's the blues off Blue's.
                 add(
                     OptionRow(
-                        "GBC SPRITES",
+                        "SPRITE COLOURS",
                         if (state.gbcFollowsPalette) "PALETTE" else "ORIGINAL",
                     ) { model.setGbcFollowsPalette(!state.gbcFollowsPalette) }
                 )

@@ -61,6 +61,26 @@ class TrainerStore(private val directory: File) {
         memory.clear()
     }
 
+    /** Each game's own four colours. See [SpriteStore.gameRamps]. */
+    var gameRamps: Map<String, IntArray> = emptyMap()
+        set(value) {
+            field = value
+            memory.clear()
+        }
+
+    /** The ramp a picture off [gameVersionId]'s card is drawn through. */
+    private fun rampFor(gameVersionId: String?): IntArray? {
+        if (gbcFollowsPalette) return tintRamp
+        return gameRamps[gameVersionId?.lowercase()] ?: tintRamp
+    }
+
+    /** What that ramp is called, for the cache key. */
+    private fun tintKeyFor(gameVersionId: String?): String {
+        if (gbcFollowsPalette) return tintId
+        val game = gameVersionId?.lowercase()
+        return if (game != null && game in gameRamps) "own:$game" else tintId
+    }
+
     fun file(id: String): File = File(directory, "$id.png")
 
     fun has(id: String): Boolean = file(id).let { it.isFile && it.length() > 0 }
@@ -119,8 +139,12 @@ class TrainerStore(private val directory: File) {
         }.getOrNull()
     }
 
-    private fun tinted(bitmap: Bitmap, cutout: Boolean = false): Bitmap {
-        val ramp = tintRamp
+    private fun tinted(
+        bitmap: Bitmap,
+        cutout: Boolean = false,
+        gameVersionId: String? = null,
+    ): Bitmap {
+        val ramp = rampFor(gameVersionId)
         return runCatching {
             when {
                 ramp != null -> recolourToRamp(bitmap, ramp, cutout)
@@ -138,9 +162,9 @@ class TrainerStore(private val directory: File) {
      * is zero-based in the order Generation I awards them, which is the order
      * the card draws them in.
      */
-    fun badge(gym: Int): ImageBitmap? {
+    fun badge(gym: Int, gameVersionId: String? = null): ImageBitmap? {
         if (gym !in 0 until BADGES) return null
-        val key = "$tintId/badge/cut/$gym"
+        val key = "${tintKeyFor(gameVersionId)}/badge/cut/$gym"
         memory[key]?.let { return it }
 
         val sheet = decode(file(BADGE_SHEET)) ?: return null
@@ -155,7 +179,8 @@ class TrainerStore(private val directory: File) {
         // trainers are. A badge is a shape on the card, and the field around
         // it read as a white plate laid over the card's own colour with eight
         // badges sitting on it.
-        return tinted(cut, cutout = true).asImageBitmap().also { memory[key] = it }
+        return tinted(cut, cutout = true, gameVersionId = gameVersionId)
+            .asImageBitmap().also { memory[key] = it }
     }
 
     /**
@@ -201,13 +226,19 @@ class TrainerStore(private val directory: File) {
      * [cutout] drops the white field the decomp's picture carries, so the
      * trainer stands on the card rather than on a white plate.
      */
-    fun load(id: String, cutout: Boolean = false): ImageBitmap? {
+    fun load(
+        id: String,
+        cutout: Boolean = false,
+        /** Whose card this is being drawn on, for [rampFor]. */
+        gameVersionId: String? = null,
+    ): ImageBitmap? {
         // The player is not one of the trainer classes and is still a picture
         // a card can wear, so the extras are askable for by name too.
         if (ALL.none { it.id == id } && id !in EXTRA_ART && id !in GEN2_ART &&
             !isGen2Trainer(id)
         ) return null
-        val key = "$tintId/${if (gbcFollowsPalette) "pal/" else ""}${if (cutout) "cut/" else ""}$id"
+        val key = "${tintKeyFor(gameVersionId)}/" +
+            "${if (gbcFollowsPalette) "pal/" else ""}${if (cutout) "cut/" else ""}$id"
         memory[key]?.let { return it }
 
         val source = file(id).takeIf { it.isFile } ?: return null
@@ -234,7 +265,7 @@ class TrainerStore(private val directory: File) {
         // Generation II's pictures arrive in the colours the Game Boy Color
         // gave them, the same as its Pokémon do, so they are left alone
         // unless GBC SPRITES has been set to follow the palette.
-        val ramp = tintRamp.takeIf { !isGen2Trainer(id) || gbcFollowsPalette }
+        val ramp = rampFor(gameVersionId).takeIf { !isGen2Trainer(id) || gbcFollowsPalette }
         val finished = runCatching {
             when {
                 ramp != null -> recolourToRamp(decoded, ramp, cutout)
@@ -251,9 +282,9 @@ class TrainerStore(private val directory: File) {
      * Which is badges alone rather than leaders and badges alternating, so
      * the tile wanted is the gym itself and not twice it plus one.
      */
-    fun johtoBadge(gym: Int): ImageBitmap? {
+    fun johtoBadge(gym: Int, gameVersionId: String? = null): ImageBitmap? {
         if (gym !in 0 until BADGES) return null
-        val key = "$tintId/johto/cut/$gym"
+        val key = "${tintKeyFor(gameVersionId)}/johto/cut/$gym"
         memory[key]?.let { return it }
 
         val sheet = decode(file(GEN2_BADGE_SHEET)) ?: return null

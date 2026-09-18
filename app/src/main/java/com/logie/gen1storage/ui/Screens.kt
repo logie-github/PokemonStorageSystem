@@ -61,6 +61,7 @@ import com.logie.gen1storage.storage.StoredPokemon
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.RemoteSave
 import com.logie.gen1storage.sync.SyncApi
+import com.logie.gen1storage.share.PrintBorder
 import com.logie.gen1storage.transfer.crossGenerationRefusal
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.WithdrawTarget
@@ -927,7 +928,9 @@ fun StatusScreen(
     val cardActions = buildList<Pair<String, () -> Unit>> {
         if (storedUid != null) {
             add(NICKNAME_LABEL to { model.prompt(Prompt.RenameMon(storedUid)) })
-            add(SHARE_LABEL to { model.shareCard(storedUid) })
+            // Into the printer rather than straight out: there is more than
+            // one page it could print, and which one is the player's to say.
+            add(SHARE_LABEL to { model.open(Screen.Printer(storedUid)) })
         }
         // A live save's own party — key means the game, area 0 the party —
         // and only while it is actually carrying a letter. `MonMailAction`'s
@@ -938,16 +941,13 @@ fun StatusScreen(
             add("MAIL" to { model.prompt(Prompt.MailAction(key, slot + 1)) })
         }
     }
+    // What this screen can be told to do, and only that. Walking to the one
+    // beside this and leaving are both gestures now — a swipe left or right
+    // for the neighbour, a hold to go back — so they are not rows taking up a
+    // menu that is otherwise two lines long. The page turn moved with them.
     val actions = buildList<Pair<String, () -> Unit>> {
-        if (slot > 0) {
-            add(PREV_LABEL to { model.replace(Screen.Status(key, area, slot - 1, transfer)) })
-        }
         transferPair?.let(::add)
-        if (slot < siblings - 1) {
-            add(NEXT_LABEL to { model.replace(Screen.Status(key, area, slot + 1, transfer)) })
-        }
         addAll(cardActions)
-        add(BACK_LABEL to { model.back() })
     }
     // Up and down walk the actions; left and right turn the pages, which is
     // how the cartridge turns them and the only place on this screen a
@@ -961,10 +961,13 @@ fun StatusScreen(
         pokemon.generation >= 2 -> GEN2_PAGES
         else -> PAGES
     }
+    fun goTo(next: Int) {
+        if (next in 0 until siblings) model.replace(Screen.Status(key, area, next, transfer))
+    }
     val at = rememberCursorLayer(
-        actions.size,
+        actions.size.coerceAtLeast(1),
         onSide = { _, button ->
-            page = (page + if (button == GbButton.RIGHT) 1 else pages - 1) % pages
+            goTo(slot + if (button == GbButton.RIGHT) 1 else -1)
             true
         },
     ) { index -> actions.getOrNull(index)?.second?.invoke() }
@@ -983,47 +986,26 @@ fun StatusScreen(
             state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.provenance
         } else null,
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
+        // Swiped through rather than stepped through with a row at each end.
+        // A Pokemon either side of this one is a neighbour, and reaching a
+        // neighbour by pressing a word called NEXT is the long way round.
+        onNeighbour = { forward -> goTo(slot + if (forward) 1 else -1) },
         footer = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                cardActions.forEach { (label, act) ->
-                    Gen1BoxButton(label, act, selected = isOn(label))
+            // One menu, in the window every other menu in this app is in,
+            // rather than a row of buttons along the bottom. There is nothing
+            // on this screen that a menu could not hold, and a screen of
+            // buttons beside a screen of menus is two apps.
+            if (actions.isNotEmpty()) {
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    actions.forEach { (label, act) ->
+                        Gen1MenuRow(
+                            label,
+                            selected = isOn(label),
+                            onSelect = {},
+                            onConfirm = act,
+                        )
+                    }
                 }
-                Gen1BoxButton(BACK_LABEL, { model.back() }, selected = isOn(BACK_LABEL))
-            }
-        },
-        underBox = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Gen1BoxButton(
-                    PREV_LABEL,
-                    { model.replace(Screen.Status(key, area, slot - 1, transfer)) },
-                    enabled = slot > 0,
-                    selected = isOn(PREV_LABEL),
-                )
-                // Only the transfer this screen was opened from. Looking a
-                // Pokémon over is most of why a transfer stalls here, so the
-                // way on is under it rather than back through the list.
-                transferPair?.let { (label, act) ->
-                    Gen1Button(
-                        label,
-                        act,
-                        Modifier.wrapContentWidth(),
-                        selected = isOn(label),
-                    )
-                }
-                Gen1BoxButton(
-                    NEXT_LABEL,
-                    { model.replace(Screen.Status(key, area, slot + 1, transfer)) },
-                    enabled = slot < siblings - 1,
-                    selected = isOn(NEXT_LABEL),
-                )
             }
         },
     )
@@ -1056,8 +1038,6 @@ private fun syncLines(cartridge: Prompt.Cartridge?): List<String> = when {
     )
 }
 
-private const val PREV_LABEL = "PREV"
-private const val NEXT_LABEL = "NEXT"
 private const val BACK_LABEL = "BACK"
 private const val NICKNAME_LABEL = "NAME"
 private const val SHARE_LABEL = "SHARE"
@@ -1311,8 +1291,9 @@ private fun OptionsDrawerContent(
                     ) { model.setWindowsFollowPalette(!state.windowsFollowPalette) }
                 )
                 add(
-                    OptionRow("PRINTER BORDER", if (state.printerBorder) "ON" else "OFF") {
-                        model.setPrinterBorder(!state.printerBorder)
+                    OptionRow("PRINT BORDER", state.printBorder.label) {
+                        val all = PrintBorder.entries
+                        model.setPrintBorder(all[(all.indexOf(state.printBorder) + 1) % all.size])
                     }
                 )
                 // Generation II art arrives already coloured, so it has a

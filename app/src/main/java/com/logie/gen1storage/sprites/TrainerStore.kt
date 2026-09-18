@@ -158,6 +158,35 @@ class TrainerStore(private val directory: File) {
         return tinted(cut, cutout = true).asImageBitmap().also { memory[key] = it }
     }
 
+    /**
+     * One 8x8 tile of the Pokédex sheet, as plain pixels for the printer.
+     *
+     * Handed back undecorated — no tint, no cut-out — because the printer
+     * draws it into a print of its own and decides the colours there. Null
+     * while the sheet has not been downloaded, which is the ordinary state
+     * before DOWNLOADS has run and is why every caller has a fallback.
+     *
+     * The sheet is sixteen tiles across; [index] counts along it in reading
+     * order. See [DEX_SHEET] for what is on it and why it is the printer's.
+     */
+    fun dexTile(index: Int): Bitmap? {
+        val sheet = decode(file(DEX_SHEET)) ?: return null
+        val across = sheet.width / DEX_TILE
+        if (across <= 0 || index < 0 || index >= across * (sheet.height / DEX_TILE)) {
+            sheet.recycle()
+            return null
+        }
+        val cut = Bitmap.createBitmap(
+            sheet,
+            (index % across) * DEX_TILE,
+            (index / across) * DEX_TILE,
+            DEX_TILE,
+            DEX_TILE,
+        )
+        sheet.recycle()
+        return cut
+    }
+
     fun bytesOnDisk(): Long =
         directory.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
@@ -381,6 +410,18 @@ class TrainerStore(private val directory: File) {
          */
         const val DEX_BALLS = "balls"
 
+        /**
+         * The Pokédex screen's own sheet, which is also the printer's.
+         *
+         * `gfx/pokedex/pokedex.png` — sixteen tiles by four. The printed
+         * Pokédex page is drawn out of it: the beaded rule that separates the
+         * head of the page from its text is these tiles, and so are the `No.`
+         * and the prime marks that set a height in feet and inches. Printing
+         * a page with a rule this app drew itself would be a picture of a
+         * printout rather than the printout.
+         */
+        const val DEX_SHEET = "pokedex"
+
         /** Which of the four: caught, ailing, fainted, and an empty slot. */
         const val BALL_CAUGHT = 0
         const val BALL_AILING = 1
@@ -405,6 +446,7 @@ class TrainerStore(private val directory: File) {
             TRADE_CABLE to "gfx/trade/link_cable.png",
             TRADE_BALL to "gfx/trade/cable_ball.png",
             DEX_BALLS to "gfx/battle/balls.png",
+            DEX_SHEET to "gfx/pokedex/pokedex.png",
         )
 
         /**
@@ -433,7 +475,21 @@ class TrainerStore(private val directory: File) {
             TRADE_CABLE to (24 to 40),
             TRADE_BALL to (16 to 16),
             DEX_BALLS to (32 to 8),
+            DEX_SHEET to (128 to 32),
         )
+
+        /** One tile of the Pokédex sheet, in real pixels. */
+        const val DEX_TILE = 8
+
+        /**
+         * `No.`, which the printed Pokédex page sets under the picture. Its
+         * own tile on the sheet rather than three characters of the text
+         * face, because that is what the cartridge draws there.
+         */
+        const val DEX_TILE_NUMBER = 43
+
+        /** The ball strung along the rule that divides the page. */
+        const val DEX_TILE_BALL = 30
 
         /** The eight gyms. */
         const val BADGES = 8

@@ -65,6 +65,7 @@ import com.logie.gen1storage.ui.DexScreen
 import com.logie.gen1storage.ui.TimeCapsuleScreen
 import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
+import com.logie.gen1storage.ui.PrinterScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
@@ -259,7 +260,9 @@ private fun StorageApp(model: StorageViewModel) {
     // to. It registers no cursor at all, so there is nothing there for a
     // swipe to move, and a swipe still swallowed on its behalf is only a
     // list that cannot be scrolled.
-    val swipesHere = state.swipeControls && state.screen !is Screen.ChooseCart
+    val swipesHere = state.swipeControls &&
+        state.screen !is Screen.ChooseCart &&
+        state.screen !is Screen.Printer
 
     CompositionLocalProvider(
         LocalGen1Cursor provides cursor,
@@ -431,6 +434,7 @@ private fun ScreenContent(
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
         is Screen.TrainerCard -> TrainerCardScreen(state, model, screen.key)
+        is Screen.Printer -> PrinterScreen(state, model, screen.uid)
         Screen.Trade -> TradeScreen(state, model)
         Screen.TimeCapsule -> TimeCapsuleScreen(state, model)
         Screen.Dex -> DexScreen(state, model)

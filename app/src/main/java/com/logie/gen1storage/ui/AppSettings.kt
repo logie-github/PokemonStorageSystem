@@ -1,6 +1,7 @@
 package com.logie.gen1storage.ui
 
 import android.content.Context
+import com.logie.gen1storage.share.PrintBorder
 import android.content.SharedPreferences
 import com.logie.gen1storage.sound.SoundEffect
 
@@ -266,15 +267,18 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_HAPTICS, value).apply()
 
     /**
-     * Whether a shared Pokémon comes out on paper.
+     * What a shared print comes out with around it.
      *
-     * On: the card is set on a torn sheet the way a Game Boy Printer handed
-     * one over. Off gives the print alone, which is what a player wants when
-     * it is going somewhere that will crop it anyway.
+     * Was a yes-or-no about the torn paper. There are two separate things to
+     * want, though — the paper it was fed onto and the rule the game drew
+     * inside the image — so it is the four ways those combine, and the
+     * printer screen shows each of them before anything is sent.
      */
-    var printerBorder: Boolean
-        get() = prefs.getBoolean(KEY_PRINTER_BORDER, true)
-        set(value) = prefs.edit().putBoolean(KEY_PRINTER_BORDER, value).apply()
+    var printBorder: PrintBorder
+        get() = prefs.getString(KEY_PRINT_BORDER, null)
+            ?.let { name -> PrintBorder.entries.firstOrNull { it.name == name } }
+            ?: PrintBorder.PAPER
+        set(value) = prefs.edit().putString(KEY_PRINT_BORDER, value.name).apply()
 
     fun motionEnabled(motion: Motion): Boolean =
         !reduceMotion && prefs.getBoolean(KEY_MOTION_PREFIX + motion.id, true)
@@ -317,7 +321,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_SWIPE_CONTROLS = "swipe-controls"
         const val KEY_MOTION_PREFIX = "motion-"
         const val KEY_HAPTICS = "haptics"
-        const val KEY_PRINTER_BORDER = "printer-border"
+        const val KEY_PRINT_BORDER = "print-border"
         const val KEY_SOUND_OFF = "sound-off"
         const val KEY_SOUND_PREFIX = "sound-"
         /** As long as a name can be and still fit a cartridge label. */

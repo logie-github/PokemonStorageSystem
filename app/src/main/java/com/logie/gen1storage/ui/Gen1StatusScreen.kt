@@ -21,6 +21,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -96,6 +98,14 @@ fun Gen1StatusScreen(
      */
     page: Int? = null,
     onPage: ((Int) -> Unit)? = null,
+    /**
+     * The Pokémon either side of this one, where there is somewhere to go.
+     *
+     * A sideways drag across the screen walks to the neighbour: the ones in a
+     * box are a row of things and moving along a row is a swipe, not a word
+     * called NEXT at the bottom of the screen. True is forward.
+     */
+    onNeighbour: ((Boolean) -> Unit)? = null,
 ) {
     // An egg has one screen and no pages; everything else has three, and a
     // fourth for the Pokedex entry this app adds to both generations.
@@ -111,7 +121,34 @@ fun Gen1StatusScreen(
         if (speaks) cries?.cry(pokemon.species?.dexNumber, pokemon.generation)
     }
 
-    Row(modifier.fillMaxSize().padding(gen1Dp(4))) {
+    Row(
+        modifier
+            .fillMaxSize()
+            .then(
+                if (onNeighbour == null) Modifier else Modifier.pointerInput(onNeighbour) {
+                    // Only a deliberate sideways throw, and only once per
+                    // gesture: a drag that wanders is somebody reading the
+                    // screen rather than asking for the next Pokémon.
+                    var spent = false
+                    detectDragGestures(
+                        onDragEnd = { spent = false },
+                        onDragCancel = { spent = false },
+                    ) { change, amount ->
+                        if (!spent && kotlin.math.abs(amount.x) > kotlin.math.abs(amount.y)) {
+                            val threshold = size.width * NEIGHBOUR_FRACTION
+                            if (kotlin.math.abs(change.position.x - change.previousPosition.x) > 0 &&
+                                kotlin.math.abs(amount.x) > threshold
+                            ) {
+                                spent = true
+                                onNeighbour(amount.x < 0)
+                            }
+                        }
+                        change.consume()
+                    }
+                }
+            )
+            .padding(gen1Dp(4)),
+    ) {
         // Unfolded, the pages keep to the left half in a window of their own
         // rather than turning that half into a white wall — the screen behind
         // stays visible around it, as it does everywhere else.
@@ -647,3 +684,6 @@ private fun eggFlavour(pokemon: Gen1Pokemon): List<String> {
         else -> listOf("THIS EGG NEEDS A", "LOT MORE TIME TO", "HATCH.")
     }
 }
+
+/** How far across the screen a drag has to run to be a step to the next one. */
+private const val NEIGHBOUR_FRACTION = 0.06f

@@ -30,6 +30,8 @@ import com.logie.gen1storage.storage.StoredPokemon
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import com.logie.gen1storage.share.PokemonCardImage
+import com.logie.gen1storage.share.PrintBorder
+import com.logie.gen1storage.share.PrintKind
 import com.logie.gen1storage.share.ShareCard
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
@@ -139,6 +141,14 @@ sealed interface Screen {
     ) : Screen
     /** One playthrough's trainer card, read at full size. */
     data class TrainerCard(val key: String) : Screen
+    /**
+     * The printer, with a stored Pokémon in it.
+     *
+     * Its own screen rather than a prompt because choosing what to print is
+     * looking at the prints, and a window over the status screen would leave
+     * no room to look at anything.
+     */
+    data class Printer(val uid: String) : Screen
     data object Options : Screen
     /** The four that only evolve by being traded, and the machine to do it. */
     data object Trade : Screen
@@ -365,7 +375,7 @@ data class UiState(
     /** The tick under the finger. */
     val haptics: Boolean = true,
     /** Whether a shared Pokémon comes out on printer paper. */
-    val printerBorder: Boolean = true,
+    val printBorder: PrintBorder = PrintBorder.PAPER,
     val loadingAll: Boolean = false,
     val spriteProgress: DownloadProgress? = null,
     val spritesInstalled: Int = 0,
@@ -613,7 +623,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 swipeControls = settings.swipeControls,
                 motionsOn = enabledMotions(),
                 haptics = settings.haptics,
-                printerBorder = settings.printerBorder,
+                printBorder = settings.printBorder,
                 textSpeed = settings.textSpeed,
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
@@ -1080,9 +1090,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setPrinterBorder(on: Boolean) {
-        settings.printerBorder = on
-        mutable.update { it.copy(printerBorder = on) }
+    /** What a print comes out with around it. See [AppSettings.printBorder]. */
+    fun setPrintBorder(border: PrintBorder) {
+        settings.printBorder = border
+        mutable.update { it.copy(printBorder = border) }
     }
 
     /**
@@ -1092,10 +1103,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * whatever else was on it and whatever the phone's own bars look like,
      * and the thing worth sending is the Pokémon.
      */
-    fun cardImage(uid: String): Bitmap? {
+    fun cardImage(
+        uid: String,
+        kind: PrintKind = PrintKind.DEX,
+        border: PrintBorder = settings.printBorder,
+    ): Bitmap? {
         val stored = storage.get(uid) ?: return null
         val sprite = stored.pokemon.speciesId
-            ?.let { sprites.load(it, stored.spriteGameVersionId) }
+            ?.let { sprites.load(it, stored.spriteGameVersionId, cutout = false) }
             ?.asAndroidBitmap()
         return runCatching {
             PokemonCardImage.render(
@@ -1104,7 +1119,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 sprite = sprite,
                 provenance = stored.provenance,
                 palette = GbPalette.fromId(settings.paletteId),
-                printerBorder = settings.printerBorder,
+                kind = kind,
+                border = border,
+                dexTile = { trainers.dexTile(it) },
             )
         }.getOrNull()
     }
@@ -1121,9 +1138,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * show on a scrolling list. The chooser is opened from the application
      * context with NEW_TASK, so this does not need the activity.
      */
-    fun shareCard(uid: String) = viewModelScope.launch {
+    fun shareCard(
+        uid: String,
+        kind: PrintKind = PrintKind.DEX,
+        border: PrintBorder = settings.printBorder,
+    ) = viewModelScope.launch {
         val name = cardName(uid)
-        val card = withContext(Dispatchers.Default) { cardImage(uid) }
+        val card = withContext(Dispatchers.Default) { cardImage(uid, kind, border) }
         val sent = card != null &&
             ShareCard.share(getApplication(), card, name)
         if (!sent) message("THAT CARD COULD NOT BE SENT.")

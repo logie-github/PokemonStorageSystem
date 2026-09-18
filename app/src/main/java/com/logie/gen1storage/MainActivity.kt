@@ -277,9 +277,11 @@ private fun StorageApp(model: StorageViewModel) {
             // The system bars are hidden, so only the camera cutout is still
             // something the interface has to stay out of.
             .displayCutoutPadding()
-            // The whole of it is the SWIPE CONTROLS setting, off unless
-            // someone asked for it — the hold included. On, a swipe anywhere
-            // is the D-pad and the lists stop scrolling under a finger.
+            // The hold is read on every screen whatever this says — see
+            // [gen1Gestures]. What the setting governs is the rest: on, a
+            // swipe anywhere is the D-pad and the lists stop scrolling under
+            // a finger; off, and on the card shelf either way, drags belong
+            // to whatever they land on.
             .gen1Gestures(
                 swipesHere,
                 windows::isFreeSpace,

@@ -28,13 +28,21 @@ val LocalGen1Swipe = staticCompositionLocalOf { false }
 /**
  * How the app is driven, alongside tapping.
  *
- * Off by default, and off it is not there at all: the whole layer is left out
- * of the modifier chain, so the app is tapped and scrolled and nothing reads
- * a gesture over it. The hold is part of this and goes with it — back is the
- * BACK row and the phone's own back gesture, as it is in any app.
+ * **A hold is always back.** Everywhere, on every screen, whether or not the
+ * swipe vocabulary below is switched on — it is the one gesture that is not
+ * part of the setting. It used to be: the whole layer was left out when
+ * SWIPE CONTROLS was off, and left out again on the screen that is worked by
+ * finger alone, so holding to go back worked on most of the app and silently
+ * did nothing on the rest. A gesture that works in some menus and not others
+ * is worse than one that works nowhere, because there is no way to learn it.
  *
- * On, the vocabulary is the TM35 Metronome mod's, and its thresholds, so
- * muscle memory carries over from the game:
+ * The one exception is a window that wants the hold for something of its own
+ * — a card to open, a box to rename — which says so with [gen1HoldRegion] and
+ * is left to it. That is a local rule about one window rather than a screen
+ * where the gesture stops existing.
+ *
+ * [swipes] governs the rest of the vocabulary, which is the TM35 Metronome
+ * mod's, at its thresholds, so muscle memory carries over from the game:
  *
  *  - swipe up / down / left / right  -> the D-pad, moving the cursor
  *  - tap                             -> A, taking whatever the cursor is on
@@ -55,13 +63,18 @@ val LocalGen1Swipe = staticCompositionLocalOf { false }
  * so the feel is the same on a small phone and on an unfolded one.
  */
 fun Modifier.gen1Gestures(
-    /** Whether the swipe vocabulary is on at all. */
+    /**
+     * Whether a drag is the D-pad and a tap in free space is A.
+     *
+     * Off, nothing here consumes a drag and the lists scroll under a finger
+     * as they would in any app — but the hold above is still read.
+     */
     swipes: Boolean,
     isFreeSpace: (Offset) -> Boolean,
     isHoldClaimed: (Offset) -> Boolean,
     onButton: (GbButton) -> Unit,
-): Modifier = if (!swipes) this else this.then(
-    Modifier.pointerInput(Unit) {
+): Modifier = this.then(
+    Modifier.pointerInput(swipes) {
         val shortSide = minOf(size.width, size.height).toFloat()
         val swipeThreshold = maxOf(MIN_SWIPE_PX, shortSide * SWIPE_RATIO)
         val tapSlop = maxOf(MIN_TAP_SLOP_PX, shortSide * TAP_SLOP_RATIO)
@@ -132,6 +145,12 @@ fun Modifier.gen1Gestures(
             }
 
             if (outcome == GestureOutcome.CANCELLED) return@awaitEachGesture
+
+            // Past the hold, nothing else here is ours unless the swipe
+            // vocabulary is on. Crucially nothing above this line consumed
+            // anything, so a drag that was only ever a scroll reaches the
+            // list underneath exactly as it would in any other app.
+            if (!swipes) return@awaitEachGesture
 
             // A swipe is the D-pad wherever it starts, and it is consumed so
             // the list under it does not also move. Nowhere is exempt: a list

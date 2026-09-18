@@ -1288,6 +1288,26 @@ private fun OptionsDrawerContent(
     val pickRomsFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) model.importRomsFolder(uri)
     }
+    // On demand, rather than whenever Android's own schedule gets round to
+    // it — see BackupExport. CreateDocument opens with the suggested name
+    // already in the box; OpenDocument's filter is left wide open because a
+    // file picked back up off Drive or a Files app rarely keeps whatever
+    // mime type it was written with.
+    val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) model.backUpNow(uri)
+    }
+    val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            model.prompt(
+                Prompt.Confirm(
+                    lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH THAT FILE?"),
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { model.restoreFromFile(uri) },
+                )
+            )
+        }
+    }
     val rows = buildList {
         when (drawer) {
             OptionsDrawer.VISUAL -> {
@@ -1556,6 +1576,13 @@ private fun OptionsDrawerContent(
                 if (state.cloudBackup) {
                     add(OptionRow("LAST BACKUP", state.backupNote) { model.explainBackup() })
                 }
+                // Android's own pass on its own schedule, but a player who
+                // needs one right now — before deleting the app, say, or
+                // before handing the phone off — should not have to wait on
+                // it. Same contents, taken this instant, to a file of their
+                // own choosing. See BackupExport.
+                add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
+                add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
             }
 
             OptionsDrawer.ABOUT -> {

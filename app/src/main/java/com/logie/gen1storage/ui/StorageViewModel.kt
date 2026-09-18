@@ -26,6 +26,7 @@ import com.logie.gen1storage.pokemon.TimeCapsule
 import com.logie.gen1storage.pokemon.tradeEvolutionName
 import com.logie.gen1storage.pokemon.tradeEvolutionOf
 import com.logie.gen1storage.pokemon.tradeEvolves
+import com.logie.gen1storage.backup.BackupExport
 import com.logie.gen1storage.backup.StorageBackupAgent
 import com.logie.gen1storage.storage.Hop
 import com.logie.gen1storage.storage.Lineage
@@ -2695,6 +2696,67 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 }) + sizeLines
             )
         )
+    }
+
+    /** What a manual backup is named by default, so the picker opens with a name in it. */
+    fun backupFileName(): String {
+        val date = java.time.LocalDate.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        return "pokestorage-backup-$date.pssbackup"
+    }
+
+    /**
+     * Writes everything Auto Backup would carry into the file the player just
+     * picked — the same set `backup_rules.xml` names, taken right now rather
+     * than whenever Android next runs its own pass. See [BackupExport].
+     */
+    fun backUpNow(uri: Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                app.contentResolver.openOutputStream(uri)?.use { out -> BackupExport.write(app, out) }
+                    ?: error("THE CHOSEN LOCATION WOULD NOT OPEN")
+            }
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) message("BACKUP SAVED.")
+                else message("COULD NOT SAVE THE BACKUP.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+            }
+        }
+    }
+
+    /**
+     * Puts a file [backUpNow] wrote back onto this device and restarts.
+     *
+     * The settings and boxes this overwrites are already cached in memory the
+     * moment anything reads them this run, so a restart is the only way every
+     * part of the app is guaranteed to pick up the new file rather than go on
+     * holding the old one until something happens to reload it.
+     */
+    fun restoreFromFile(uri: Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                app.contentResolver.openInputStream(uri)?.use { input -> BackupExport.read(app, input) }
+                    ?: error("THE CHOSEN FILE WOULD NOT OPEN")
+            }
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    message("BACKUP RESTORED.", "RESTARTING...")
+                    delay(1200)
+                    restartApp()
+                } else {
+                    message("COULD NOT READ THAT FILE.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+                }
+            }
+        }
+    }
+
+    private fun restartApp() {
+        val app = getApplication<Application>()
+        val intent = app.packageManager.getLaunchIntentForPackage(app.packageName)
+            ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        if (intent != null) app.startActivity(intent)
+        kotlin.system.exitProcess(0)
     }
 
     /** Re-reads a save from the account, so a transfer is aimed at its current revision. */

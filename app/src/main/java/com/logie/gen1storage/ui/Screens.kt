@@ -1546,6 +1546,16 @@ private fun OptionsDrawerContent(
                         model.setCloudBackup(!state.cloudBackup)
                     }
                 )
+                // Whether one has ever actually been taken, which is the only
+                // honest answer to "is this working". Android runs the pass
+                // itself — overnight, charging, on wi-fi, at most once a day
+                // — so a switch turned on this afternoon has genuinely not
+                // been backed up yet, and a row that only said ON would be
+                // telling somebody their Pokémon were safe when they are not
+                // anywhere yet.
+                if (state.cloudBackup) {
+                    add(OptionRow("LAST BACKUP", state.backupNote) { model.explainBackup() })
+                }
             }
 
             OptionsDrawer.ABOUT -> {

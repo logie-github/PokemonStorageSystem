@@ -26,6 +26,7 @@ import com.logie.gen1storage.pokemon.TimeCapsule
 import com.logie.gen1storage.pokemon.tradeEvolutionName
 import com.logie.gen1storage.pokemon.tradeEvolutionOf
 import com.logie.gen1storage.pokemon.tradeEvolves
+import com.logie.gen1storage.backup.StorageBackupAgent
 import com.logie.gen1storage.storage.Hop
 import com.logie.gen1storage.storage.Lineage
 import com.logie.gen1storage.storage.LineageBook
@@ -376,6 +377,8 @@ data class UiState(
     val reduceMotion: Boolean = false,
     /** Whether Android may copy this app into the player's Google account. */
     val cloudBackup: Boolean = false,
+    /** What the system has actually done about backing this app up. */
+    val backupNote: String = "OFF",
     /** Whether Generation II art follows the palette instead of its own colours. */
     val gbcFollowsPalette: Boolean = false,
     /** Swipes drive the cursor, and lists do not scroll under a finger. */
@@ -447,7 +450,30 @@ data class UiState(
 class StorageViewModel(application: Application) : AndroidViewModel(application) {
 
     private val storageDir = File(application.filesDir, "pc")
-    private val storage = StorageRepository(storageDir)
+
+    /**
+     * Tells the platform this app has something new worth backing up.
+     *
+     * Android's backup runs on its own schedule — overnight, charging, on an
+     * unmetered network — but an app only joins the queue for that pass by
+     * saying its data has changed. This used to be said once, when the switch
+     * was turned on, so the first backup went and everything deposited after
+     * it waited on the system happening to come round again.
+     *
+     * Debounced, because a bulk import persists the boxes once per Pokémon
+     * and the platform does not need telling six hundred times.
+     */
+    private var backupSignal: Job? = null
+
+    private fun backupWanted() {
+        if (backupSignal?.isActive == true) return
+        backupSignal = viewModelScope.launch {
+            delay(BACKUP_SIGNAL_MILLIS)
+            runCatching { BackupManager(getApplication()).dataChanged() }
+        }
+    }
+
+    private val storage = StorageRepository(storageDir, ::backupWanted)
     private val journal = TransferJournal(storageDir)
     private val backups = SaveBackups(File(storageDir, "backups"))
 
@@ -638,6 +664,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
                 cloudBackup = settings.cloudBackup,
+                backupNote = backupNote(),
                 gbcFollowsPalette = settings.gbcFollowsPalette,
                 swipeControls = settings.swipeControls,
                 motionsOn = enabledMotions(),
@@ -2552,10 +2579,54 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     /** Whether this app's data goes into the account's backup. */
     fun setCloudBackup(on: Boolean) {
         settings.cloudBackup = on
-        mutable.update { it.copy(cloudBackup = on) }
-        // Tells the platform there is something new to take. Without it the
-        // first backup waits for whenever the system next feels like one.
-        runCatching { BackupManager(getApplication()).dataChanged() }
+        mutable.update { it.copy(cloudBackup = on, backupNote = backupNote()) }
+        backupWanted()
+    }
+
+    /**
+     * What the system has actually done about backing this app up.
+     *
+     * There is no way to ask Android whether backup is on for a device, and
+     * "I turned it on and nothing came back" has two completely different
+     * causes — the system has never run a pass yet, or it ran and something
+     * went wrong. So the agent writes down each time it is asked, and this is
+     * that note put into words. See [StorageBackupAgent].
+     */
+    private fun backupNote(): String {
+        val app = getApplication<Application>()
+        val taken = StorageBackupAgent.read(app, StorageBackupAgent.MARKER)
+            ?: return if (settings.cloudBackup) "NOT YET" else "OFF"
+        val when_ = java.time.Instant.ofEpochMilli(taken.first)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))
+            .uppercase()
+        return if (taken.second.startsWith("taken")) when_ else "$when_ (${taken.second.uppercase()})"
+    }
+
+    /** What the row above is actually saying, for anybody who taps it. */
+    fun explainBackup() {
+        val app = getApplication<Application>()
+        val taken = StorageBackupAgent.read(app, StorageBackupAgent.MARKER)
+        prompt(
+            Prompt.Message(
+                if (taken == null) {
+                    listOf(
+                        "ANDROID HAS NOT ASKED FOR A",
+                        "BACKUP YET.",
+                        "IT TAKES ONE OVERNIGHT WHILE",
+                        "CHARGING ON WI-FI, ONCE A DAY.",
+                    )
+                } else {
+                    listOf(
+                        "ANDROID LAST ASKED ON",
+                        "${backupNote()}.",
+                        "IT TAKES ONE OVERNIGHT WHILE",
+                        "CHARGING ON WI-FI, ONCE A DAY.",
+                    )
+                }
+            )
+        )
     }
 
     /** Re-reads a save from the account, so a transfer is aimed at its current revision. */
@@ -3001,6 +3072,24 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 appendLine("  - ${it.fingerprint.take(8)} in ${it.savePath}")
             }
             appendLine("- Waiting on the restore question: ${current.restoreOffer}")
+            // Whether the platform has ever actually taken one. The only way
+            // to tell "the system has not run yet" from "the system ran and
+            // it failed", and the first thing worth knowing when a restore
+            // comes back empty. See [StorageBackupAgent].
+            val app2 = getApplication<Application>()
+            appendLine("- BACKUP TO GOOGLE: ${if (current.cloudBackup) "on" else "off"}")
+            appendLine(
+                "- Backup last asked for: " +
+                    (StorageBackupAgent.read(app2, StorageBackupAgent.MARKER)
+                        ?.let { "${Instant.ofEpochMilli(it.first)} (${it.second})" }
+                        ?: "never")
+            )
+            appendLine(
+                "- Restore last finished: " +
+                    (StorageBackupAgent.read(app2, StorageBackupAgent.RESTORE_MARKER)
+                        ?.let { Instant.ofEpochMilli(it.first).toString() }
+                        ?: "never")
+            )
             // The marks, which is how the app recognises a Pokemon it has
             // handed out before. Counted rather than listed: a tag says
             // nothing about a Pokemon, and there can be thousands.
@@ -3094,6 +3183,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 }
 
 /** Where the last download failure is kept, for the report under ABOUT. */
+/**
+ * How long the app waits before telling the platform its data changed.
+ *
+ * Long enough that a run of transfers, or an import of a whole box, is one
+ * message rather than six hundred.
+ */
+private const val BACKUP_SIGNAL_MILLIS = 3_000L
+
 /** How many stored Pokémon the debug report names a sprite source for. */
 private const val SPRITE_REPORT_LIMIT = 40
 

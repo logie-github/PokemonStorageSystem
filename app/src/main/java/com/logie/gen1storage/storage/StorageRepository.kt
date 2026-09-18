@@ -44,7 +44,20 @@ data class StorageState(
  * Every write is staged and renamed, and the previous good file is kept as a
  * `.bak`, so a process death mid-write can never leave the PC unreadable.
  */
-class StorageRepository(private val directory: File) {
+class StorageRepository(
+    private val directory: File,
+    /**
+     * Told whenever the boxes change on disk, so the platform knows there is
+     * something new to take.
+     *
+     * Android's own backup runs on its own schedule, but an app only enters
+     * the queue for it by saying its data has changed. Saying so once, when
+     * the switch was turned on, meant the first backup went up and every
+     * Pokémon deposited afterwards waited on whenever the system next felt
+     * like a pass of its own accord.
+     */
+    private val onChanged: () -> Unit = {},
+) {
 
     private val file = File(directory, FILE_NAME)
     private val backup = File(directory, "$FILE_NAME.bak")
@@ -633,6 +646,7 @@ class StorageRepository(private val directory: File) {
             root["boxNames"] = nameTable
         }
         writeAtomically(LuaText.encode(LuaWriter.encode(root)))
+        runCatching { onChanged() }
     }
 
     /**

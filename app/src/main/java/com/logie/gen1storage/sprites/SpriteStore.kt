@@ -205,33 +205,59 @@ class SpriteStore(
     }
 
     /**
-     * Where a species' picture is actually coming from, for the debug report.
+     * Where a species' picture comes from and what happens to it on the way,
+     * for the debug report.
      *
-     * A sprite has three possible sources — an imported ROM, a downloaded
-     * file, or nothing — and which one answered is invisible on screen until
-     * something looks wrong, at which point it is the first thing worth
-     * knowing and the one thing nobody can see. One line per species asked
-     * about, naming the source and the size it decoded to: a ROM sprite that
-     * comes out the wrong size, or comes out of a cartridge nobody expected,
-     * says so here rather than only in the picture.
+     * Three things decide what lands on screen and none of them are visible
+     * until one goes wrong: which source answered (an imported ROM, a
+     * downloaded file, or nothing), what size that source handed over, and
+     * what this store then did to it. A downloaded sprite is not used as it
+     * arrives — the Generation I sets are enlarged art, and [pointSample]
+     * divides them back down by a whole number — so the size that was
+     * fetched, the divisor, and the size actually kept are three different
+     * numbers and any of them can be the wrong one.
      */
     fun sourceOf(speciesId: String, gameVersionId: String?): String {
         val version = romVersionOf(gameVersionId)
         val store = romStore
         if (version != null && store != null && store.has(version)) {
             val decoded = runCatching { store.frontSprite(version, speciesId) }
-            val sprite = decoded.getOrNull()
-            return when {
-                sprite != null ->
-                    "ROM ${version.id}: ${sprite.widthPx}x${sprite.heightPx}"
-                decoded.isFailure ->
-                    "ROM ${version.id}: FAILED (${decoded.exceptionOrNull()?.message})"
-                else -> "ROM ${version.id}: no entry, fell back to download"
+            decoded.getOrNull()?.let {
+                return "ROM ${version.id} (gen ${version.generation}): " +
+                    "decoded ${it.widthPx}x${it.heightPx}"
             }
+            decoded.exceptionOrNull()?.let {
+                return "ROM ${version.id}: FAILED ${it::class.simpleName}: ${it.message}"
+            }
+            // No entry for this species in that ROM: the download answers
+            // instead, and what it answers with is worth saying too.
         }
         val set = resolve(speciesId, gameVersionId)
-            ?: return "no art (no ROM, nothing downloaded)"
-        return "download ${set.id}"
+            ?: return "nothing: no ROM entry and no set has it"
+        val file = fileFor(set, speciesId)
+        if (!file.isFile) return "download ${set.id}: no file on disk"
+        val bytes = runCatching { file.readBytes() }.getOrNull()
+            ?: return "download ${set.id}: file unreadable"
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds) }
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        val longest = maxOf(width, height)
+        val divisor = if (longest > DISPLAY_PIXELS) (longest / DISPLAY_PIXELS) else 1
+        val keptWidth = if (divisor > 1) width / divisor else width
+        val keptHeight = if (divisor > 1) height / divisor else height
+        return buildString {
+            append("download ${set.id}: PNG ${width}x$height, ${bytes.size}B")
+            if (!isCompletePng(bytes)) append(", INCOMPLETE PNG")
+            if (width <= 0) append(", WOULD NOT DECODE")
+            append("; /$divisor -> kept ${keptWidth}x$keptHeight")
+            // Whether that division was clean. An enlarged sprite is a whole
+            // number of screen pixels per art pixel; one that is not divides
+            // into a smear rather than a smaller copy of itself.
+            if (divisor > 1 && (width % divisor != 0 || height % divisor != 0)) {
+                append(" (UNEVEN)")
+            }
+        }
     }
 
     private fun romVersionOf(gameVersionId: String?): com.logie.gen1storage.rom.RomVersion? =

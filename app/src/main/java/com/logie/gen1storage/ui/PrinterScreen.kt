@@ -156,13 +156,13 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
                         },
                     ) { change, amount ->
                         change.consume()
-                        // Negated: a finger dragged left brings in the
-                        // previous print and one dragged right brings in the
-                        // next, which is the reverse of a finger's own
-                        // direction — everything below this line still
-                        // thinks purely in terms of dragPx's own sign, which
-                        // is why only this one line needed to change.
-                        val delta = -amount.x
+                        // The print follows the finger: dragged left, it
+                        // slides left and the next one catches up from the
+                        // right; dragged right, the previous one comes back
+                        // from the left. Negating this once read as content
+                        // moving against the finger instead of with it,
+                        // which is the "weird" a swipe should never feel.
+                        val delta = amount.x
                         // Nothing past either end: the roll has a first page
                         // and a last one, and rubber-banding off them is how
                         // that is said without a message.

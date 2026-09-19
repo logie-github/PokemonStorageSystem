@@ -467,13 +467,20 @@ fun GbText(
  * interface reads as a smear across the window. The cursor already says what
  * is selected, so nothing else needs to.
  */
-fun Modifier.gen1Clickable(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+fun Modifier.gen1Clickable(
+    enabled: Boolean = true,
+    /** See [gen1Tap] — CANCEL, BACK and a standalone button opt out of the rule below. */
+    standalone: Boolean = false,
+    onClick: () -> Unit,
+): Modifier = composed {
     // Every tap in the app comes through here, which is why the swipe rule
     // lives here rather than at each of the places that can be pressed, and
-    // why there is no way to opt out of it: a screen where some things answer
-    // to the cursor and some to the finger is the rule read as arbitrary. A
-    // choice worth taking is a choice the cursor can reach. See [gen1Tap].
-    val take = gen1Tap(onClick)
+    // why there is next to no way to opt out of it: a screen where some
+    // things answer to the cursor and some to the finger is the rule read as
+    // arbitrary. A choice worth taking is a choice the cursor can reach —
+    // [standalone] is the one named exception, and it is [gen1Tap]'s to
+    // grant, not this modifier's.
+    val take = gen1Tap(onClick, standalone)
     clickable(
         enabled = enabled,
         interactionSource = remember { MutableInteractionSource() },
@@ -510,7 +517,7 @@ fun Gen1Button(
     Box(
         modifier
             .heightIn(min = 48.dp)
-            .gen1Clickable(enabled = enabled, onClick = onClick)
+            .gen1Clickable(enabled = enabled, standalone = true, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -546,7 +553,7 @@ fun Gen1BoxButton(
         Box(Modifier.width(gen1Dp(CURSOR_PIXELS))) {
             if (selected && enabled) GbText("▶", style = Gen1Text)
         }
-        Gen1FrameBox(modifier.gen1Clickable(enabled, onClick)) {
+        Gen1FrameBox(modifier.gen1Clickable(enabled = enabled, standalone = true, onClick = onClick)) {
             GbText(
                 label.uppercase(),
                 style = Gen1Text.copy(color = if (enabled) Gen1Palette.Ink else Gen1Palette.Shadow),

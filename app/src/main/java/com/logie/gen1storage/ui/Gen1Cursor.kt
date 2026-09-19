@@ -184,11 +184,20 @@ val LocalGen1Cursor = staticCompositionLocalOf { Gen1Cursor() }
  *
  * Anything with nothing holding the cursor — a screen that registered no
  * layer — keeps its own tap either way, since there is no cursor to defer to.
+ *
+ * [standalone] is the one deliberate exception to all of that: CANCEL, BACK
+ * and a button drawn as its own window are not one option among several the
+ * way an ordinary row is, they are the single, separate, always-visible way
+ * off whatever they sit on — a player pressing the word "CANCEL" is not
+ * asking "confirm wherever I last swiped to", they are asking to cancel, and
+ * making that wait on the cursor happening to already be there is what made
+ * it read as broken rather than as a rule. See [Gen1MenuRow], [Gen1Button]
+ * and [Gen1BoxButton].
  */
 @Composable
-fun gen1Tap(onTap: () -> Unit): () -> Unit {
+fun gen1Tap(onTap: () -> Unit, standalone: Boolean = false): () -> Unit {
     val cursor = LocalGen1Cursor.current
-    val defer = LocalGen1Swipe.current && cursor.hasLayer
+    val defer = !standalone && LocalGen1Swipe.current && cursor.hasLayer
     return if (defer) ({ cursor.confirm() }) else onTap
 }
 

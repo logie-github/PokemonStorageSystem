@@ -53,6 +53,15 @@ fun Gen1MenuRow(
     mark: Boolean = false,
     /** What taking this row sounds like. Null for rows that are not a choice. */
     sound: SoundEffect? = SoundEffect.CURSOR,
+    /**
+     * Whether a direct tap on this row fires it immediately, cursor position
+     * or no. Defaults to on for CANCEL and BACK: neither is one option among
+     * several the way the rest of a menu is, each is the single, separate,
+     * always-visible way off whatever it sits on, and making that wait on
+     * the cursor already being there read as broken rather than as the rule.
+     * See [gen1Tap].
+     */
+    standalone: Boolean = label == "CANCEL" || label == "BACK",
 ) {
     val audio = LocalGen1Audio.current
     val tick = rememberConfirmTick()
@@ -60,9 +69,10 @@ fun Gen1MenuRow(
         modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
-            // One tap takes the row. The two-tap cursor-then-A rhythm belongs
-            // to the swipe controls, where there is a cursor to move first.
-            .gen1Clickable(enabled) {
+            // With SWIPE CONTROLS off, or for a standalone row, a tap takes
+            // this row outright. Otherwise it is deferred to the cursor's
+            // own row — see [gen1Tap].
+            .gen1Clickable(enabled, standalone) {
                 sound?.let { audio?.play(it) }
                 tick()
                 onSelect()

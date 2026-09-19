@@ -4,6 +4,9 @@ import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.SaveClassifier
 import com.logie.gen1storage.lua.LuaWriter
 import com.logie.gen1storage.pokemon.Gen1Pokemon
+import com.logie.gen1storage.storage.Hop
+import com.logie.gen1storage.storage.Lineage
+import com.logie.gen1storage.storage.LineageBook
 import com.logie.gen1storage.storage.Provenance
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.storage.StoredPokemon
@@ -77,8 +80,27 @@ class TransferEngine(
      * withdrawal so the same Pokémon cannot be written into a second cartridge.
      */
     private val ledger: PlacementLedger,
+    /**
+     * Where a Pokémon has been. Read on the way in so a Pokémon the app has
+     * held before picks its own history back up, written on the way out so
+     * that history survives the Pokémon leaving the boxes.
+     */
+    private val lineages: LineageBook,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
+
+    /**
+     * The history this Pokémon arrives with, if the app has seen it before.
+     *
+     * The tag it was sent out with first, because that is exact. Failing
+     * that — a save restored from before the tag was written, a cartridge
+     * that did not keep it — what it looks like without one, which is weaker
+     * and still better than nothing. Null for one the app has never held.
+     */
+    private fun lineageArriving(mon: Gen1Pokemon): Lineage? {
+        Lineage.tagOf(mon.raw)?.let { tag -> return lineages.of(tag) ?: Lineage(tag) }
+        return Lineage.identityOf(mon)?.let { lineages.byIdentity(it) }
+    }
 
     // ------------------------------------------------------------------
     // Deposit: synced save -> this app
@@ -148,6 +170,7 @@ class TransferEngine(
             targetBox,
             uid,
             generation = fresh.remote.version.generation,
+            lineage = lineageArriving(Gen1Pokemon(removed)),
         )
         if (stored == null) {
             journal.clear()
@@ -167,7 +190,25 @@ class TransferEngine(
                 // write has landed by this point; a ledger that could not be
                 // updated must not turn a move that happened into a failure
                 // report.
-                runCatching { ledger.forgetFrom(removedFingerprint, fresh.key) }
+                // Without the app's own mark on it. The ledger's records are
+                // written from the copy in the boxes, which never carries one
+                // (see [Lineage.unstamp]), so a key taken off the cartridge's
+                // copy — which does — would match nothing and the record
+                // would stand after the Pokémon had come home.
+                runCatching {
+                    ledger.forgetFrom(
+                        Gen1Pokemon(Lineage.unstamp(removed.deepCopy())).fingerprint,
+                        fresh.key,
+                    )
+                }
+                // The book and the boxes say the same thing about where this
+                // one has been. Bookkeeping, and after the fact, for the same
+                // reason the ledger above is.
+                runCatching {
+                    stored.lineage?.let {
+                        lineages.record(it, Lineage.identityOf(stored.pokemon))
+                    }
+                }
                 if (!holdsExactlyOne(uid)) {
                     TransferResult.NeedsRecovery("THE PC DID NOT END UP WITH EXACTLY ONE COPY. CHECK STORAGE BOXES.")
                 } else {
@@ -255,7 +296,12 @@ class TransferEngine(
         }
 
         val mutated = Gen1RecompSave(save.root.deepCopy())
-        val data = stored.detachedData()
+        // Marked on the way out, always — including one deposited before the
+        // app kept marks at all, which gets its first one here. The mark is
+        // what lets this Pokémon be recognised on the way back after a season
+        // of levels, moves and nicknames; see [Lineage].
+        val marked = stored.lineage ?: Lineage(Lineage.newTag())
+        val data = Lineage.stamp(stored.data.deepCopy(), marked.tag)
         val placed = when (target) {
             WithdrawTarget.Party -> mutated.addToParty(data)
             is WithdrawTarget.Box -> mutated.addToBox(target.box, data)
@@ -298,6 +344,23 @@ class TransferEngine(
                             monName = stored.pokemon.displayName,
                             atMillis = now(),
                         )
+                    )
+                }
+                // Where it went, written down somewhere that is not the
+                // Pokémon — which has just left the boxes and taken its own
+                // copy of its history with it into the cartridge.
+                runCatching {
+                    lineages.record(
+                        marked.then(
+                            Hop(
+                                kind = Hop.Kind.WITHDRAWN,
+                                atMillis = now(),
+                                gameVersion = fresh.remote.version.id,
+                                saveKey = fresh.key,
+                                trainerName = save.trainerName,
+                            )
+                        ),
+                        Lineage.identityOf(stored.pokemon),
                     )
                 }
                 TransferResult.Success(

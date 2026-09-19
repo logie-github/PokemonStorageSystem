@@ -65,6 +65,7 @@ import com.logie.gen1storage.ui.DexScreen
 import com.logie.gen1storage.ui.TimeCapsuleScreen
 import com.logie.gen1storage.ui.TradeScreen
 import com.logie.gen1storage.ui.OptionsScreen
+import com.logie.gen1storage.ui.PrinterScreen
 import com.logie.gen1storage.ui.PromptWindow
 import com.logie.gen1storage.ui.ChooseCartScreen
 import com.logie.gen1storage.ui.CreditsScreen
@@ -204,6 +205,11 @@ private fun StorageApp(model: StorageViewModel) {
         if (state.transferScene?.question != null) model.cancelSend() else model.back()
     }
 
+    // Every BackHandler in the tree, so the hold can go through the same
+    // door the system's Back does. See GbButton.B below.
+    val backs = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current
+        ?.onBackPressedDispatcher
+
     val cursor = remember { Gen1Cursor() }
     val cursorTick = rememberCursorTick()
     val confirmTick = rememberConfirmTick()
@@ -259,7 +265,15 @@ private fun StorageApp(model: StorageViewModel) {
     // to. It registers no cursor at all, so there is nothing there for a
     // swipe to move, and a swipe still swallowed on its behalf is only a
     // list that cannot be scrolled.
-    val swipesHere = state.swipeControls && state.screen !is Screen.ChooseCart
+    val fingersOnly = state.screen is Screen.ChooseCart
+    // Except while something is asking. A question opened over the shelf —
+    // "INSERT RED?", with YES and NO under it — is a window like every other
+    // window in the app and it does register a cursor, so the arrow was drawn
+    // on YES and there was nothing in the world that could move it off. The
+    // reason above only holds for as long as nothing has a cursor: the moment
+    // something does, a swipe has somewhere to go again.
+    val asking = state.prompt != null || state.transferScene?.question != null
+    val swipesHere = state.swipeControls && (!fingersOnly || asking)
 
     CompositionLocalProvider(
         LocalGen1Cursor provides cursor,
@@ -292,10 +306,25 @@ private fun StorageApp(model: StorageViewModel) {
                 // mid-transfer would otherwise still navigate.
                 if (cursor.locked) return@gen1Gestures
                 when (button) {
-                    // Back, from anywhere. At the top of the stack this does
-                    // nothing rather than closing the app — a hold should never
-                    // be the thing that puts someone out of the machine.
-                    GbButton.B -> model.back()
+                    // Back, from anywhere, through the one back there is.
+                    //
+                    // It used to walk the screen stack itself, which meant a
+                    // hold knew about nothing that is not a screen: OPTIONS
+                    // opens its drawers inside one screen and guards them
+                    // with a BackHandler, so holding in a drawer stepped
+                    // straight past it and left OPTIONS altogether. Android's
+                    // dispatcher already has every one of those handlers on
+                    // it, innermost first, and the screen stack at the bottom
+                    // — so the hold and the system's own Back now do exactly
+                    // the same thing, which is the only way either of them
+                    // can be learned.
+                    //
+                    // Nothing at all when nothing is listening: at the top of
+                    // the stack the dispatcher would fall through to the
+                    // activity, and a hold should never be the thing that
+                    // puts someone out of the machine.
+                    GbButton.B ->
+                        if (backs?.hasEnabledCallbacks() == true) backs.onBackPressed()
                     GbButton.A -> {
                         audio.play(SoundEffect.CURSOR)
                         confirmTick()
@@ -325,7 +354,9 @@ private fun StorageApp(model: StorageViewModel) {
             // app asking them to watch it fetch files instead — the
             // introduction shows the one fetch it actually waits on and
             // nothing else. See [Gen1Tutorial].
-            if (!showTutorial) state.artProgress?.let { LoadingStrip(it.percent) }
+            if (!showTutorial) {
+                state.artProgress?.let { LoadingStrip(it.percent) }
+            }
             Box(Modifier.weight(1f)) {
                 if (showTutorial) {
                     Gen1Tutorial(state, model, onFinished = model::finishTutorial)
@@ -431,6 +462,7 @@ private fun ScreenContent(
         is Screen.Status ->
             StatusScreen(state, model, screen.key, screen.area, screen.slot, screen.transfer)
         is Screen.TrainerCard -> TrainerCardScreen(state, model, screen.key)
+        is Screen.Printer -> PrinterScreen(state, model, screen.uid)
         Screen.Trade -> TradeScreen(state, model)
         Screen.TimeCapsule -> TimeCapsuleScreen(state, model)
         Screen.Dex -> DexScreen(state, model)

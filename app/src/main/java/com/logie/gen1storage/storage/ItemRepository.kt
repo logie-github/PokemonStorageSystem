@@ -40,6 +40,16 @@ class ItemRepository(private val directory: File) {
     private var gen2Items = LuaValue.Table()
     private var loaded = false
 
+    /** Empties the item PC. See [StorageRepository.clear] for the one caller. */
+    fun clear() = synchronized(lock) {
+        gen1Items = LuaValue.Table()
+        gen2Items = LuaValue.Table()
+        loaded = true
+        file.delete()
+        staged.delete()
+        backup.delete()
+    }
+
     /** Every stack this PC holds, tagged with the generation it is named in. */
     fun state(): List<ItemStack> = synchronized(lock) {
         ensureLoaded()

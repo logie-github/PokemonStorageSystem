@@ -61,6 +61,7 @@ import com.logie.gen1storage.storage.StoredPokemon
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.RemoteSave
 import com.logie.gen1storage.sync.SyncApi
+import com.logie.gen1storage.share.PrintBorder
 import com.logie.gen1storage.transfer.crossGenerationRefusal
 import com.logie.gen1storage.transfer.SaveLocation
 import com.logie.gen1storage.transfer.WithdrawTarget
@@ -470,7 +471,17 @@ fun StorageSystemScreen(
         // open over it, a question in the middle of the screen, or a message
         // come up at the foot of it.
         notice = refusal ?: emptiness,
-        showCaption = atMenu && refusal == null && emptiness == null,
+        // Tapping it puts it away. A refusal goes back to the menu it was
+        // refused from; an empty list closes, which is the same thing the
+        // hold does and the thing a player reaches for first.
+        onNotice = {
+            if (refusal != null) refusal = null else model.pcMode = PcMode.MENU
+        },
+        // The caption is the machine idling, and it is not idling while it
+        // has a question open: the prompt window comes up in the same corner
+        // and grows towards this one, so a tall one — a transfer landing and
+        // then asking whether to open the game — sat on top of it.
+        showCaption = atMenu && refusal == null && emptiness == null && state.prompt == null,
         // Whatever is open has the screen to itself.
         showMenu = atMenu,
         // A transfer needs a cartridge in the machine, and the row is not
@@ -503,10 +514,14 @@ fun StorageSystemScreen(
         onView = { model.pcMode = PcMode.VIEW },
         onChangeCart = { model.open(Screen.ChooseCart(null)) },
         onTrade = if (state.tradeEvolution) ({ model.open(Screen.Trade) }) else null,
-        // Offered only when there is something to send: a row that always
-        // answers "nothing is waiting" is a row that never did anything.
+        // Offered as soon as the PC holds anything, rather than only when
+        // something can actually go. The screen behind it lists everything in
+        // the box and says of each one whether it can go on and why not — so
+        // a player whose Pokemon are all being held back can now reach the
+        // answer, which under the old rule was the one case where the row
+        // disappeared and took the explanation with it.
         onTimeCapsule =
-            if (model.timeCapsuleCandidates().isNotEmpty()) {
+            if (state.storage.total > 0) {
                 { model.open(Screen.TimeCapsule) }
             } else null,
         onDex = { model.open(Screen.Dex) },
@@ -821,6 +836,12 @@ private fun previewOf(
     state: UiState,
     model: StorageViewModel,
 ): (@Composable () -> Unit)? {
+    // Nothing to preview while a Pokémon's own pages are open over this
+    // screen. The status screen keeps to one half and leaves this one live in
+    // the other, and what this one then put in that other half was the same
+    // Pokémon's pages again — the same sprite, the same number, the same
+    // name, twice on one screen. The full pages are the preview by then.
+    if (state.screen is Screen.Status) return null
     val index = highlighted ?: return null
     val pokemon: Gen1Pokemon?
     val gameVersionId: String?
@@ -927,7 +948,9 @@ fun StatusScreen(
     val cardActions = buildList<Pair<String, () -> Unit>> {
         if (storedUid != null) {
             add(NICKNAME_LABEL to { model.prompt(Prompt.RenameMon(storedUid)) })
-            add(SHARE_LABEL to { model.shareCard(storedUid) })
+            // Into the printer rather than straight out: there is more than
+            // one page it could print, and which one is the player's to say.
+            add(SHARE_LABEL to { model.open(Screen.Printer(storedUid)) })
         }
         // A live save's own party — key means the game, area 0 the party —
         // and only while it is actually carrying a letter. `MonMailAction`'s
@@ -938,16 +961,13 @@ fun StatusScreen(
             add("MAIL" to { model.prompt(Prompt.MailAction(key, slot + 1)) })
         }
     }
+    // What this screen can be told to do, and only that. Walking to the one
+    // beside this and leaving are both gestures now — a swipe left or right
+    // for the neighbour, a hold to go back — so they are not rows taking up a
+    // menu that is otherwise two lines long. The page turn moved with them.
     val actions = buildList<Pair<String, () -> Unit>> {
-        if (slot > 0) {
-            add(PREV_LABEL to { model.replace(Screen.Status(key, area, slot - 1, transfer)) })
-        }
         transferPair?.let(::add)
-        if (slot < siblings - 1) {
-            add(NEXT_LABEL to { model.replace(Screen.Status(key, area, slot + 1, transfer)) })
-        }
         addAll(cardActions)
-        add(BACK_LABEL to { model.back() })
     }
     // Up and down walk the actions; left and right turn the pages, which is
     // how the cartridge turns them and the only place on this screen a
@@ -961,10 +981,13 @@ fun StatusScreen(
         pokemon.generation >= 2 -> GEN2_PAGES
         else -> PAGES
     }
+    fun goTo(next: Int) {
+        if (next in 0 until siblings) model.replace(Screen.Status(key, area, next, transfer))
+    }
     val at = rememberCursorLayer(
-        actions.size,
+        actions.size.coerceAtLeast(1),
         onSide = { _, button ->
-            page = (page + if (button == GbButton.RIGHT) 1 else pages - 1) % pages
+            goTo(slot + if (button == GbButton.RIGHT) 1 else -1)
             true
         },
     ) { index -> actions.getOrNull(index)?.second?.invoke() }
@@ -983,47 +1006,26 @@ fun StatusScreen(
             state.storage.boxes.getOrNull(area - 1)?.contents?.getOrNull(slot)?.provenance
         } else null,
         onSpriteLongPress = { species -> model.prompt(Prompt.ChooseSpriteSet(species)) },
+        // Swiped through rather than stepped through with a row at each end.
+        // A Pokemon either side of this one is a neighbour, and reaching a
+        // neighbour by pressing a word called NEXT is the long way round.
+        onNeighbour = { forward -> goTo(slot + if (forward) 1 else -1) },
         footer = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                cardActions.forEach { (label, act) ->
-                    Gen1BoxButton(label, act, selected = isOn(label))
+            // One menu, in the window every other menu in this app is in,
+            // rather than a row of buttons along the bottom. There is nothing
+            // on this screen that a menu could not hold, and a screen of
+            // buttons beside a screen of menus is two apps.
+            if (actions.isNotEmpty()) {
+                Gen1Frame(Modifier.wrapContentWidth()) {
+                    actions.forEach { (label, act) ->
+                        Gen1MenuRow(
+                            label,
+                            selected = isOn(label),
+                            onSelect = {},
+                            onConfirm = act,
+                        )
+                    }
                 }
-                Gen1BoxButton(BACK_LABEL, { model.back() }, selected = isOn(BACK_LABEL))
-            }
-        },
-        underBox = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Gen1BoxButton(
-                    PREV_LABEL,
-                    { model.replace(Screen.Status(key, area, slot - 1, transfer)) },
-                    enabled = slot > 0,
-                    selected = isOn(PREV_LABEL),
-                )
-                // Only the transfer this screen was opened from. Looking a
-                // Pokémon over is most of why a transfer stalls here, so the
-                // way on is under it rather than back through the list.
-                transferPair?.let { (label, act) ->
-                    Gen1Button(
-                        label,
-                        act,
-                        Modifier.wrapContentWidth(),
-                        selected = isOn(label),
-                    )
-                }
-                Gen1BoxButton(
-                    NEXT_LABEL,
-                    { model.replace(Screen.Status(key, area, slot + 1, transfer)) },
-                    enabled = slot < siblings - 1,
-                    selected = isOn(NEXT_LABEL),
-                )
             }
         },
     )
@@ -1056,9 +1058,7 @@ private fun syncLines(cartridge: Prompt.Cartridge?): List<String> = when {
     )
 }
 
-private const val PREV_LABEL = "PREV"
-private const val NEXT_LABEL = "NEXT"
-private const val BACK_LABEL = "BACK"
+internal const val BACK_LABEL = "BACK"
 private const val NICKNAME_LABEL = "NAME"
 private const val SHARE_LABEL = "SHARE"
 
@@ -1288,6 +1288,53 @@ private fun OptionsDrawerContent(
     val pickRomsFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) model.importRomsFolder(uri)
     }
+    // On demand, rather than whenever Android's own schedule gets round to
+    // it — see BackupExport. CreateDocument opens with the suggested name
+    // already in the box; OpenDocument's filter is left wide open because a
+    // file picked back up off Drive or a Files app rarely keeps whatever
+    // mime type it was written with.
+    val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) model.backUpNow(uri)
+    }
+    val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            model.prompt(
+                Prompt.Confirm(
+                    lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH THAT FILE?"),
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { model.restoreFromFile(uri) },
+                )
+            )
+        }
+    }
+
+    // The same folder chooser ROMS uses to pick a folder full of cartridge
+    // dumps, pointed at a folder to push a backup into instead — a folder
+    // inside the Google Drive app is exactly as pickable as one in local
+    // storage, since it is the system's own picker either way. Taking a
+    // persistable permission on the result is what makes every push after
+    // the first one silent: no sign-in of this app's own, because there is
+    // none — the permission already covers it.
+    val pickBackupFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) model.linkBackupFolder(uri)
+    }
+    // A folder picked fresh rather than the one linked above: restoring is
+    // how a reinstall gets its Pokémon back, and a reinstall has nothing
+    // linked yet to restore from. See StorageViewModel.restoreFromBackupFolder.
+    val pickRestoreFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            model.prompt(
+                Prompt.Confirm(
+                    lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH THAT FOLDER'S", "BACKUP?"),
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { model.restoreFromBackupFolder(uri) },
+                )
+            )
+        }
+    }
+
     val rows = buildList {
         when (drawer) {
             OptionsDrawer.VISUAL -> {
@@ -1311,16 +1358,21 @@ private fun OptionsDrawerContent(
                     ) { model.setWindowsFollowPalette(!state.windowsFollowPalette) }
                 )
                 add(
-                    OptionRow("PRINTER BORDER", if (state.printerBorder) "ON" else "OFF") {
-                        model.setPrinterBorder(!state.printerBorder)
+                    OptionRow("PRINT BORDER", state.printBorder.label) {
+                        val all = PrintBorder.entries
+                        model.setPrintBorder(all[(all.indexOf(state.printBorder) + 1) % all.size])
                     }
                 )
-                // Generation II art arrives already coloured, so it has a
-                // choice the Generation I art does not: its own colours, or
-                // the palette everything else is drawn through.
+                // Which colours a sprite is drawn in. PALETTE draws every
+                // one of them through the palette chosen above, so a box of
+                // Pokemon out of six different games is one picture.
+                // ORIGINAL draws each in the colours of the game it came
+                // from: Generation II art has those in its own files, and
+                // Generation I art is four greys, so Red's are the reds off
+                // Red's own card and Blue's the blues off Blue's.
                 add(
                     OptionRow(
-                        "GBC SPRITES",
+                        "SPRITE COLOURS",
                         if (state.gbcFollowsPalette) "PALETTE" else "ORIGINAL",
                     ) { model.setGbcFollowsPalette(!state.gbcFollowsPalette) }
                 )
@@ -1532,15 +1584,34 @@ private fun OptionsDrawerContent(
                 } else {
                     add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
                 }
-                // Android's own backup, which is where the phone already
-                // keeps a copy of every app that allows it. Off unless asked
-                // for: a copy of someone's Pokémon leaving their phone is not
-                // a thing to start doing quietly.
-                add(
-                    OptionRow("BACKUP TO GOOGLE", if (state.cloudBackup) "ON" else "OFF") {
-                        model.setCloudBackup(!state.cloudBackup)
+                // Taken this instant, to a file of the player's own choosing
+                // — before deleting the app, say, or before handing the
+                // phone off. See BackupExport.
+                add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
+                add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
+                // Behind the same [state.linked] this whole drawer already
+                // gates SYNC NOW and UNLINK on: a folder to push a PC into
+                // is not worth asking for from a device that has not yet
+                // synced with the game, and offering it before then is
+                // offering a choice that is not real yet.
+                if (state.linked) {
+                    // One pick, and every change from here on pushes on its
+                    // own — a deposit, a sync, anything that persists the
+                    // boxes — the same debounced signal BACK UP NOW answers
+                    // to by hand. Off just stops the pushing; what is
+                    // already there stays untouched. See BackupFolderWriter
+                    // and StorageViewModel.pushToBackupFolder.
+                    add(
+                        OptionRow("BACKUP FOLDER", if (state.backupFolderLinked) "LINKED" else "NOT LINKED") {
+                            if (state.backupFolderLinked) model.unlinkBackupFolder()
+                            else pickBackupFolder.launch(null)
+                        }
+                    )
+                    if (state.backupFolderLinked) {
+                        add(OptionRow("LAST FOLDER BACKUP", state.folderBackupNote) { model.explainFolderBackup() })
                     }
-                )
+                    add(OptionRow("RESTORE FROM BACKUP FOLDER") { pickRestoreFolder.launch(null) })
+                }
             }
 
             OptionsDrawer.ABOUT -> {

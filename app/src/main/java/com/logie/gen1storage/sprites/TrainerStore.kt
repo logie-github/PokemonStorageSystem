@@ -61,6 +61,26 @@ class TrainerStore(private val directory: File) {
         memory.clear()
     }
 
+    /** Each game's own four colours. See [SpriteStore.gameRamps]. */
+    var gameRamps: Map<String, IntArray> = emptyMap()
+        set(value) {
+            field = value
+            memory.clear()
+        }
+
+    /** The ramp a picture off [gameVersionId]'s card is drawn through. */
+    private fun rampFor(gameVersionId: String?): IntArray? {
+        if (gbcFollowsPalette) return tintRamp
+        return gameRamps[gameVersionId?.lowercase()] ?: tintRamp
+    }
+
+    /** What that ramp is called, for the cache key. */
+    private fun tintKeyFor(gameVersionId: String?): String {
+        if (gbcFollowsPalette) return tintId
+        val game = gameVersionId?.lowercase()
+        return if (game != null && game in gameRamps) "own:$game" else tintId
+    }
+
     fun file(id: String): File = File(directory, "$id.png")
 
     fun has(id: String): Boolean = file(id).let { it.isFile && it.length() > 0 }
@@ -119,8 +139,12 @@ class TrainerStore(private val directory: File) {
         }.getOrNull()
     }
 
-    private fun tinted(bitmap: Bitmap, cutout: Boolean = false): Bitmap {
-        val ramp = tintRamp
+    private fun tinted(
+        bitmap: Bitmap,
+        cutout: Boolean = false,
+        gameVersionId: String? = null,
+    ): Bitmap {
+        val ramp = rampFor(gameVersionId)
         return runCatching {
             when {
                 ramp != null -> recolourToRamp(bitmap, ramp, cutout)
@@ -138,9 +162,9 @@ class TrainerStore(private val directory: File) {
      * is zero-based in the order Generation I awards them, which is the order
      * the card draws them in.
      */
-    fun badge(gym: Int): ImageBitmap? {
+    fun badge(gym: Int, gameVersionId: String? = null): ImageBitmap? {
         if (gym !in 0 until BADGES) return null
-        val key = "$tintId/badge/cut/$gym"
+        val key = "${tintKeyFor(gameVersionId)}/badge/cut/$gym"
         memory[key]?.let { return it }
 
         val sheet = decode(file(BADGE_SHEET)) ?: return null
@@ -155,7 +179,37 @@ class TrainerStore(private val directory: File) {
         // trainers are. A badge is a shape on the card, and the field around
         // it read as a white plate laid over the card's own colour with eight
         // badges sitting on it.
-        return tinted(cut, cutout = true).asImageBitmap().also { memory[key] = it }
+        return tinted(cut, cutout = true, gameVersionId = gameVersionId)
+            .asImageBitmap().also { memory[key] = it }
+    }
+
+    /**
+     * One 8x8 tile of the Pokédex sheet, as plain pixels for the printer.
+     *
+     * Handed back undecorated — no tint, no cut-out — because the printer
+     * draws it into a print of its own and decides the colours there. Null
+     * while the sheet has not been downloaded, which is the ordinary state
+     * before DOWNLOADS has run and is why every caller has a fallback.
+     *
+     * The sheet is sixteen tiles across; [index] counts along it in reading
+     * order. See [DEX_SHEET] for what is on it and why it is the printer's.
+     */
+    fun dexTile(index: Int): Bitmap? {
+        val sheet = decode(file(DEX_SHEET)) ?: return null
+        val across = sheet.width / DEX_TILE
+        if (across <= 0 || index < 0 || index >= across * (sheet.height / DEX_TILE)) {
+            sheet.recycle()
+            return null
+        }
+        val cut = Bitmap.createBitmap(
+            sheet,
+            (index % across) * DEX_TILE,
+            (index / across) * DEX_TILE,
+            DEX_TILE,
+            DEX_TILE,
+        )
+        sheet.recycle()
+        return cut
     }
 
     fun bytesOnDisk(): Long =
@@ -172,13 +226,19 @@ class TrainerStore(private val directory: File) {
      * [cutout] drops the white field the decomp's picture carries, so the
      * trainer stands on the card rather than on a white plate.
      */
-    fun load(id: String, cutout: Boolean = false): ImageBitmap? {
+    fun load(
+        id: String,
+        cutout: Boolean = false,
+        /** Whose card this is being drawn on, for [rampFor]. */
+        gameVersionId: String? = null,
+    ): ImageBitmap? {
         // The player is not one of the trainer classes and is still a picture
         // a card can wear, so the extras are askable for by name too.
         if (ALL.none { it.id == id } && id !in EXTRA_ART && id !in GEN2_ART &&
             !isGen2Trainer(id)
         ) return null
-        val key = "$tintId/${if (gbcFollowsPalette) "pal/" else ""}${if (cutout) "cut/" else ""}$id"
+        val key = "${tintKeyFor(gameVersionId)}/" +
+            "${if (gbcFollowsPalette) "pal/" else ""}${if (cutout) "cut/" else ""}$id"
         memory[key]?.let { return it }
 
         val source = file(id).takeIf { it.isFile } ?: return null
@@ -205,7 +265,7 @@ class TrainerStore(private val directory: File) {
         // Generation II's pictures arrive in the colours the Game Boy Color
         // gave them, the same as its Pokémon do, so they are left alone
         // unless GBC SPRITES has been set to follow the palette.
-        val ramp = tintRamp.takeIf { !isGen2Trainer(id) || gbcFollowsPalette }
+        val ramp = rampFor(gameVersionId).takeIf { !isGen2Trainer(id) || gbcFollowsPalette }
         val finished = runCatching {
             when {
                 ramp != null -> recolourToRamp(decoded, ramp, cutout)
@@ -222,9 +282,9 @@ class TrainerStore(private val directory: File) {
      * Which is badges alone rather than leaders and badges alternating, so
      * the tile wanted is the gym itself and not twice it plus one.
      */
-    fun johtoBadge(gym: Int): ImageBitmap? {
+    fun johtoBadge(gym: Int, gameVersionId: String? = null): ImageBitmap? {
         if (gym !in 0 until BADGES) return null
-        val key = "$tintId/johto/cut/$gym"
+        val key = "${tintKeyFor(gameVersionId)}/johto/cut/$gym"
         memory[key]?.let { return it }
 
         val sheet = decode(file(GEN2_BADGE_SHEET)) ?: return null
@@ -381,6 +441,18 @@ class TrainerStore(private val directory: File) {
          */
         const val DEX_BALLS = "balls"
 
+        /**
+         * The Pokédex screen's own sheet, which is also the printer's.
+         *
+         * `gfx/pokedex/pokedex.png` — sixteen tiles by four. The printed
+         * Pokédex page is drawn out of it: the beaded rule that separates the
+         * head of the page from its text is these tiles, and so are the `No.`
+         * and the prime marks that set a height in feet and inches. Printing
+         * a page with a rule this app drew itself would be a picture of a
+         * printout rather than the printout.
+         */
+        const val DEX_SHEET = "pokedex"
+
         /** Which of the four: caught, ailing, fainted, and an empty slot. */
         const val BALL_CAUGHT = 0
         const val BALL_AILING = 1
@@ -405,6 +477,7 @@ class TrainerStore(private val directory: File) {
             TRADE_CABLE to "gfx/trade/link_cable.png",
             TRADE_BALL to "gfx/trade/cable_ball.png",
             DEX_BALLS to "gfx/battle/balls.png",
+            DEX_SHEET to "gfx/pokedex/pokedex.png",
         )
 
         /**
@@ -433,7 +506,30 @@ class TrainerStore(private val directory: File) {
             TRADE_CABLE to (24 to 40),
             TRADE_BALL to (16 to 16),
             DEX_BALLS to (32 to 8),
+            DEX_SHEET to (128 to 32),
         )
+
+        /** One tile of the Pokédex sheet, in real pixels. */
+        const val DEX_TILE = 8
+
+        /**
+         * `No.`, which the printed Pokédex page sets under the picture — two
+         * tiles, the letters and then the stop, rather than three characters
+         * of the text face, because that is what the cartridge draws there.
+         */
+        const val DEX_TILE_NUMBER = 43
+        const val DEX_TILE_STOP = 44
+
+        /**
+         * The prime and double prime a height is set in: `1'04"`. The face
+         * has an apostrophe and a quote under those keys, which are not the
+         * same marks and do not sit where these do.
+         */
+        const val DEX_TILE_FEET = 45
+        const val DEX_TILE_INCHES = 46
+
+        /** The ball strung along the rule that divides the page. */
+        const val DEX_TILE_BALL = 30
 
         /** The eight gyms. */
         const val BADGES = 8

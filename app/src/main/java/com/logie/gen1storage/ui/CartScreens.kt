@@ -141,10 +141,10 @@ fun ChooseCartScreen(
     val listColumns = columns
     val saves = listed
 
+    Box(Modifier.fillMaxSize().gen1Ground()) {
     Column(
         Modifier
             .fillMaxSize()
-            .gen1Ground()
             .padding(gen1Dp(4)),
     ) {
         // The whole shelf, in rows of [across]: the three that can be picked
@@ -199,6 +199,9 @@ fun ChooseCartScreen(
             // Always, rather than only where swipes are off: there is no
             // cursor here for the list to follow instead.
             userScrollEnabled = true,
+            // Room under the last card for the BACK window that floats over
+            // this corner, so the bottom of the shelf can still be reached.
+            contentPadding = PaddingValues(bottom = gen1Dp(BACK_CLEARANCE_PIXELS)),
         ) {
             items(saves.chunked(listColumns)) { row ->
                 Row(
@@ -222,7 +225,36 @@ fun ChooseCartScreen(
             }
         }
     }
+
+    // The way out, drawn rather than only gestured.
+    //
+    // This is the one screen in the app with no cursor and no menu — a shelf
+    // of pictures, tapped and scrolled — and so the one screen where the only
+    // way back was a hold, which is a gesture nothing on it mentions. In the
+    // corner it is out of the cards' way and still the first place a thumb
+    // already resting at the bottom of the screen lands.
+    Gen1Frame(
+        Modifier
+            .align(Alignment.BottomEnd)
+            .padding(gen1Dp(4))
+            .wrapContentWidth(),
+    ) {
+        Gen1MenuRow(
+            BACK_LABEL,
+            selected = false,
+            onSelect = {},
+            onConfirm = { model.back() },
+            modifier = Modifier.widthIn(min = gen1Dp(BACK_WIDTH_PIXELS)),
+        )
+    }
+    }
 }
+
+/** How much room the BACK window is left under the last card on the shelf. */
+private const val BACK_CLEARANCE_PIXELS = 44
+
+/** Wide enough that one short word is still a button rather than a letter. */
+private const val BACK_WIDTH_PIXELS = 40
 
 /** The account's cards for one game, in the order the account lists them. */
 private fun saves(state: UiState, game: String?): List<RemoteSave> =

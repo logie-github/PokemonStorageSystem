@@ -1,6 +1,7 @@
 package com.logie.gen1storage.ui
 
 import android.content.Context
+import com.logie.gen1storage.share.PrintBorder
 import android.content.SharedPreferences
 import com.logie.gen1storage.sound.SoundEffect
 
@@ -46,41 +47,23 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_GAME_SELECTION, value).apply()
 
     /**
-     * Let Android copy this app into the player's Google account, the way it
-     * backs up any app that allows it.
+     * The folder this app pushes its own backup into on its own, from here
+     * on, rather than waiting to be asked — a document tree uri from the
+     * system's own folder picker, which is free to be a folder inside the
+     * Google Drive app, or any other synced storage, as much as it is free
+     * to be plain local storage.
      *
-     * Off, and nothing leaves the device. On, the boxes and the settings go
-     * into the account's backup and come back when the app is installed again
-     * — see `StorageBackupAgent`, which is what reads this, and [restoredUids]
-     * for what happens to a Pokémon that comes back from one.
-     *
-     * Off by default. A copy of someone's Pokémon leaving their phone is not
-     * something to start doing without being asked.
+     * Set once, by [StorageViewModel.linkBackupFolder] after the one-time
+     * pick that turning this on asks for, and the persisted permission that
+     * goes with it — see [android.content.ContentResolver.takePersistableUriPermission].
+     * Everything after that tap is silent: a deposit, a sync, anything that
+     * already tells this app something changed writes into this folder too
+     * — see [StorageViewModel.pushToBackupFolder]. Null by default: nothing
+     * writes anywhere without being asked.
      */
-    var cloudBackup: Boolean
-        get() = prefs.getBoolean(KEY_CLOUD_BACKUP, false)
-        set(value) = prefs.edit().putBoolean(KEY_CLOUD_BACKUP, value).apply()
-
-    /**
-     * Pokémon that came back from a backup and have not been checked yet.
-     *
-     * A backup is the boxes as they were at one moment, and the cartridges
-     * have moved on since. One that was transferred into a save after the
-     * backup was taken is in that save now *and* in the copy being restored,
-     * which is the one thing this app is built never to allow.
-     *
-     * So every Pokémon a restore brings back is listed here, and each one is
-     * dropped from the list the first time a save is read that does not hold
-     * it. A Pokémon found in a save is taken out of the PC instead: the
-     * cartridge owns it, and the PC's copy is a picture of one that has
-     * already left.
-     */
-    var restoredUids: Set<String>
-        get() = prefs.getStringSet(KEY_RESTORED_UIDS, emptySet()).orEmpty()
-        set(value) = prefs.edit().apply {
-            if (value.isEmpty()) remove(KEY_RESTORED_UIDS)
-            else putStringSet(KEY_RESTORED_UIDS, value)
-        }.apply()
+    var backupFolderUri: String?
+        get() = prefs.getString(KEY_BACKUP_FOLDER_URI, null)
+        set(value) = prefs.edit().putString(KEY_BACKUP_FOLDER_URI, value).apply()
 
     /**
      * The colour palette everything is drawn through, by [GbPalette] id.
@@ -266,15 +249,18 @@ class AppSettings(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean(KEY_HAPTICS, value).apply()
 
     /**
-     * Whether a shared Pokémon comes out on paper.
+     * What a shared print comes out with around it.
      *
-     * On: the card is set on a torn sheet the way a Game Boy Printer handed
-     * one over. Off gives the print alone, which is what a player wants when
-     * it is going somewhere that will crop it anyway.
+     * Was a yes-or-no about the torn paper. There are two separate things to
+     * want, though — the paper it was fed onto and the rule the game drew
+     * inside the image — so it is the four ways those combine, and the
+     * printer screen shows each of them before anything is sent.
      */
-    var printerBorder: Boolean
-        get() = prefs.getBoolean(KEY_PRINTER_BORDER, true)
-        set(value) = prefs.edit().putBoolean(KEY_PRINTER_BORDER, value).apply()
+    var printBorder: PrintBorder
+        get() = prefs.getString(KEY_PRINT_BORDER, null)
+            ?.let { name -> PrintBorder.entries.firstOrNull { it.name == name } }
+            ?: PrintBorder.PAPER
+        set(value) = prefs.edit().putString(KEY_PRINT_BORDER, value.name).apply()
 
     fun motionEnabled(motion: Motion): Boolean =
         !reduceMotion && prefs.getBoolean(KEY_MOTION_PREFIX + motion.id, true)
@@ -297,9 +283,8 @@ class AppSettings(private val prefs: SharedPreferences) {
 
     private companion object {
         const val KEY_TEXT_SPEED = "text-speed"
-        const val KEY_CLOUD_BACKUP = "cloud-backup"
+        const val KEY_BACKUP_FOLDER_URI = "backup-folder-uri"
         const val KEY_GBC_FOLLOWS_PALETTE = "gbc-follows-palette"
-        const val KEY_RESTORED_UIDS = "restored-uids"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"
         const val KEY_GAME_SELECTION = "game-selection"
@@ -317,7 +302,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_SWIPE_CONTROLS = "swipe-controls"
         const val KEY_MOTION_PREFIX = "motion-"
         const val KEY_HAPTICS = "haptics"
-        const val KEY_PRINTER_BORDER = "printer-border"
+        const val KEY_PRINT_BORDER = "print-border"
         const val KEY_SOUND_OFF = "sound-off"
         const val KEY_SOUND_PREFIX = "sound-"
         /** As long as a name can be and still fit a cartridge label. */

@@ -96,6 +96,15 @@ data class StoredPokemon(
     val generation: Int = 1,
     /** What it was before it went through the Time Capsule, if it has. */
     val timeCapsule: TimeCapsule.Record? = null,
+    /**
+     * The app's own mark on this Pokémon, and everywhere it has been.
+     *
+     * Kept beside the table like everything else of the app's, and written
+     * *into* the table only on the way out — see [detachedData]. See
+     * [Lineage] for why a mark exists at all when there is already a content
+     * fingerprint.
+     */
+    val lineage: Lineage? = null,
 ) {
     val pokemon: Gen1Pokemon get() = Gen1Pokemon(data, generation)
 
@@ -129,8 +138,14 @@ data class StoredPokemon(
     /** Whether this one is mid-move and cannot be sent anywhere else. */
     val inFlight: Boolean get() = noteId != null
 
-    /** The Generation I data alone, ready to be inserted into a save. */
-    fun detachedData(): LuaValue.Table = data.deepCopy()
+    /**
+     * The Generation I data alone, ready to be inserted into a save — with
+     * the app's tag on it, so the same Pokémon is recognisable when it comes
+     * back however much it has been played with in between.
+     */
+    fun detachedData(): LuaValue.Table = data.deepCopy().let { copy ->
+        lineage?.let { Lineage.stamp(copy, it.tag) } ?: copy
+    }
 
     fun toLua(): LuaValue.Table = LuaValue.Table().apply {
         this["uid"] = luaStr(uid)
@@ -139,6 +154,7 @@ data class StoredPokemon(
         noteId?.let { this["note"] = luaStr(it) }
         if (generation != 1) this["generation"] = luaNum(generation)
         timeCapsule?.let { this["timeCapsule"] = it.toLua() }
+        lineage?.let { this["lineage"] = it.toLua() }
     }
 
     companion object {
@@ -158,6 +174,10 @@ data class StoredPokemon(
                 generation = table["generation"].asInt() ?: 1,
                 timeCapsule = (table["timeCapsule"] as? LuaValue.Table)
                     ?.let(TimeCapsule.Record::fromLua),
+                // Absent on anything deposited before the app started
+                // marking them; [StorageRepository.deposit] gives one to
+                // every Pokémon it sees from here on.
+                lineage = (table["lineage"] as? LuaValue.Table)?.let(Lineage::fromLua),
             )
         }
     }

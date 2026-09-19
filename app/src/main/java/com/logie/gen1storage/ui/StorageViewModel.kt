@@ -1,7 +1,6 @@
 package com.logie.gen1storage.ui
 
 import android.app.Application
-import android.app.backup.BackupManager
 import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
@@ -26,10 +25,18 @@ import com.logie.gen1storage.pokemon.TimeCapsule
 import com.logie.gen1storage.pokemon.tradeEvolutionName
 import com.logie.gen1storage.pokemon.tradeEvolutionOf
 import com.logie.gen1storage.pokemon.tradeEvolves
+import com.logie.gen1storage.backup.BackupExport
+import com.logie.gen1storage.backup.BackupFolderWriter
+import com.logie.gen1storage.backup.BackupMarkers
+import com.logie.gen1storage.storage.Hop
+import com.logie.gen1storage.storage.Lineage
+import com.logie.gen1storage.storage.LineageBook
 import com.logie.gen1storage.storage.StoredPokemon
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import com.logie.gen1storage.share.PokemonCardImage
+import com.logie.gen1storage.share.PrintBorder
+import com.logie.gen1storage.share.PrintKind
 import com.logie.gen1storage.share.ShareCard
 import com.logie.gen1storage.storage.StorageLayout
 import com.logie.gen1storage.storage.StorageRepository
@@ -139,6 +146,14 @@ sealed interface Screen {
     ) : Screen
     /** One playthrough's trainer card, read at full size. */
     data class TrainerCard(val key: String) : Screen
+    /**
+     * The printer, with a stored Pokémon in it.
+     *
+     * Its own screen rather than a prompt because choosing what to print is
+     * looking at the prints, and a window over the status screen would leave
+     * no room to look at anything.
+     */
+    data class Printer(val uid: String) : Screen
     data object Options : Screen
     /** The four that only evolve by being traded, and the machine to do it. */
     data object Trade : Screen
@@ -355,8 +370,10 @@ data class UiState(
     val soundsOn: Set<String> = emptySet(),
     /** Nothing moves, and which kinds of movement are on under that. */
     val reduceMotion: Boolean = false,
-    /** Whether Android may copy this app into the player's Google account. */
-    val cloudBackup: Boolean = false,
+    /** Whether this app is linked to push its own backup into a folder the player picked. */
+    val backupFolderLinked: Boolean = false,
+    /** What the last push into that folder actually did. */
+    val folderBackupNote: String = "OFF",
     /** Whether Generation II art follows the palette instead of its own colours. */
     val gbcFollowsPalette: Boolean = false,
     /** Swipes drive the cursor, and lists do not scroll under a finger. */
@@ -365,7 +382,7 @@ data class UiState(
     /** The tick under the finger. */
     val haptics: Boolean = true,
     /** Whether a shared Pokémon comes out on printer paper. */
-    val printerBorder: Boolean = true,
+    val printBorder: PrintBorder = PrintBorder.PAPER,
     val loadingAll: Boolean = false,
     val spriteProgress: DownloadProgress? = null,
     val spritesInstalled: Int = 0,
@@ -428,7 +445,27 @@ data class UiState(
 class StorageViewModel(application: Application) : AndroidViewModel(application) {
 
     private val storageDir = File(application.filesDir, "pc")
-    private val storage = StorageRepository(storageDir)
+
+    /**
+     * Pushes into the linked backup folder, if there is one.
+     *
+     * Debounced, because a bulk import persists the boxes once per Pokémon
+     * and a folder full of intermediate copies is not what LINKED is
+     * promising.
+     */
+    private var backupSignal: Job? = null
+
+    private fun backupWanted() {
+        if (backupSignal?.isActive == true) return
+        backupSignal = viewModelScope.launch {
+            delay(BACKUP_SIGNAL_MILLIS)
+            settings.backupFolderUri?.let { uri ->
+                withContext(Dispatchers.IO) { pushToBackupFolder(uri) }
+            }
+        }
+    }
+
+    private val storage = StorageRepository(storageDir, ::backupWanted)
     private val journal = TransferJournal(storageDir)
     private val backups = SaveBackups(File(storageDir, "backups"))
 
@@ -447,7 +484,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.setGameSlotId(key, slot)
     }
     private val ledger = PlacementLedger(storageDir)
-    private val engine = TransferEngine(saves, storage, journal, ledger)
+    /** Where every Pokémon the app has held has been. See [LineageBook]. */
+    private val lineages = LineageBook(storageDir)
+    private val engine = TransferEngine(saves, storage, journal, ledger, lineages)
     private val itemStorage = ItemRepository(storageDir)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
     private val mailEngine = MailEngine(saves)
@@ -576,12 +615,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             .take(40)
 
     init {
-        noticeRestore()
         sprites.gbcFollowsPalette = settings.gbcFollowsPalette
         // The trainers were left out of this, so GBC SPRITES / PALETTE
         // recoloured the Pokemon and the Generation II trainer art went on
         // wearing its own greens and browns beside them.
         trainers.gbcFollowsPalette = settings.gbcFollowsPalette
+        // What GBC SPRITES / ORIGINAL draws through: each game's own colours,
+        // the same ones its title card and its trainer card are drawn in. Set
+        // once, because the games' palettes do not change — only which of the
+        // two sets of colours is asked for does.
+        val own = gameOwnRamps()
+        sprites.gameRamps = own
+        trainers.gameRamps = own
         applySpriteTint(GbPalette.fromId(settings.paletteId))
         // Settled here rather than when the download starts, because the
         // introduction is drawn before that: a first frame that found nothing
@@ -608,12 +653,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 tradeEvolution = settings.tradeEvolution,
                 tradeAnimation = settings.tradeAnimation,
                 reduceMotion = settings.reduceMotion,
-                cloudBackup = settings.cloudBackup,
+                backupFolderLinked = settings.backupFolderUri != null,
+                folderBackupNote = folderBackupNote(),
                 gbcFollowsPalette = settings.gbcFollowsPalette,
                 swipeControls = settings.swipeControls,
                 motionsOn = enabledMotions(),
                 haptics = settings.haptics,
-                printerBorder = settings.printerBorder,
+                printBorder = settings.printBorder,
                 textSpeed = settings.textSpeed,
                 soundOff = settings.soundOff,
                 soundsOn = enabledSounds(),
@@ -818,6 +864,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         // exactly like a feature that was never wired up.
         try {
             runSync(silent)
+            // A sync can change what the account link looks like — codes
+            // cleared on an Unauthorized, a save's revision moving on —
+            // without ever touching the boxes, and none of that is a change
+            // `persist()` sees. So it says so itself, same as a deposit does.
+            backupWanted()
         } finally {
             mutable.update { it.copy(syncing = false) }
         }
@@ -1066,7 +1117,8 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Whether Generation II art is shown in the palette or in its own colours.
+     * Whether every sprite is drawn through the chosen palette, or each in
+     * the colours of the game it came from.
      *
      * The sprite cache is keyed on it, so the change is on screen at once
      * rather than at the next thing that happens to reload a sprite.
@@ -1080,9 +1132,10 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setPrinterBorder(on: Boolean) {
-        settings.printerBorder = on
-        mutable.update { it.copy(printerBorder = on) }
+    /** What a print comes out with around it. See [AppSettings.printBorder]. */
+    fun setPrintBorder(border: PrintBorder) {
+        settings.printBorder = border
+        mutable.update { it.copy(printBorder = border) }
     }
 
     /**
@@ -1092,10 +1145,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * whatever else was on it and whatever the phone's own bars look like,
      * and the thing worth sending is the Pokémon.
      */
-    fun cardImage(uid: String): Bitmap? {
+    fun cardImage(
+        uid: String,
+        kind: PrintKind = PrintKind.DEX,
+        border: PrintBorder = settings.printBorder,
+    ): Bitmap? {
         val stored = storage.get(uid) ?: return null
         val sprite = stored.pokemon.speciesId
-            ?.let { sprites.load(it, stored.spriteGameVersionId) }
+            ?.let { sprites.load(it, stored.spriteGameVersionId, cutout = false) }
             ?.asAndroidBitmap()
         return runCatching {
             PokemonCardImage.render(
@@ -1104,7 +1161,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 sprite = sprite,
                 provenance = stored.provenance,
                 palette = GbPalette.fromId(settings.paletteId),
-                printerBorder = settings.printerBorder,
+                kind = kind,
+                border = border,
+                dexTile = { trainers.dexTile(it) },
             )
         }.getOrNull()
     }
@@ -1121,9 +1180,13 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * show on a scrolling list. The chooser is opened from the application
      * context with NEW_TASK, so this does not need the activity.
      */
-    fun shareCard(uid: String) = viewModelScope.launch {
+    fun shareCard(
+        uid: String,
+        kind: PrintKind = PrintKind.DEX,
+        border: PrintBorder = settings.printBorder,
+    ) = viewModelScope.launch {
         val name = cardName(uid)
-        val card = withContext(Dispatchers.Default) { cardImage(uid) }
+        val card = withContext(Dispatchers.Default) { cardImage(uid, kind, border) }
         val sent = card != null &&
             ShareCard.share(getApplication(), card, name)
         if (!sent) message("THAT CARD COULD NOT BE SENT.")
@@ -1158,8 +1221,42 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * promised to a cartridge is not one to change underneath it.
      */
     fun timeCapsuleCandidates(): List<StoredPokemon> =
+        timeCapsuleRoster().mapNotNull { (stored, blocked) -> stored.takeIf { blocked == null } }
+
+    /**
+     * Why one cannot go through, or null when it can.
+     *
+     * Four separate reasons, kept apart rather than rolled into one test,
+     * because a Pokemon that is simply not on the screen is a bug report with
+     * nothing in it. Three of them are the app's own bookkeeping and one —
+     * the third — is a guess read off the Pokemon's own fields, which is the
+     * one that can be wrong about a Pokemon nobody has touched.
+     */
+    fun timeCapsuleBlock(stored: StoredPokemon): String? = when {
+        // Nothing here settles a transfer note any more, so a mark left by an
+        // older build is a mark that never clears. Named rather than obeyed
+        // in silence.
+        stored.inFlight -> "IT IS WAITING ON A TRANSFER."
+        stored.generation != 1 -> "IT IS ALREADY IN GENERATION II."
+        TimeCapsule.hasCrossed(stored.data) -> "ITS OWN FIELDS ARE GENERATION II'S."
+        stored.pokemon.speciesId?.let { Gen2Data.species(Gen2Data.idOf(it)) } == null ->
+            "GENERATION II HAS NO ENTRY FOR IT."
+        else -> null
+    }
+
+    /**
+     * Everything in the PC, with the reason each one cannot go on beside it,
+     * the ones that can first.
+     *
+     * The screen used to be handed the ones that could go and nothing else,
+     * so a Pokemon held back by any of the four tests above was not refused —
+     * it was absent, which is the one answer a player cannot act on. Every
+     * one of them is listed now and says for itself why it is staying.
+     */
+    fun timeCapsuleRoster(): List<Pair<StoredPokemon, String?>> =
         mutable.value.storage.boxes.flatMap { it.contents }
-            .filter { !it.inFlight && it.generation == 1 && TimeCapsule.canCarry(it.pokemon) }
+            .map { it to timeCapsuleBlock(it) }
+            .sortedBy { (_, blocked) -> blocked != null }
 
     /**
      * Sends one forward, with what it was written down beside it.
@@ -1429,6 +1526,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.windowsFollowPalette = enabled
         mutable.update { it.copy(windowsFollowPalette = enabled) }
     }
+
+    /**
+     * Each game's four colours, darkest first, keyed by its version id.
+     *
+     * The same palettes the shelf draws a cartridge's title card and a
+     * trainer card in — see `paletteFor` — so a Pokemon out of Red is the red
+     * of the card it came off, not a second red invented here.
+     */
+    private fun gameOwnRamps(): Map<String, IntArray> =
+        GameVersion.entries.associate { version ->
+            version.id.lowercase() to
+                paletteFor(version.id).ramp.map { it.toArgb() }.toIntArray()
+        }
 
     private fun applySpriteTint(palette: GbPalette) {
         val ramp =
@@ -2285,89 +2395,310 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { state ->
             state.copy(loaded = state.loaded + saves.associateBy { it.key })
         }
-        checkRestored(saves)
-    }
-
-    // ------- coming back from a backup
-
-    /**
-     * Whether the boxes on this device arrived with the app or came back from
-     * Android's backup.
-     *
-     * The marker is a file this app writes once and never lets into a backup.
-     * A fresh install has neither it nor any boxes; a restore has boxes and no
-     * marker, because the boxes came from the account and the marker could
-     * not. That is the whole of the test, and it needs nothing from the
-     * backup system itself.
-     *
-     * Everything a restore brought back is written down as unchecked. See
-     * [AppSettings.restoredUids]: a backup is the boxes at one moment and the
-     * cartridges have moved on since, so until each one has been held up
-     * against the saves it is a Pokémon this app is not sure it still owns.
-     */
-    private fun noticeRestore() {
-        val marker = File(getApplication<Application>().filesDir, "install.marker")
-        if (marker.exists()) return
-        val held = runCatching { storage.all() }.getOrDefault(emptyList())
-        if (held.isNotEmpty()) settings.restoredUids = held.map { it.uid }.toSet()
-        runCatching { marker.writeText(System.currentTimeMillis().toString()) }
+        noticeElsewhere(saves)
     }
 
     /**
-     * Holds what a restore brought back up against a cartridge that has just
-     * been read.
+     * Holds the PC up against a cartridge that has just been read, and
+     * notices a Pokémon that is in both.
      *
-     * A Pokémon the save already holds left this app before the backup was
-     * taken, so the copy in the PC is a picture of one that is gone: the
-     * cartridge is where it lives now and the copy goes. One the save does not
-     * hold is the app's own, and it stops being asked about.
+     * The app writes its own mark into every Pokémon it hands to a cartridge
+     * (see [Lineage]), so a Pokémon found in a save wearing the mark of one
+     * the PC still holds is not a coincidence and not a lookalike: it is the
+     * same creature, and it got there by a route this app never saw — a save
+     * restored from a backup of its own, a cartridge copied, a trade inside
+     * the game, a withdrawal that landed after the app was reinstalled.
      *
-     * Only ever removes from the PC, and only when a cartridge is holding the
-     * same Pokémon — the app never ends up with nothing where there was
-     * something, which is the half of the promise a backup could break.
+     * This used to compare content fingerprints, which meant it could only
+     * recognise a Pokémon that had not been played with since — and it acted
+     * on the match by deleting the PC's copy without asking. It asks now, and
+     * it recognises one that has spent a season levelling.
+     *
+     * Asked once per Pokémon per cartridge: the noticing is written onto the
+     * Pokémon's own history, so a player who says no is not asked again every
+     * time that save is read.
      */
-    private fun checkRestored(saves: Collection<LoadedSave>) {
-        val unchecked = settings.restoredUids
-        if (unchecked.isEmpty()) return
-        val contents = saves.mapNotNull { it.save }
-        if (contents.isEmpty()) return
-        var left = unchecked
-        var removed = 0
-        for (uid in unchecked) {
-            val stored = storage.get(uid)
-            if (stored == null) {
-                left = left - uid
-                continue
+    private fun noticeElsewhere(saves: Collection<LoadedSave>) {
+        val held = storage.all().mapNotNull { stored ->
+            stored.lineage?.let { it.tag to stored }
+        }.toMap()
+        if (held.isEmpty()) return
+
+        val found = LinkedHashMap<String, Pair<StoredPokemon, LoadedSave>>()
+        saves.forEach { loaded ->
+            val save = loaded.save ?: return@forEach
+            (save.party + save.boxes.flatten()).forEach { mon ->
+                val tag = Lineage.tagOf(mon.raw) ?: return@forEach
+                val stored = held[tag] ?: return@forEach
+                // Already raised for this Pokémon in this cartridge. The
+                // answer was no, and asking again every time the save is
+                // read is how a warning becomes something to tap past.
+                val last = stored.lineage?.hops?.lastOrNull()
+                if (last?.kind == Hop.Kind.SEEN_ELSEWHERE && last.saveKey == loaded.key) {
+                    return@forEach
+                }
+                found[tag] = stored to loaded
             }
-            val fingerprint = stored.pokemon.fingerprint
-            val inASave = contents.any { save ->
-                save.party.any { it.fingerprint == fingerprint } ||
-                    save.boxes.any { box -> box.any { it.fingerprint == fingerprint } }
-            }
-            if (inASave) {
-                storage.withdraw(uid)
-                removed++
-            }
-            left = left - uid
         }
-        settings.restoredUids = left
-        if (removed > 0) {
-            mutable.update { it.copy(storage = storage.state()) }
-            message(
-                if (removed == 1) "A RESTORED POKéMON WAS ALREADY IN A SAVE."
-                else "$removed RESTORED POKéMON WERE ALREADY IN SAVES.",
-                "THE CARTRIDGE KEPT THEM.",
+        if (found.isEmpty()) return
+
+        // Written down before anything is asked, so the question is not
+        // repeated whatever the answer turns out to be.
+        found.values.forEach { (stored, loaded) ->
+            val lineage = stored.lineage ?: return@forEach
+            runCatching {
+                storage.replace(
+                    stored.copy(
+                        lineage = lineage.then(
+                            Hop(
+                                kind = Hop.Kind.SEEN_ELSEWHERE,
+                                atMillis = System.currentTimeMillis(),
+                                gameVersion = loaded.remote.version.id,
+                                saveKey = loaded.key,
+                                trainerName = loaded.save?.trainerName,
+                            )
+                        )
+                    )
+                )
+            }
+        }
+
+        val first = found.values.first()
+        val name = first.first.pokemon.displayName.uppercase()
+        val where = first.second.remote.version.label.uppercase()
+        val uids = found.values.map { it.first.uid }
+        mutable.update {
+            it.copy(
+                storage = storage.state(),
+                prompt = Prompt.Confirm(
+                    lines = if (uids.size == 1) {
+                        listOf(
+                            "$name IS IN $where TOO.",
+                            "IT LEFT THE PC SOME OTHER WAY.",
+                            "TAKE IT OUT OF THE PC?",
+                        )
+                    } else {
+                        listOf(
+                            "${uids.size} POKéMON ARE IN CARTRIDGES TOO.",
+                            "THEY LEFT THE PC SOME OTHER WAY.",
+                            "TAKE THEM OUT OF THE PC?",
+                        )
+                    },
+                    confirmLabel = "YES",
+                    cancelLabel = "NO",
+                    onConfirm = { dropDuplicates(uids) },
+                ),
             )
         }
     }
 
-    /** Whether this app's data goes into the account's backup. */
-    fun setCloudBackup(on: Boolean) {
-        settings.cloudBackup = on
-        mutable.update { it.copy(cloudBackup = on) }
-        // Tells the platform there is something new to take. Without it the
-        // first backup waits for whenever the system next feels like one.
-        runCatching { BackupManager(getApplication()).dataChanged() }
+    /** Takes the PC's copies out, for a player who said yes to the above. */
+    private fun dropDuplicates(uids: List<String>) {
+        uids.forEach { uid -> runCatching { storage.withdraw(uid) } }
+        mutable.update { it.copy(storage = storage.state(), prompt = null) }
+        message(
+            if (uids.size == 1) "THE CARTRIDGE KEPT IT."
+            else "THE CARTRIDGES KEPT THEM.",
+        )
+    }
+
+    /** What the last push into the linked folder actually did. */
+    private fun folderBackupNote(): String {
+        if (settings.backupFolderUri == null) return "OFF"
+        val last = BackupMarkers.read(getApplication(), BackupMarkers.FOLDER_MARKER) ?: return "NOT YET"
+        val when_ = java.time.Instant.ofEpochMilli(last.first)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))
+            .uppercase()
+        return if (last.second == "pushed") when_ else "$when_ (${last.second.uppercase()})"
+    }
+
+    /** What the LAST FOLDER BACKUP row is actually saying, for anybody who taps it. */
+    fun explainFolderBackup() {
+        val last = BackupMarkers.read(getApplication(), BackupMarkers.FOLDER_MARKER)
+        prompt(
+            Prompt.Message(
+                when {
+                    last == null -> listOf(
+                        "NOTHING HAS PUSHED YET.",
+                        "THE NEXT CHANGE TO THE PC",
+                        "PUSHES ONE ON ITS OWN.",
+                    )
+                    last.second == "failed" -> listOf(
+                        "THE LAST PUSH FAILED, ON",
+                        "${folderBackupNote()}.",
+                        "IT TRIES AGAIN NEXT TIME THE",
+                        "PC CHANGES.",
+                    )
+                    else -> listOf(
+                        "LAST PUSHED ON",
+                        "${folderBackupNote()}.",
+                        "EVERY CHANGE TO THE PC PUSHES",
+                        "AGAIN ON ITS OWN.",
+                    )
+                }
+            )
+        )
+    }
+
+    /** What a manual backup is named by default, so the picker opens with a name in it. */
+    fun backupFileName(): String {
+        val date = java.time.LocalDate.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        return "pokestorage-backup-$date.pssbackup"
+    }
+
+    /**
+     * Writes the boxes, the histories, every setting and the link to the
+     * account into the file the player just picked. See [BackupExport].
+     */
+    fun backUpNow(uri: Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                app.contentResolver.openOutputStream(uri)?.use { out -> BackupExport.write(app, out) }
+                    ?: error("THE CHOSEN LOCATION WOULD NOT OPEN")
+            }
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) message("BACKUP SAVED.")
+                else message("COULD NOT SAVE THE BACKUP.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+            }
+        }
+    }
+
+    /**
+     * Puts a file [backUpNow] wrote back onto this device and restarts.
+     *
+     * The settings and boxes this overwrites are already cached in memory the
+     * moment anything reads them this run, so a restart is the only way every
+     * part of the app is guaranteed to pick up the new file rather than go on
+     * holding the old one until something happens to reload it.
+     */
+    fun restoreFromFile(uri: Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                app.contentResolver.openInputStream(uri)?.use { input -> BackupExport.read(app, input) }
+                    ?: error("THE CHOSEN FILE WOULD NOT OPEN")
+            }
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    message("BACKUP RESTORED.", "RESTARTING...")
+                    delay(1200)
+                    restartApp()
+                } else {
+                    message("COULD NOT READ THAT FILE.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+                }
+            }
+        }
+    }
+
+    /**
+     * The one tap that starts this: picks a folder with the system's own
+     * chooser — a folder inside the Google Drive app included, since it is
+     * a folder picker like any other — keeps permission to write there
+     * after the app closes, and pushes once itself so linking is not a
+     * promise with nothing behind it yet. Everything after this tap — a
+     * deposit, a sync, anything [backupWanted] already hears about —
+     * pushes again on its own, no sign-in of this app's own asked for
+     * again: the permission this took out is what makes that silent.
+     */
+    fun linkBackupFolder(treeUri: Uri) {
+        val app = getApplication<Application>()
+        runCatching {
+            app.contentResolver.takePersistableUriPermission(
+                treeUri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+        settings.backupFolderUri = treeUri.toString()
+        mutable.update { it.copy(backupFolderLinked = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = pushToBackupFolder(treeUri.toString())
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) message("LINKED. BACKUP SAVED THERE.")
+                else message("LINKED, BUT THE FIRST PUSH FAILED.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+            }
+        }
+    }
+
+    /** Stops the automatic push. What is already in that folder is left exactly as it is. */
+    fun unlinkBackupFolder() {
+        val app = getApplication<Application>()
+        settings.backupFolderUri?.let { stored ->
+            runCatching {
+                app.contentResolver.releasePersistableUriPermission(
+                    Uri.parse(stored),
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+        }
+        settings.backupFolderUri = null
+        mutable.update { it.copy(backupFolderLinked = false) }
+    }
+
+    /**
+     * Writes the same set [backUpNow] writes into the linked folder,
+     * replacing whatever this app already put there. Shared by
+     * [linkBackupFolder]'s first push and [backupWanted]'s every push after
+     * that — both already run on an IO dispatcher by the time they call
+     * this.
+     */
+    private fun pushToBackupFolder(treeUriString: String): Result<Unit> {
+        val app = getApplication<Application>()
+        val result = runCatching {
+            val resolver = app.contentResolver
+            val fileUri = BackupFolderWriter.findOrCreate(resolver, Uri.parse(treeUriString))
+            val bytes = java.io.ByteArrayOutputStream().also { BackupExport.write(app, it) }.toByteArray()
+            resolver.openOutputStream(fileUri, "wt")?.use { it.write(bytes) }
+                ?: error("could not open the backup file")
+        }
+        BackupMarkers.note(app, BackupMarkers.FOLDER_MARKER, if (result.isSuccess) "pushed" else "failed")
+        mutable.update { it.copy(folderBackupNote = folderBackupNote()) }
+        return result
+    }
+
+    /**
+     * Reads a push already put in [treeUri] back onto this device, and
+     * restarts.
+     *
+     * Takes a folder just picked rather than the one this device has
+     * linked, and deliberately: the linked folder is this device's own
+     * setting, gone the moment the app is reinstalled, while the backup
+     * sitting in that folder is not. A fresh install restoring from it has
+     * to be able to point at it again from nothing, the same as
+     * [restoreFromFile] pointing at a bare file.
+     */
+    fun restoreFromBackupFolder(treeUri: Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val fileUri = BackupFolderWriter.find(app.contentResolver, treeUri)
+                    ?: error("NOTHING HAS BEEN PUSHED TO THAT FOLDER YET")
+                app.contentResolver.openInputStream(fileUri)?.use { input -> BackupExport.read(app, input) }
+                    ?: error("could not open the backup file")
+            }
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    message("BACKUP RESTORED.", "RESTARTING...")
+                    delay(1200)
+                    restartApp()
+                } else {
+                    message("COULD NOT RESTORE FROM THAT FOLDER.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+                }
+            }
+        }
+    }
+
+    private fun restartApp() {
+        val app = getApplication<Application>()
+        val intent = app.packageManager.getLaunchIntentForPackage(app.packageName)
+            ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        if (intent != null) app.startActivity(intent)
+        kotlin.system.exitProcess(0)
     }
 
     /** Re-reads a save from the account, so a transfer is aimed at its current revision. */
@@ -2778,6 +3109,65 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             appendLine("Local backups: ${localBackups().size}")
             appendLine("Pending transfer: ${pendingTransferSummary() ?: "none"}")
             appendLine()
+            // Everything that can take a Pokemon out of the boxes without
+            // anybody asking for it to go, and everything that can leave one
+            // out of the list it should be in.
+            //
+            // All of it was already written down and none of it was anywhere
+            // a player could see: the load's own notes went to the
+            // diagnostics list and nowhere else, and the two guards that
+            // silently remove — the duplicate-uid sweep at load, and the
+            // restore check — reported only to themselves. A Pokemon that is
+            // not there is the one thing a report about this app has to be
+            // able to answer, so it answers it here.
+            appendLine("### The PC's own file")
+            val pc = current.storage
+            appendLine("- Spots taken: ${pc.total}")
+            pc.boxes.forEach { box ->
+                appendLine("- ${box.label}: ${box.contents.size} in, ${box.freeSlots} free")
+            }
+            val loadNotes = runCatching { storage.loadNotes }.getOrDefault(emptyList())
+            if (loadNotes.isEmpty()) {
+                appendLine("- Read with nothing dropped")
+            } else {
+                appendLine("- Dropped or moved while reading the file:")
+                loadNotes.forEach { appendLine("  - $it") }
+            }
+            appendLine()
+            appendLine("### Duplication guards")
+            // Written down against a Pokemon's content rather than its name,
+            // so a fingerprint's first few characters say which record is
+            // which without saying anything about the Pokemon.
+            val placements = runCatching { engine.placements() }.getOrDefault(emptyList())
+            appendLine("- Handed out and not yet back: ${placements.size}")
+            placements.take(GUARD_REPORT_LIMIT).forEach {
+                appendLine("  - ${it.fingerprint.take(8)} in ${it.savePath}")
+            }
+            val app2 = getApplication<Application>()
+            appendLine("- BACKUP FOLDER: ${if (current.backupFolderLinked) "linked" else "not linked"}")
+            if (current.backupFolderLinked) {
+                appendLine(
+                    "- Folder last pushed: " +
+                        (BackupMarkers.read(app2, BackupMarkers.FOLDER_MARKER)
+                            ?.let { "${Instant.ofEpochMilli(it.first)} (${it.second})" }
+                            ?: "never")
+                )
+            }
+            // The marks, which is how the app recognises a Pokemon it has
+            // handed out before. Counted rather than listed: a tag says
+            // nothing about a Pokemon, and there can be thousands.
+            val marked = runCatching { storage.all() }.getOrDefault(emptyList())
+            appendLine("- Marked in the PC: ${marked.count { it.lineage != null }} of ${marked.size}")
+            val book = runCatching { lineages.all() }.getOrDefault(emptyList())
+            appendLine("- Histories kept for ones that are out: ${book.count { it.isOut }}")
+            appendLine("- Histories kept in all: ${book.size}")
+            // The one list in the app that a Pokemon can be kept out of, and
+            // why each one is being kept out.
+            val roster = runCatching { timeCapsuleRoster() }.getOrDefault(emptyList())
+            appendLine("- TIME CAPSULE can send: ${roster.count { it.second == null }}")
+            roster.mapNotNull { it.second }.groupingBy { it }.eachCount()
+                .forEach { (reason, held) -> appendLine("  - $held held back: $reason") }
+            appendLine()
             appendLine("### ROMs imported")
             com.logie.gen1storage.rom.RomVersion.entries.forEach { version ->
                 appendLine("- ${version.id}: ${if (roms.has(version)) "present" else "-"}")
@@ -2856,8 +3246,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 }
 
 /** Where the last download failure is kept, for the report under ABOUT. */
+/**
+ * How long the app waits before pushing into a linked backup folder.
+ *
+ * Long enough that a run of transfers, or an import of a whole box, is one
+ * push rather than six hundred.
+ */
+private const val BACKUP_SIGNAL_MILLIS = 3_000L
+
 /** How many stored Pokémon the debug report names a sprite source for. */
 private const val SPRITE_REPORT_LIMIT = 40
+
+/** How many of the ledger's records the report lists before it stops. */
+private const val GUARD_REPORT_LIMIT = 20
 
 private const val DOWNLOAD_FAILURE_FILE = "last-download-failure.txt"
 

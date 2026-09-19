@@ -184,6 +184,14 @@ fun StorageSystemScreen(
      * the foot of the screen where messages come up, not hung off the menu.
      */
     notice: String? = null,
+    /**
+     * Closing that notice, which a tap does — on the window itself, or
+     * anywhere at all when the notice has the screen to itself.
+     *
+     * Null leaves the notice unclosable by tap, for a caller whose notice
+     * goes away on its own.
+     */
+    onNotice: (() -> Unit)? = null,
     overlay: @Composable (() -> Unit)? = null,
     action: @Composable (() -> Unit)? = null,
     /**
@@ -285,13 +293,31 @@ fun StorageSystemScreen(
         overlay?.invoke()
 
         if (notice != null) {
+            // A message window is closed by pressing A, and on a phone A is a
+            // tap. Without one, a notice that comes up with nothing else on
+            // the screen — DEPOSIT finding the card's boxes empty takes the
+            // menu down to say so — left a screen holding one window and no
+            // way out of it but a hold nobody has been told about.
+            //
+            // Where the menu is still up behind the notice, only the window
+            // itself takes the tap: a layer over the whole screen would eat
+            // the taps meant for the rows underneath it.
+            val alone = !showMenu && overlay == null
+            fun tapping(on: Boolean) = if (onNotice == null || !on) {
+                Modifier
+            } else {
+                Modifier.pointerInput(Unit) { detectTapGestures { onNotice() } }
+            }
             Box(
-                Modifier.fillMaxSize(),
+                Modifier.fillMaxSize().then(tapping(alone)),
                 // Where messages come up, against the same edge as the menu
                 // and the windows that open under it.
                 contentAlignment = Gen1Layout.corner(top = false, menuSide = true),
             ) {
-                Gen1Frame(Modifier.gen1MaxWidth().wrapContentWidth(), opening = true) {
+                Gen1Frame(
+                    Modifier.gen1MaxWidth().wrapContentWidth().then(tapping(!alone)),
+                    opening = true,
+                ) {
                     Gen1TypedLines(listOf(notice))
                 }
             }

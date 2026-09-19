@@ -8,6 +8,7 @@ import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.LuaWriter
 import com.logie.gen1storage.lua.luaNum
 import com.logie.gen1storage.lua.luaStr
+import com.logie.gen1storage.storage.LineageBook
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.CommitOutcome
@@ -137,6 +138,7 @@ class Gen2WriteTest {
             storage,
             TransferJournal(storageDir),
             PlacementLedger(storageDir),
+            LineageBook(storageDir),
         )
 
         val remote = (api.state() as SyncResult.Ok).value.saves.single { it.version.id == "gold" }
@@ -201,6 +203,7 @@ class Gen2WriteTest {
             storage,
             TransferJournal(storageDir),
             PlacementLedger(storageDir),
+            LineageBook(storageDir),
         )
 
         val remote = (api.state() as SyncResult.Ok).value.saves.single { it.version.id == "gold" }

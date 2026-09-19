@@ -265,6 +265,37 @@ and write every save on the account, so treat them like a password and use
 and device token it receives in its own private storage, and keeps all four out
 of the debug report.
 
+## Backup, and coming back
+
+With **BACKUP TO GOOGLE** on (OPTIONS, off by default), Android carries this
+app into the account the same way it carries any other. Everything goes: the
+boxes, every setting, and the link to the game's sync account. Delete the app,
+reinstall it, and it comes back as it was and goes on syncing with the game
+without anybody re-entering a code.
+
+It asks first. Before the introduction, before anything else is on screen, a
+restored install says what it found and offers to use it — YES keeps the lot,
+NO clears this device and starts fresh, which is then a genuine first run and
+Bill plays. The question is asked once, because `install.marker` is written on
+first run and is the one file never allowed into a backup: boxes arriving
+without it are boxes that came from somewhere else.
+
+**Every Pokémon the app holds carries a mark.** It is written into the
+Pokémon's own table on the way into a cartridge and lifted back off on the way
+out, so the boxes hold exactly the fields the cartridge handed over and a
+Pokémon that has been round a dozen games carries one mark rather than a dozen.
+The mark is what makes a Pokémon recognisable after a season of levels, moves
+and nicknames, when its contents no longer match anything the app wrote down —
+and a Pokémon found in a cartridge that the PC also thinks it is holding is
+therefore not a lookalike. It left by some route the app never saw, and the app
+says so and asks whether to let the cartridge keep it. One that comes back
+without its mark is matched on its trainer, that trainer's id and its DVs,
+which is weaker and still survives everything play can do to it.
+
+Beside the mark is a history: every cartridge that Pokémon has been in, in
+order, with when and whose. It travels in the backup too, because a history
+that did not survive a new phone would not be a history.
+
 Some things follow from saves living on a server rather than on the device:
 
 - The sync service is run by the Gen1Recomp project, not by this app. If it is

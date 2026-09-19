@@ -6,6 +6,8 @@ import com.logie.gen1storage.lua.LuaValue
 import com.logie.gen1storage.lua.LuaWriter
 import com.logie.gen1storage.pokemon.Gen1Pokemon
 import com.logie.gen1storage.pokemon.Gen1Stat
+import com.logie.gen1storage.storage.Lineage
+import com.logie.gen1storage.storage.LineageBook
 import com.logie.gen1storage.storage.StorageRepository
 import com.logie.gen1storage.sync.LoadedSave
 import com.logie.gen1storage.sync.SaveBackups
@@ -44,6 +46,7 @@ class TransferEngineTest {
     private lateinit var journal: TransferJournal
     private lateinit var backups: SaveBackups
     private lateinit var ledger: PlacementLedger
+    private lateinit var lineages: LineageBook
     private lateinit var saves: SaveRepository
     private lateinit var engine: TransferEngine
 
@@ -88,7 +91,8 @@ class TransferEngineTest {
             backups,
         )
         ledger = PlacementLedger(directory)
-        engine = TransferEngine(saves, storage, journal, ledger) { 1_700_000_000_000 }
+        lineages = LineageBook(directory)
+        engine = TransferEngine(saves, storage, journal, ledger, lineages) { 1_700_000_000_000 }
     }
 
     private suspend fun load(playthroughId: String): LoadedSave {
@@ -123,7 +127,7 @@ class TransferEngineTest {
     }
 
     @Test
-    fun `deposit and withdraw round-trips a Pokemon with no change at all`() = runTest {
+    fun `deposit and withdraw round-trips a Pokemon with nothing but the mark added`() = runTest {
         setUp()
         val original = load(redId).save!!.party[0]
         val originalEncoding = LuaWriter.encodeValue(original.raw)
@@ -133,10 +137,27 @@ class TransferEngineTest {
         assertTrue(withdraw.toString(), withdraw is TransferResult.Success)
 
         val returned = saveOn("red", redId).party.first { it.nickname == "SPARKY" }
-        assertEquals(originalEncoding, LuaWriter.encodeValue(returned.raw))
-        assertEquals(original.fingerprint, returned.fingerprint)
+        // The one thing the app adds, and the reason it adds it: this is how
+        // the same Pokémon is recognised on the way back in after a season of
+        // levels and nicknames, when its contents no longer match anything.
+        assertNotNull(Lineage.tagOf(returned.raw))
+        assertEquals(originalEncoding, LuaWriter.encodeValue(bare(returned).raw))
+        assertEquals(original.fingerprint, bare(returned).fingerprint)
         assertEquals(0, storage.state().total)
     }
+    /**
+     * A Pokémon as the cartridge handed it over, with the app's own mark
+     * taken back off.
+     *
+     * Everything this app does to a Pokémon on a round trip is that one mark
+     * — see [Lineage] — so this is what "unchanged" means now: identical
+     * once the handwriting on the back is rubbed out. The mark itself is
+     * asserted separately, because a mark that quietly stopped being written
+     * would make every one of these pass.
+     */
+    private fun bare(pokemon: Gen1Pokemon): Gen1Pokemon =
+        Gen1Pokemon(Lineage.unstamp(pokemon.raw.deepCopy()), pokemon.generation)
+
 
     @Test
     fun `save A to storage to save B preserves every field`() = runTest {
@@ -148,7 +169,7 @@ class TransferEngineTest {
         assertTrue(withdraw.toString(), withdraw is TransferResult.Success)
 
         val moved = saveOn("blue", blueId).party.first { it.nickname == "SPARKY" }
-        assertEquals(original.fingerprint, moved.fingerprint)
+        assertEquals(original.fingerprint, bare(moved).fingerprint)
         assertEquals(original.otName, moved.otName)
         assertEquals(original.otId, moved.otId)
         assertEquals(original.exp, moved.exp)
@@ -179,7 +200,7 @@ class TransferEngineTest {
         engine.withdraw(load(blueId), uid, WithdrawTarget.Box(3))
 
         val moved = saveOn("blue", blueId).boxes[2].single()
-        assertEquals(before.fingerprint, moved.fingerprint)
+        assertEquals(before.fingerprint, bare(moved).fingerprint)
         assertEquals("keep me", (moved.raw["someModField"] as LuaValue.Str).value)
         assertNotNull(moved.raw["typeBytes"])
     }
@@ -384,6 +405,7 @@ class TransferEngineTest {
             StorageRepository(temporaryFolder.newFolder()),
             TransferJournal(temporaryFolder.newFolder()),
             PlacementLedger(temporaryFolder.newFolder()),
+            LineageBook(temporaryFolder.newFolder()),
         )
         racer.deposit(load(redId), SaveLocation.Party(1))
 
@@ -456,7 +478,7 @@ class TransferEngineTest {
             assertTrue(result.toString(), result is TransferResult.Success)
         }
         assertEquals(0, storage.state().total)
-        assertEquals(originals, saveOn("red", redId).boxes[0].map { it.fingerprint })
+        assertEquals(originals, saveOn("red", redId).boxes[0].map { bare(it).fingerprint })
     }
 
     // ------------------------------------------------------------------

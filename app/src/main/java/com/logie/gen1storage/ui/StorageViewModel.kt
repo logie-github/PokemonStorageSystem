@@ -672,6 +672,20 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         if (credentials.isLinked) sync()
+        // The ROMs themselves are never part of a backup; the folder they
+        // came from is. A restore, or a device that just lost its ROM store
+        // some other way, leaves that setting behind while the actual .gbc
+        // files are gone, so the next launch that finds the store
+        // incomplete tries the remembered folder on its own rather than
+        // waiting for a player to notice and re-navigate to it by hand.
+        // Silent either way: found nothing new, or the permission did not
+        // survive whatever happened, and either is exactly what OPTIONS'
+        // own ROMS drawer is there to show and let a player redo.
+        settings.romsFolderUri?.let { saved ->
+            if (!roms.isComplete) {
+                runCatching { importRomsFolder(Uri.parse(saved)) }
+            }
+        }
     }
 
     // ------- navigation
@@ -2117,6 +2131,19 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * before the import has run would just be reading last run's answer.
      */
     fun importRomsFolder(treeUri: Uri): Job {
+        // The path, kept the same way linkBackupFolder keeps its own: not
+        // the ROMs themselves, which never leave this device let alone go
+        // into a backup, but where to find them again, which is a setup
+        // choice rather than a copy of anything. A restore that only
+        // brought back Pokémon and left a player re-navigating to a folder
+        // they already pointed at once is a restore that did half the job.
+        runCatching {
+            getApplication<Application>().contentResolver.takePersistableUriPermission(
+                treeUri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+        settings.romsFolderUri = treeUri.toString()
         mutable.update { it.copy(busy = true) }
         return downloadStage("ROMS") {
             com.logie.gen1storage.rom.RomFolderImporter.import(getApplication<Application>(), treeUri, roms)

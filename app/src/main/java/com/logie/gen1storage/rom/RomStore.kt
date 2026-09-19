@@ -27,6 +27,9 @@ class RomStore(private val directory: File) {
 
     fun has(version: RomVersion): Boolean = file(version).isFile
 
+    /** Whether all six are already here, which is when a re-scan has nothing left to find. */
+    val isComplete: Boolean get() = RomVersion.entries.all(::has)
+
     fun sizeOf(version: RomVersion): Long = file(version).takeIf(File::isFile)?.length() ?: 0L
 
     /**

@@ -89,6 +89,24 @@ class AppSettings(
         set(value) = prefs.edit().putString(KEY_BACKUP_FOLDER_URI, value).apply()
 
     /**
+     * The folder ROMS was last pointed at, kept for the same reason
+     * [backupFolderUri] is.
+     *
+     * The ROM files themselves are deliberately never part of a backup, see
+     * RomStore, they are squarely the player's own property and this app
+     * does not hold on to a copy of them anywhere it does not have to. But
+     * the path to find them again is not the ROM, it is a setup choice, the
+     * same kind [backupFolderUri] and the sync codes already are, and a
+     * restore that leaves a player re-navigating to a folder they already
+     * pointed at once is a restore that only brought some of the setup back.
+     * Read on the next launch that finds the ROM store incomplete; see
+     * StorageViewModel's own boot.
+     */
+    var romsFolderUri: String?
+        get() = prefs.getString(KEY_ROMS_FOLDER_URI, null)
+        set(value) = prefs.edit().putString(KEY_ROMS_FOLDER_URI, value).apply()
+
+    /**
      * The colour palette everything is drawn through, by [GbPalette] id.
      * Defaults to the Game Boy Color's own pastel mix, free from the start
      * the same as the tint-free look is — a new install reads as a Game Boy
@@ -307,6 +325,7 @@ class AppSettings(
     private companion object {
         const val KEY_TEXT_SPEED = "text-speed"
         const val KEY_BACKUP_FOLDER_URI = "backup-folder-uri"
+        const val KEY_ROMS_FOLDER_URI = "roms-folder-uri"
         const val KEY_GBC_FOLLOWS_PALETTE = "gbc-follows-palette"
         const val KEY_SHOW_ALL = "show-all-saves"
         const val KEY_SHOW_ALL_ITEMS = "show-all-items"

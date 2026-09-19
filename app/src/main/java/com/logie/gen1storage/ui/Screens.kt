@@ -1301,6 +1301,13 @@ private fun OptionsDrawerContent(
     val pickBackupFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) model.linkBackupFolder(uri)
     }
+    // The same restore the tour offers a returning player, here for anyone
+    // who wants it without redoing the tour — a fresh install that never
+    // synced included, since a backup can carry the sync codes to link with
+    // as easily as it carries the boxes.
+    val pickImportBackupFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) model.restoreFromBackupFolder(uri)
+    }
 
     val rows = buildList {
         when (drawer) {
@@ -1558,6 +1565,25 @@ private fun OptionsDrawerContent(
                 } else {
                     add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
                 }
+                // Offered whether this device has synced yet or not: a
+                // backup is a whole machine's worth of data, sync link and
+                // all, so a fresh install with backup data to bring in has
+                // no need to sync first just to get this row. Confirmed
+                // first, the same as UNLINK above, because it replaces
+                // whatever this device already has rather than adding to
+                // it.
+                add(
+                    OptionRow("IMPORT BACKUP") {
+                        model.prompt(
+                            Prompt.Confirm(
+                                lines = listOf("THIS REPLACES EVERYTHING", "ON THIS DEVICE. IMPORT A BACKUP?"),
+                                confirmLabel = "YES",
+                                cancelLabel = "NO",
+                                onConfirm = { pickImportBackupFolder.launch(null) },
+                            )
+                        )
+                    }
+                )
                 // Behind the same [state.linked] SYNC NOW and UNLINK are
                 // already gated on: a folder to push a PC into is not worth
                 // asking for from a device that has not yet synced with the

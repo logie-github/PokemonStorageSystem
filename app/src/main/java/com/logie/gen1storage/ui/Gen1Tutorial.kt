@@ -137,6 +137,13 @@ fun Gen1Tutorial(
         // tour stopped dead on it.
         if (dialogue.next()) return
         if (current.ask != null) return
+        // The returning-player branch's own goodbye sits mid-list rather
+        // than at the end, reached earlier by setting [beat] directly
+        // rather than by the tour falling out the end of [beats] the way
+        // every other beat does — so a tap past it has to close the tour
+        // itself, since [advance] only knows how to do that from the last
+        // position in the list.
+        if (current.terminal) { onFinished(); return }
         advance()
     }
 
@@ -178,6 +185,26 @@ fun Gen1Tutorial(
     ) { uri ->
         if (uri != null) model.linkBackupFolder(uri)
         advance()
+    }
+
+    // A returning player's own restore: the whole machine a backup carries,
+    // sync link included, rather than a fresh account this device would
+    // otherwise have to register from nothing a few beats from now. Hidden
+    // once tapped rather than joined, since a successful read ends in
+    // StorageViewModel restarting the app — there is no further beat of
+    // this tour left to reach — and put back on failure so a player who
+    // pointed at the wrong folder can simply try again rather than being
+    // left on a beat with nothing left to tap.
+    var loadingBackup by remember { mutableStateOf(false) }
+    val pickReturningBackupFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) {
+            beat = BEAT_RETURNING_THANKS
+        } else {
+            loadingBackup = true
+            model.restoreFromBackupFolder(uri, thanks = true) { loadingBackup = false }
+        }
     }
 
     // Codes accepted is an answer, so the tour does not also need to be told.
@@ -363,6 +390,35 @@ fun Gen1Tutorial(
                         // Pulled the moment a folder comes back, rather than
                         // left up for however long that folder takes to read —
                         // see romsImporting above.
+                        if (!connecting && !speaking && !dialogue.more &&
+                            current.ask == TutorialAsk.FIRST_TIME
+                        ) {
+                            Gen1ChoiceRows(
+                                listOf(
+                                    "YES" to { beat = BEAT_NORMAL_START },
+                                    "NO" to { beat = BEAT_HAS_BACKUP_ASK },
+                                )
+                            )
+                        }
+                        if (!connecting && !speaking && !dialogue.more &&
+                            current.ask == TutorialAsk.HAS_BACKUP
+                        ) {
+                            Gen1ChoiceRows(
+                                listOf(
+                                    "YES" to { beat = BEAT_LOAD_BACKUP_ASK },
+                                    "NO" to { beat = BEAT_RETURNING_THANKS },
+                                )
+                            )
+                        }
+                        if (!connecting && !speaking && !dialogue.more &&
+                            current.ask == TutorialAsk.LOAD_BACKUP && !loadingBackup
+                        ) {
+                            Gen1ChoiceRows(
+                                listOf(
+                                    "CHOOSE A FOLDER" to { pickReturningBackupFolder.launch(null) },
+                                )
+                            )
+                        }
                         if (!connecting && !speaking && !dialogue.more &&
                             current.ask == TutorialAsk.BACKUP_FOLDER
                         ) {
@@ -662,6 +718,16 @@ private data class TutorialBeat(
      * talking about screens, and each of those brings its own.
      */
     val connected: Boolean = false,
+    /**
+     * Closes the tour the moment this beat is tapped through, rather than
+     * moving on to whatever sits next in the list.
+     *
+     * Only [BEAT_RETURNING_THANKS] needs this: it is reached mid-list, by a
+     * returning player answering the tour's own opening question, and the
+     * beats after it in [tutorialBeats] belong to the tour a first-time
+     * player is still going through.
+     */
+    val terminal: Boolean = false,
 )
 
 /**
@@ -672,6 +738,34 @@ private data class TutorialBeat(
  * the screen does not move it on: the only way past is answering.
  */
 private enum class TutorialAsk {
+    /**
+     * Whether this is a player's first time in the app at all.
+     *
+     * Asked right after the connection succeeds, before anything else does:
+     * a returning player who already has an account and a backup somewhere
+     * has no need for the tour that follows, so the tour asks before it
+     * spends any more of their time on it.
+     */
+    FIRST_TIME,
+    /**
+     * Whether a returning player has backup data somewhere to bring in.
+     *
+     * Only reached from a "no" to [FIRST_TIME]. A "no" here as well ends the
+     * tour with nothing more asked or loaded — there is nothing to hold this
+     * player to a longer goodbye than that.
+     */
+    HAS_BACKUP,
+    /**
+     * Where that backup data is, for a returning player who said yes to
+     * [HAS_BACKUP].
+     *
+     * The same folder picker BACKUP_FOLDER and ROMS both use, pointed at a
+     * whole-machine restore instead — see
+     * [StorageViewModel.restoreFromBackupFolder] — which is what lets it
+     * bring back the sync link along with the boxes rather than just the
+     * Pokémon.
+     */
+    LOAD_BACKUP,
     /**
      * Somewhere outside the app to keep a copy of the PC.
      *
@@ -727,6 +821,19 @@ private fun romsFound(model: StorageViewModel): List<String> {
     }
 }
 
+/**
+ * Where the returning-player branch's own beats sit in [tutorialBeats], and
+ * where the ordinary tour resumes for a first-time player. Named rather
+ * than counted inline: every row that jumps [beat] directly, instead of
+ * calling `advance()`, needs one of these, and a beat inserted or removed
+ * above them would silently retarget every jump below it if they were
+ * written as bare numbers instead.
+ */
+private const val BEAT_HAS_BACKUP_ASK = 3
+private const val BEAT_LOAD_BACKUP_ASK = 4
+private const val BEAT_RETURNING_THANKS = 5
+private const val BEAT_NORMAL_START = 6
+
 private fun tutorialBeats(): List<TutorialBeat> = listOf(
     TutorialBeat(
         listOf("BILL: Hello? Can you hear me? Is this thing turned on?"),
@@ -741,6 +848,40 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         billTunesIn = true,
         connected = true,
     ),
+    // The tour's own opening question. A "yes" jumps straight to
+    // BEAT_NORMAL_START; a "no" moves on to BEAT_HAS_BACKUP_ASK, the very
+    // next beat here.
+    TutorialBeat(
+        listOf("BILL: Is this your first time using this app?"),
+        ask = TutorialAsk.FIRST_TIME,
+    ),
+    // BEAT_HAS_BACKUP_ASK. A "yes" jumps to BEAT_LOAD_BACKUP_ASK; a "no"
+    // jumps straight to BEAT_RETURNING_THANKS, skipping the rest of the
+    // tour entirely.
+    TutorialBeat(
+        listOf("BILL: Do you have some backup data you'd like to use?"),
+        ask = TutorialAsk.HAS_BACKUP,
+    ),
+    // BEAT_LOAD_BACKUP_ASK. Picking a folder restores from it and restarts
+    // the app — see StorageViewModel.restoreFromBackupFolder — so this beat
+    // is never tapped through the ordinary way on that path. Cancelling the
+    // picker instead jumps to BEAT_RETURNING_THANKS, same as answering "no"
+    // one beat up.
+    TutorialBeat(
+        listOf("BILL: Great, point me in that direction and I'll load it for you."),
+        ask = TutorialAsk.LOAD_BACKUP,
+    ),
+    // BEAT_RETURNING_THANKS. The goodbye a returning player gets instead of
+    // the tour, closing it the moment it is tapped through rather than
+    // falling into the first-time beats that follow it in this list.
+    TutorialBeat(
+        listOf("BILL: Thanks for using the app!"),
+        sound = SoundEffect.LOG_OFF,
+        terminal = true,
+    ),
+    // BEAT_NORMAL_START. Where a first-time player's "yes" above lands, and
+    // where the tour has always begun for everyone before this branch
+    // existed.
     TutorialBeat(
         listOf(
             "BILL: This is the Pokémon Storage System. It works on the same " +

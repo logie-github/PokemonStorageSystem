@@ -2824,10 +2824,17 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
      * sitting in that folder is not. A fresh install restoring from it has
      * to be able to point at it again from nothing, the same as
      * [restoreFromFile] pointing at a bare file.
+     *
+     * [thanks] is the tour's own returning-player branch asking for its own
+     * wording on the way out rather than the plain restart notice this gets
+     * from OPTIONS' own IMPORT BACKUP, and [onFailure] is that same tour
+     * putting its folder row back once there was nothing this could do with
+     * what it was pointed at, rather than sitting there answerable to a tap
+     * that already ran once.
      */
-    fun restoreFromBackupFolder(treeUri: Uri) {
+    fun restoreFromBackupFolder(treeUri: Uri, thanks: Boolean = false, onFailure: () -> Unit = {}): Job {
         val app = getApplication<Application>()
-        viewModelScope.launch(Dispatchers.IO) {
+        return viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
                 val fileUri = BackupFolderWriter.find(app.contentResolver, treeUri)
                     ?: error("NOTHING HAS BEEN PUSHED TO THAT FOLDER YET")
@@ -2837,11 +2844,16 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             }
             withContext(Dispatchers.Main) {
                 if (result.isSuccess) {
-                    message("RESTORED ${result.getOrNull()} POKéMON.", "RESTARTING...")
+                    if (thanks) {
+                        message("THANKS FOR USING THE APP!", "RESTORED ${result.getOrNull()} POKéMON.")
+                    } else {
+                        message("RESTORED ${result.getOrNull()} POKéMON.", "RESTARTING...")
+                    }
                     delay(1200)
                     restartApp()
                 } else {
                     message("COULD NOT RESTORE FROM THAT FOLDER.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+                    onFailure()
                 }
             }
         }

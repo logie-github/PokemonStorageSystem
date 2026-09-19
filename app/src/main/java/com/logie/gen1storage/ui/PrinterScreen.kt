@@ -103,7 +103,13 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
         }
         scope.launch {
             val settle = Animatable(dragPx)
-            settle.animateTo(-by * width, gen1PrintSettle) { dragPx = value }
+            // Positive rather than the negative a step forward would be on
+            // an ordinary carousel: the roll runs backwards here, see the
+            // neighbour loop and the drag handler below, so a step to the
+            // next print is a print sliding right, off the page it is
+            // leaving, to uncover the one that was always waiting to its
+            // left.
+            settle.animateTo(by * width, gen1PrintSettle) { dragPx = value }
             step(by)
         }
     }
@@ -136,17 +142,22 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
                     detectDragGestures(
                         onDragEnd = {
                             val past = dragPx
-                            val goNext = past <= -width * FLING && at < kinds.lastIndex
-                            val goPrev = past >= width * FLING && at > 0
+                            // The roll runs backwards: dragged far enough
+                            // left, it is the previous print waiting to
+                            // uncover, not the next one — see the neighbour
+                            // loop below, where that print is the one
+                            // actually sitting to the right.
+                            val draggedLeft = past <= -width * FLING && at > 0
+                            val draggedRight = past >= width * FLING && at < kinds.lastIndex
                             scope.launch {
                                 val settle = Animatable(dragPx)
                                 val target = when {
-                                    goNext -> -width
-                                    goPrev -> width
+                                    draggedLeft -> -width
+                                    draggedRight -> width
                                     else -> 0f
                                 }
                                 settle.animateTo(target, gen1PrintSettle) { dragPx = value }
-                                if (goNext) step(1) else if (goPrev) step(-1)
+                                if (draggedLeft) step(-1) else if (draggedRight) step(1)
                             }
                         },
                         onDragCancel = {
@@ -157,19 +168,24 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
                         },
                     ) { change, amount ->
                         change.consume()
-                        // The print follows the finger: dragged left, it
-                        // slides left and the next one catches up from the
-                        // right; dragged right, the previous one comes back
-                        // from the left. Negating this once read as content
-                        // moving against the finger instead of with it,
-                        // which is the "weird" a swipe should never feel.
+                        // The print always follows the finger — dragged
+                        // left, it slides left, whatever is waiting on the
+                        // right catching up as it goes — negating this once
+                        // read as content moving against the finger instead
+                        // of with it, which is the "weird" a swipe should
+                        // never feel. Which print that is is a separate
+                        // question, answered by the neighbour loop below
+                        // rather than by this line.
                         val delta = amount.x
                         // Nothing past either end: the roll has a first page
                         // and a last one, and rubber-banding off them is how
-                        // that is said without a message.
+                        // that is said without a message. Dragged left is
+                        // the previous print here, not the next, so it is
+                        // the first page that rubber-bands on the left and
+                        // the last that does on the right.
                         val room = when {
-                            at == 0 && dragPx + delta > 0 -> delta / 3f
-                            at == kinds.lastIndex && dragPx + delta < 0 -> delta / 3f
+                            at == 0 && dragPx + delta < 0 -> delta / 3f
+                            at == kinds.lastIndex && dragPx + delta > 0 -> delta / 3f
                             else -> delta
                         }
                         dragPx += room
@@ -179,8 +195,14 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
         ) {
             // The one either side, waiting at the edge. Drawn first so the
             // one in hand is over them.
+            //
+            // Backwards from an ordinary carousel on purpose: the previous
+            // print sits to the right and the next one to the left, so that
+            // dragging left — which always slides the print in hand off to
+            // the left, see the drag handler above — uncovers the previous
+            // print rather than the next.
             listOf(-1, 1).forEach { side ->
-                kinds.getOrNull(at + side)?.let { neighbour ->
+                kinds.getOrNull(at - side)?.let { neighbour ->
                     Print(
                         prints[neighbour],
                         Modifier.graphicsLayer {

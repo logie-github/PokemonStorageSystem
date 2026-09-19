@@ -85,6 +85,18 @@ object PokemonCardImage {
     /** How far apart a DEX entry's own lines sit, and how much room growing the roll by one more of them buys. */
     private const val DEX_LINE_HEIGHT = 11
 
+    /** Where a DEX entry's own text starts, under the beaded rule. */
+    private const val DEX_TEXT_TOP = 98
+
+    /**
+     * How much clear air sits between a DEX entry's last line and the
+     * credit line under it — generous on purpose: FRAME draws its own rule
+     * right where the credit line sits, and a gap any tighter than this
+     * read as the entry's own text running into it once an entry actually
+     * used the room [DEX_LINE_HEIGHT] buys it.
+     */
+    private const val DEX_CREDIT_GAP = 20
+
     fun render(
         context: Context,
         pokemon: Gen1Pokemon,
@@ -123,9 +135,14 @@ object PokemonCardImage {
         // A real Game Boy Printer fed however much paper a job needed —
         // every other page here is a fixed screen's worth, but a long dex
         // entry is the one thing this app draws that would otherwise cut
-        // off mid-sentence at four lines. Growing the roll by a line's own
-        // height for each one past that keeps the entry whole instead.
-        val printHeight = HEIGHT + (dexLines.size - 4).coerceAtLeast(0) * DEX_LINE_HEIGHT
+        // off mid-sentence at four lines. Sized from where the entry's own
+        // last line actually lands rather than from a fixed per-line step,
+        // so the credit line's own gap is the same [DEX_CREDIT_GAP]
+        // whether the entry is four lines or fourteen.
+        val dexDescriptionBottom = DEX_TEXT_TOP + (dexLines.size - 1).coerceAtLeast(0) * DEX_LINE_HEIGHT
+        val printHeight = if (kind == PrintKind.DEX) {
+            maxOf(HEIGHT, dexDescriptionBottom + DEX_CREDIT_GAP + 3)
+        } else HEIGHT
 
         val bitmap = Bitmap.createBitmap(
             WIDTH * SCALE,
@@ -291,7 +308,7 @@ object PokemonCardImage {
                 // cartridge's, and it broke its lines where it meant to. Every
                 // one of them, not just the first four: see printHeight above.
                 dexLines.forEachIndexed { index, line ->
-                    write(INSET, 98 + index * DEX_LINE_HEIGHT, line.take(COLUMNS))
+                    write(INSET, DEX_TEXT_TOP + index * DEX_LINE_HEIGHT, line.take(COLUMNS))
                 }
             }
 

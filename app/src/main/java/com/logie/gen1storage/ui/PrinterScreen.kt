@@ -1,7 +1,8 @@
 package com.logie.gen1storage.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -102,7 +103,7 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
         }
         scope.launch {
             val settle = Animatable(dragPx)
-            settle.animateTo(-by * width, tween(SETTLE)) { dragPx = value }
+            settle.animateTo(-by * width, gen1PrintSettle) { dragPx = value }
             step(by)
         }
     }
@@ -144,14 +145,14 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
                                     goPrev -> width
                                     else -> 0f
                                 }
-                                settle.animateTo(target, tween(SETTLE)) { dragPx = value }
+                                settle.animateTo(target, gen1PrintSettle) { dragPx = value }
                                 if (goNext) step(1) else if (goPrev) step(-1)
                             }
                         },
                         onDragCancel = {
                             scope.launch {
                                 val settle = Animatable(dragPx)
-                                settle.animateTo(0f, tween(SETTLE)) { dragPx = value }
+                                settle.animateTo(0f, gen1PrintSettle) { dragPx = value }
                             }
                         },
                     ) { change, amount ->
@@ -248,10 +249,24 @@ private fun Print(image: ImageBitmap?, modifier: Modifier) {
 /** The gap between one print and the next, so they read as separate sheets. */
 private val gen1PeekGap = 48f
 
+/**
+ * How a print settles once a drag or a D-pad step decides where it is going.
+ *
+ * A spring rather than the fixed 150ms tween this used to run on: a tween
+ * arrives at exactly the same pace no matter how the drag that led to it
+ * felt, which read as the print snapping into place rather than easing
+ * there. Low stiffness with no bounce keeps the same "coming to rest"
+ * character everywhere this fires — a released drag, a cancelled one, a
+ * D-pad step — without ever overshooting past the neighbour it is settling
+ * on.
+ */
+private val gen1PrintSettle = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
 /** How far a print has to be dragged before the next one is the one in hand. */
 private const val FLING = 0.3f
 
 /** How faint the print waiting at the edge is. */
 private const val NEIGHBOUR_ALPHA = 0.45f
-
-private const val SETTLE = 150

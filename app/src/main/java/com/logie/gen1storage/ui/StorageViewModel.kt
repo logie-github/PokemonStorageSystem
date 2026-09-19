@@ -817,7 +817,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(linking = false) }
         when (result) {
             is SyncResult.Ok -> {
-                credentials.save(result.value, deviceLabel)
+                credentials.save(result.value, deviceLabel, code1, code2)
                 mutable.update { it.copy(linked = true, stack = listOf(Screen.Home)) }
                 sync()
                 message("THIS DEVICE IS LINKED.")
@@ -877,7 +877,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private suspend fun runSync(silent: Boolean) {
+    private suspend fun runSync(silent: Boolean, allowRelink: Boolean = true) {
         val before = mutable.value
         when (val result = withContext(Dispatchers.IO) { saves.listSaves() }) {
             is SyncResult.Ok -> {
@@ -920,11 +920,33 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 if (settings.showAllSaves && (!silent || missingLoadedSaves())) loadAllSaves()
             }
             SyncResult.Unauthorized -> {
-                credentials.clear()
-                mutable.update {
-                    it.copy(linked = false, account = null, activeSaveKey = null)
+                // The token this device was carrying stopped being honoured,
+                // which is exactly what a backup restored onto a phone that
+                // has since been relinked elsewhere looks like from here —
+                // and the codes that first got this token are sitting right
+                // beside it, worth one try before telling a player who just
+                // trusted a backup to bring everything back that there is
+                // typing left to do. allowRelink is what stops that one try
+                // from becoming a loop: a fresh token failing the very next
+                // call is not a code worth trying a third time.
+                val code1 = credentials.code1
+                val code2 = credentials.code2
+                val relinked = if (allowRelink && code1 != null && code2 != null) {
+                    withContext(Dispatchers.IO) {
+                        api.link(code1, code2, credentials.deviceLabel ?: deviceLabel)
+                    } as? SyncResult.Ok
+                } else null
+                if (relinked != null) {
+                    credentials.saveToken(relinked.value, credentials.deviceLabel ?: deviceLabel)
+                    mutable.update { it.copy(linked = true) }
+                    runSync(silent, allowRelink = false)
+                } else {
+                    credentials.clear()
+                    mutable.update {
+                        it.copy(linked = false, account = null, activeSaveKey = null)
+                    }
+                    message("THIS DEVICE IS NO LONGER LINKED.", "LINK IT AGAIN WITH FRESH CODES.")
                 }
-                message("THIS DEVICE IS NO LONGER LINKED.", "LINK IT AGAIN WITH FRESH CODES.")
             }
             is SyncResult.Conflict -> Unit
             is SyncResult.Failed -> {

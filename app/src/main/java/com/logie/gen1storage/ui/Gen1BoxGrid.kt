@@ -583,11 +583,22 @@ fun BoxGridOverlay(
                 else Modifier.fillMaxSize().padding(gen1Dp(2)),
             fillsScreen = !unfolded,
         ) {
-            // Only where there is nothing beside the box to say it. Opened up
-            // the pane is already showing this Pokémon at full size, and the
-            // box repeating it in miniature is the same thing twice over —
-            // and the room it took is room the grid could have had.
-            if (!unfolded) {
+            // Only where there is genuinely nothing beside the box to say it.
+            // Opened up, the pane beside it is already showing this Pokémon
+            // at full size, and the box repeating it in miniature is the
+            // same thing twice over — and the room it took is room the grid
+            // could have had.
+            //
+            // [unfolded] alone is not enough here: a Pokémon's own pages,
+            // opened over an unfolded screen, borrow this exact window's
+            // half through [LocalGen1Narrow] so it does not also try to lay
+            // out a pane of its own in that half — which reads as narrow to
+            // [isUnfolded] here too, and would otherwise bring this back on
+            // for a screen that is unfolded after all, right beside the
+            // status pages already showing the same head in full. Checking
+            // [LocalGen1Narrow] directly is what tells the two apart: a
+            // phone that is actually folded never sets it.
+            if (!unfolded && !LocalGen1Narrow.current) {
                 BoxHead(
                     stored = box.slots.getOrNull(headSlot),
                     sprites = sprites,

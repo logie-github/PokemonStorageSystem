@@ -11,7 +11,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-/** The file BACK UP NOW writes, and what RESTORE FROM FILE does with it. */
+/** The file the linked backup folder gets, and what a restore does with it. */
 class BackupExportTest {
 
     @get:Rule

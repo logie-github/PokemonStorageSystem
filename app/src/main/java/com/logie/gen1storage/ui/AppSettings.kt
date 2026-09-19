@@ -9,10 +9,33 @@ import com.logie.gen1storage.sound.SoundEffect
  * The player's own preferences. Every one defaults to the plain behaviour: the
  * app should look and act ordinary until someone asks for something else.
  */
-class AppSettings(private val prefs: SharedPreferences) {
+class AppSettings(
+    private val prefs: SharedPreferences,
+    /**
+     * Told about every write to any of the above, not just which one.
+     *
+     * A linked backup folder is a promise that it holds the whole machine,
+     * settings included — a palette changed and never pushed is a restore
+     * that comes back looking like a different install. One listener on the
+     * preferences file catches all of them at once, including whatever is
+     * added here after this line is written, rather than something to
+     * remember to add to every setter below by hand.
+     */
+    onChanged: (() -> Unit)? = null,
+) {
 
-    constructor(context: Context) :
-        this(context.getSharedPreferences("gen1storage-settings", Context.MODE_PRIVATE))
+    constructor(context: Context, onChanged: (() -> Unit)? = null) :
+        this(context.getSharedPreferences("gen1storage-settings", Context.MODE_PRIVATE), onChanged)
+
+    // Held as a field rather than passed inline: SharedPreferences keeps its
+    // listeners weakly, so a listener with nothing else holding it is one
+    // the next garbage collection is free to drop, silently, and a backup
+    // that occasionally forgets to notice a settings change is worse than
+    // one that plainly does not exist.
+    private val listener = onChanged?.let { callback ->
+        SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> callback() }
+            .also { prefs.registerOnSharedPreferenceChangeListener(it) }
+    }
 
     /**
      * Load every save on the account at once and show one combined list, so a

@@ -168,6 +168,18 @@ fun Gen1Tutorial(
         }
     }
 
+    // The same picker OPTIONS uses to link one, and the same permission —
+    // see StorageViewModel.linkBackupFolder. Nothing here waits on the push
+    // it starts: unlike a folder full of ROMs, there is nothing this beat or
+    // the one after it needs to know about first, so declining or picking one
+    // both move the tour straight on.
+    val pickBackupFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) model.linkBackupFolder(uri)
+        advance()
+    }
+
     // Codes accepted is an answer, so the tour does not also need to be told.
     //
     // Only a device that links *while this beat is up*: one that was already
@@ -351,6 +363,16 @@ fun Gen1Tutorial(
                         // Pulled the moment a folder comes back, rather than
                         // left up for however long that folder takes to read —
                         // see romsImporting above.
+                        if (!connecting && !speaking && !dialogue.more &&
+                            current.ask == TutorialAsk.BACKUP_FOLDER
+                        ) {
+                            Gen1ChoiceRows(
+                                listOf(
+                                    "CHOOSE A FOLDER" to { pickBackupFolder.launch(null) },
+                                    "NOT NOW" to { advance() },
+                                )
+                            )
+                        }
                         if (!connecting && !speaking && !dialogue.more &&
                             current.ask == TutorialAsk.ROMS && !romsImporting
                         ) {
@@ -651,6 +673,18 @@ private data class TutorialBeat(
  */
 private enum class TutorialAsk {
     /**
+     * Somewhere outside the app to keep a copy of the PC.
+     *
+     * Asked before ROMS rather than after, so a player who says yes has it
+     * settled before anything else about the tour asks something of them —
+     * and asked as a folder rather than a sign-in, the same picker ROMS
+     * itself uses a moment later, so the one thing this needs explaining
+     * twice in a row is the picker, not a second kind of permission. Answering
+     * "not now" is a real answer: nothing about the app depends on this the
+     * way ROMS's sprites do, so there are no rows here that wait on it.
+     */
+    BACKUP_FOLDER,
+    /**
      * Where the player keeps their cartridge dumps.
      *
      * Asked here rather than left to be found in OPTIONS because it is the
@@ -742,6 +776,14 @@ private fun tutorialBeats(): List<TutorialBeat> = listOf(
         stage = { model, _ -> TutorialSyncScreen(model) },
         handsOver = true,
         asksForCodes = true,
+    ),
+    TutorialBeat(
+        listOf(
+            "BILL: One more thing, though this isn't required — just " +
+                "recommended. Is there a folder outside the app where I " +
+                "could keep a backup of your data?"
+        ),
+        ask = TutorialAsk.BACKUP_FOLDER,
     ),
     TutorialBeat(
         listOf(

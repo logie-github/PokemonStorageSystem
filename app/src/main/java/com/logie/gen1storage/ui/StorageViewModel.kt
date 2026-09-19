@@ -469,7 +469,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val journal = TransferJournal(storageDir)
     private val backups = SaveBackups(File(storageDir, "backups"))
 
-    private val settings = AppSettings(application)
+    // Any setting, not just the ones that already had a reason to know about
+    // backups — see AppSettings' own onChanged.
+    private val settings = AppSettings(application, onChanged = ::backupWanted)
     val sprites = SpriteStore(application)
     private val spriteDownloader = SpriteDownloader(sprites)
     private var spriteJob: Job? = null
@@ -2641,11 +2643,37 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
+     * The push [backupWanted] would otherwise wait three seconds for, taken
+     * right now instead — for a player who just did something to the PC and
+     * wants to see the folder answer for it before they close the app,
+     * rather than take the debounce on faith.
+     */
+    fun exportBackupNow() {
+        val uri = settings.backupFolderUri
+        if (uri == null) {
+            message("LINK A BACKUP FOLDER FIRST.")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = pushToBackupFolder(uri)
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) message("BACKUP SAVED.")
+                else {
+                    message(
+                        "COULD NOT SAVE THE BACKUP.",
+                        result.exceptionOrNull()?.message.orEmpty().uppercase(),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
      * Writes the same set [backUpNow] writes into the linked folder,
      * replacing whatever this app already put there. Shared by
-     * [linkBackupFolder]'s first push and [backupWanted]'s every push after
-     * that — both already run on an IO dispatcher by the time they call
-     * this.
+     * [linkBackupFolder]'s first push, [exportBackupNow]'s push on demand,
+     * and [backupWanted]'s every push after that — all three already run on
+     * an IO dispatcher by the time they call this.
      */
     private fun pushToBackupFolder(treeUriString: String): Result<Unit> {
         val app = getApplication<Application>()

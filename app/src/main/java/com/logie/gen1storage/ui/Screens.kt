@@ -1288,51 +1288,18 @@ private fun OptionsDrawerContent(
     val pickRomsFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) model.importRomsFolder(uri)
     }
-    // On demand, rather than whenever Android's own schedule gets round to
-    // it — see BackupExport. CreateDocument opens with the suggested name
-    // already in the box; OpenDocument's filter is left wide open because a
-    // file picked back up off Drive or a Files app rarely keeps whatever
-    // mime type it was written with.
-    val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        if (uri != null) model.backUpNow(uri)
-    }
-    val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            model.prompt(
-                Prompt.Confirm(
-                    lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH THAT FILE?"),
-                    confirmLabel = "YES",
-                    cancelLabel = "NO",
-                    onConfirm = { model.restoreFromFile(uri) },
-                )
-            )
-        }
-    }
-
     // The same folder chooser ROMS uses to pick a folder full of cartridge
     // dumps, pointed at a folder to push a backup into instead — a folder
     // inside the Google Drive app is exactly as pickable as one in local
     // storage, since it is the system's own picker either way. Taking a
     // persistable permission on the result is what makes every push after
     // the first one silent: no sign-in of this app's own, because there is
-    // none — the permission already covers it.
+    // none — the permission already covers it. Also how BACKUP FOLDER is
+    // taken whether a folder is linked yet or not: tapping it always opens
+    // this, and picking a new one simply replaces whichever was linked
+    // before, which is the one way this drawer offers to change it.
     val pickBackupFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) model.linkBackupFolder(uri)
-    }
-    // A folder picked fresh rather than the one linked above: restoring is
-    // how a reinstall gets its Pokémon back, and a reinstall has nothing
-    // linked yet to restore from. See StorageViewModel.restoreFromBackupFolder.
-    val pickRestoreFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            model.prompt(
-                Prompt.Confirm(
-                    lines = listOf("REPLACE WHAT IS ON THIS", "DEVICE WITH THAT FOLDER'S", "BACKUP?"),
-                    confirmLabel = "YES",
-                    cancelLabel = "NO",
-                    onConfirm = { model.restoreFromBackupFolder(uri) },
-                )
-            )
-        }
     }
 
     val rows = buildList {
@@ -1566,6 +1533,13 @@ private fun OptionsDrawerContent(
             }
 
             OptionsDrawer.SAVES -> {
+                // These two — or ENTER SYNC CODES in their place — are drawn
+                // in the STATUS window above rather than down here: they are
+                // what the status just above them is a status of, and a
+                // player reading LINKED wants the row that acts on that
+                // right there rather than a scroll away. See
+                // savesHeaderRowCount, which is what tells the rendering
+                // below to lift exactly this many rows out of this box.
                 if (state.linked) {
                     add(OptionRow("SYNC NOW", enabled = !state.syncing) {
                         audio?.play(SoundEffect.SAVE)
@@ -1584,33 +1558,22 @@ private fun OptionsDrawerContent(
                 } else {
                     add(OptionRow("ENTER SYNC CODES") { model.open(Screen.Link) })
                 }
-                // Taken this instant, to a file of the player's own choosing
-                // — before deleting the app, say, or before handing the
-                // phone off. See BackupExport.
-                add(OptionRow("BACK UP NOW") { saveBackup.launch(model.backupFileName()) })
-                add(OptionRow("RESTORE FROM FILE") { openBackup.launch(arrayOf("*/*")) })
-                // Behind the same [state.linked] this whole drawer already
-                // gates SYNC NOW and UNLINK on: a folder to push a PC into
-                // is not worth asking for from a device that has not yet
-                // synced with the game, and offering it before then is
-                // offering a choice that is not real yet.
+                // Behind the same [state.linked] SYNC NOW and UNLINK are
+                // already gated on: a folder to push a PC into is not worth
+                // asking for from a device that has not yet synced with the
+                // game. Past that this is meant to run quietly — the tour
+                // already asks where to put it, before ROMS — so the only
+                // two things left here are choosing where, and forcing the
+                // one right now a player might actually want to watch
+                // happen. See BackupFolderWriter and
+                // StorageViewModel.pushToBackupFolder for what answers them.
                 if (state.linked) {
-                    // One pick, and every change from here on pushes on its
-                    // own — a deposit, a sync, anything that persists the
-                    // boxes — the same debounced signal BACK UP NOW answers
-                    // to by hand. Off just stops the pushing; what is
-                    // already there stays untouched. See BackupFolderWriter
-                    // and StorageViewModel.pushToBackupFolder.
                     add(
                         OptionRow("BACKUP FOLDER", if (state.backupFolderLinked) "LINKED" else "NOT LINKED") {
-                            if (state.backupFolderLinked) model.unlinkBackupFolder()
-                            else pickBackupFolder.launch(null)
+                            pickBackupFolder.launch(null)
                         }
                     )
-                    if (state.backupFolderLinked) {
-                        add(OptionRow("LAST FOLDER BACKUP", state.folderBackupNote) { model.explainFolderBackup() })
-                    }
-                    add(OptionRow("RESTORE FROM BACKUP FOLDER") { pickRestoreFolder.launch(null) })
+                    add(OptionRow("EXPORT MANUALLY") { model.exportBackupNow() })
                 }
             }
 
@@ -1630,6 +1593,14 @@ private fun OptionsDrawerContent(
     // able to take one the way a tap never could.
     val cursor = rememberCursorLayer(rows.size) { rows[it].takeIf(OptionRow::enabled)?.action?.invoke() }
 
+    // How many rows at the front of SAVES' list belong in the STATUS window
+    // instead of the one below it — SYNC NOW and UNLINK, or ENTER SYNC CODES
+    // in their place, are the action that status is a status of. Zero for
+    // every other drawer, which is what keeps this from touching them.
+    val savesHeaderRowCount = if (drawer == OptionsDrawer.SAVES) {
+        if (state.linked) 2 else 1
+    } else 0
+
     ScreenColumn {
         item { Gen1Frame(Modifier.wrapContentWidth()) { GbText(drawer.label) } }
 
@@ -1644,6 +1615,18 @@ private fun OptionsDrawerContent(
                         )
                     }
                     model.linkedDeviceLabel?.let { Gen1Field("THIS DEVICE", it) }
+                    Spacer(Modifier.height(gen1Dp(2)))
+                    for (index in 0 until savesHeaderRowCount) {
+                        val row = rows[index]
+                        Gen1MenuRow(
+                            row.label,
+                            selected = cursor == index,
+                            onSelect = {},
+                            onConfirm = row.action,
+                            trailing = row.trailing,
+                            enabled = row.enabled,
+                        )
+                    }
                 }
             }
         }
@@ -1691,13 +1674,21 @@ private fun OptionsDrawerContent(
                 // the bottom of the phone and the last of them could not be
                 // reached at all.
                 val scroll = rememberLazyListState()
-                LaunchedEffect(cursor) { scroll.scrollToRow(cursor) }
+                // The rows drawn in the STATUS window above are not in this
+                // list, so their positions do not line up with it — this box
+                // is offset by however many of them there are, and a cursor
+                // sitting on one of them (a negative result, clamped to the
+                // top) has nothing here to scroll to anyway.
+                LaunchedEffect(cursor) { scroll.scrollToRow(cursor - savesHeaderRowCount) }
                 LazyColumn(
                     Modifier.heightIn(max = drawerRowsHeight()),
                     state = scroll,
                     userScrollEnabled = !LocalGen1Swipe.current,
                 ) {
-                itemsIndexed(rows) { index, row ->
+                // Already drawn above, in the STATUS window: see
+                // savesHeaderRowCount.
+                itemsIndexed(rows.drop(savesHeaderRowCount)) { offset, row ->
+                    val index = offset + savesHeaderRowCount
                     if (row.swatch != null) {
                         Row(
                             Modifier.fillMaxWidth().gen1Clickable { row.action() },

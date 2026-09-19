@@ -156,13 +156,20 @@ fun PrinterScreen(state: UiState, model: StorageViewModel, uid: String) {
                         },
                     ) { change, amount ->
                         change.consume()
+                        // Negated: a finger dragged left brings in the
+                        // previous print and one dragged right brings in the
+                        // next, which is the reverse of a finger's own
+                        // direction — everything below this line still
+                        // thinks purely in terms of dragPx's own sign, which
+                        // is why only this one line needed to change.
+                        val delta = -amount.x
                         // Nothing past either end: the roll has a first page
                         // and a last one, and rubber-banding off them is how
                         // that is said without a message.
                         val room = when {
-                            at == 0 && dragPx + amount.x > 0 -> amount.x / 3f
-                            at == kinds.lastIndex && dragPx + amount.x < 0 -> amount.x / 3f
-                            else -> amount.x
+                            at == 0 && dragPx + delta > 0 -> delta / 3f
+                            at == kinds.lastIndex && dragPx + delta < 0 -> delta / 3f
+                            else -> delta
                         }
                         dragPx += room
                     }

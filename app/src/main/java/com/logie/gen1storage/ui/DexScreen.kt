@@ -260,14 +260,23 @@ private fun DexBall(tile: Int, trainers: TrainerStore, revision: Int) {
 }
 
 /**
- * What each cartridge knows, one line each.
+ * What each game knows, one line each.
  *
  * A combined total answers "how far along is this collection"; it cannot
- * answer "which cartridge should I be playing to finish it", which is the
+ * answer "which game should I be playing to finish it", which is the
  * question somebody with four playthroughs actually has. So the numbers are
- * given per card, with the PC's own count at the top — the PC is not a
+ * given per game, with the PC's own count at the top — the PC is not a
  * playthrough and its number means something different: not what has been
  * caught, but what is on hand to send.
+ *
+ * Per game rather than per save: a second Red cartridge is still Red, and
+ * OWN and SEEN are the Pokédex's own lifetime record of what that game has
+ * ever caught or crossed paths with, not a count of what happens to be
+ * sitting in either save file right now. So a species either save has ever
+ * marked counts for the game they share — Red 1 catching CHARMANDER and Red
+ * 2 catching PIKACHU reads as Red having two, the same as if either save had
+ * caught both alone — and one card speaks for every cartridge of that game
+ * rather than one appearing once per save it happens to have.
  */
 @Composable
 fun DexStatsScreen(state: UiState, model: StorageViewModel) {
@@ -278,20 +287,30 @@ fun DexStatsScreen(state: UiState, model: StorageViewModel) {
         state.storage.boxes.flatMap { it.contents }
             .mapNotNullTo(HashSet()) { it.pokemon.speciesId?.let(::gen1SpeciesId) }
     }
-    val cards = state.saves.map { remote ->
-        val save = state.save(remote.key)?.save
+    val savesByGame = state.saves.groupBy { it.version }
+    val cards = GameVersion.entries.mapNotNull { version ->
+        val remotes = savesByGame[version] ?: return@mapNotNull null
+        val loadedSaves = remotes.mapNotNull { remote -> state.save(remote.key)?.save }
+        // Union rather than sum, the same way [inThePc] above answers "is it
+        // anywhere at all" rather than "how many copies": two saves of the
+        // same game both having caught PIKACHU is one species owned by that
+        // game, not two.
+        val owned = loadedSaves.flatMapTo(HashSet()) { save -> save.dexOwned.map(::gen1SpeciesId) }
+        val seen = loadedSaves.flatMapTo(HashSet()) { save -> save.dexSeen.map(::gen1SpeciesId) }
         // A Gold, Silver or Crystal card is judged against its own 251, not
         // Generation I's 151 — a Crystal player who has caught everything
         // Generation II offers should read 251/251, not more than whole.
         DexCard(
-            name = model.cartName(remote.key)?.uppercase()
-                ?: "${remote.version.label} ${remote.label}".uppercase(),
-            owned = save?.dexOwned?.size,
-            seen = save?.dexSeen?.size,
-            whole = if (remote.version.generation >= 2) Gen2Data.SPECIES_COUNT else Gen1Data.species.size,
+            name = version.label,
+            owned = if (loadedSaves.isEmpty()) null else owned.size,
+            seen = if (loadedSaves.isEmpty()) null else seen.size,
+            whole = if (version.generation >= 2) Gen2Data.SPECIES_COUNT else Gen1Data.species.size,
         )
     }
-    val unread = cards.count { it.owned == null }
+    // Saves still unread, not games still unread: a game with one save read
+    // and a second one not is not "read" yet either, even though it already
+    // has a card here — reading the rest can still only add to its union.
+    val unread = state.saves.count { state.save(it.key) == null }
     val count = if (unread > 0) 2 else 1
 
     val cursor = rememberCursorLayer(count) { index ->

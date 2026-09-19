@@ -82,6 +82,9 @@ object PokemonCardImage {
     /** How many characters fit across the print at the ordinary size. */
     private const val COLUMNS = (WIDTH - INSET * 2) / 8
 
+    /** How far apart a DEX entry's own lines sit, and how much room growing the roll by one more of them buys. */
+    private const val DEX_LINE_HEIGHT = 11
+
     fun render(
         context: Context,
         pokemon: Gen1Pokemon,
@@ -103,9 +106,30 @@ object PokemonCardImage {
         // left a margin down the sides, only the feed above and below. Margin
         // here is a height only, never a width.
         val margin = if (border.feedsPaper) FEED else 0
+        val species = (pokemon.species?.displayName ?: pokemon.speciesId.orEmpty()).uppercase()
+        val number = pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???"
+        val name = pokemon.displayName.uppercase()
+
+        // The DEX page's own entry, read once here rather than inside the
+        // layout below: how tall this print needs to be depends on how many
+        // lines it takes, and the bitmap has to be that tall before anything
+        // is drawn on it.
+        val dexEntry = if (kind == PrintKind.DEX) pokemon.dexPage(provenance?.gameVersion) else null
+        val dexLines = if (kind == PrintKind.DEX) {
+            dexEntry?.lines?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
+                ?: wrap(dexEntry?.flowing ?: species, COLUMNS)
+        } else emptyList()
+
+        // A real Game Boy Printer fed however much paper a job needed —
+        // every other page here is a fixed screen's worth, but a long dex
+        // entry is the one thing this app draws that would otherwise cut
+        // off mid-sentence at four lines. Growing the roll by a line's own
+        // height for each one past that keeps the entry whole instead.
+        val printHeight = HEIGHT + (dexLines.size - 4).coerceAtLeast(0) * DEX_LINE_HEIGHT
+
         val bitmap = Bitmap.createBitmap(
             WIDTH * SCALE,
-            (HEIGHT + margin * 2) * SCALE,
+            (printHeight + margin * 2) * SCALE,
             Bitmap.Config.ARGB_8888,
         )
         val canvas = Canvas(bitmap)
@@ -133,19 +157,19 @@ object PokemonCardImage {
             drawTornEdge(canvas, bitmap.width, bitmap.height, ink, downwards = false)
         }
 
-        rect(0, 0, WIDTH, HEIGHT, paper)
+        rect(0, 0, WIDTH, printHeight, paper)
         if (border.rules) {
             // A box a pixel wide, inset the way every window in the app is,
             // with a lighter rule inside it — which is what the games' own
             // printed pages were boxed in.
             rect(2, 2, WIDTH - 4, 1, ink)
-            rect(2, HEIGHT - 3, WIDTH - 4, 1, ink)
-            rect(2, 2, 1, HEIGHT - 4, ink)
-            rect(WIDTH - 3, 2, 1, HEIGHT - 4, ink)
+            rect(2, printHeight - 3, WIDTH - 4, 1, ink)
+            rect(2, 2, 1, printHeight - 4, ink)
+            rect(WIDTH - 3, 2, 1, printHeight - 4, ink)
             rect(4, 4, WIDTH - 8, 1, mid)
-            rect(4, HEIGHT - 5, WIDTH - 8, 1, mid)
-            rect(4, 4, 1, HEIGHT - 8, mid)
-            rect(WIDTH - 5, 4, 1, HEIGHT - 8, mid)
+            rect(4, printHeight - 5, WIDTH - 8, 1, mid)
+            rect(4, 4, 1, printHeight - 8, mid)
+            rect(WIDTH - 5, 4, 1, printHeight - 8, mid)
         }
 
         val face = runCatching { ResourcesCompat.getFont(context, R.font.pokemon_font) }
@@ -240,16 +264,12 @@ object PokemonCardImage {
             }
         }
 
-        val species = (pokemon.species?.displayName ?: pokemon.speciesId.orEmpty()).uppercase()
-        val number = pokemon.species?.let { "No.%03d".format(it.dexNumber) } ?: "No.???"
-        val name = pokemon.displayName.uppercase()
-
         when (kind) {
             PrintKind.DEX -> {
                 // The cartridge's own page, in its own order: the picture top
                 // left, what the species is beside it, the number under the
                 // picture, the beaded rule, and the entry's own words below.
-                val entry = pokemon.dexPage(provenance?.gameVersion)
+                val entry = dexEntry
                 drawSprite(INSET + 2, 10, 56)
                 write(72, 20, name.take(10))
                 entry?.let { write(72, 32, it.category.take(10)) }
@@ -268,11 +288,10 @@ object PokemonCardImage {
                 if (drawn) write(INSET + 16, 74, digits) else write(INSET, 74, number)
                 beadedRule(82)
                 // The entry's own line breaks where it has them — they are the
-                // cartridge's, and it broke its lines where it meant to.
-                val lines = entry?.lines?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
-                    ?: wrap(entry?.flowing ?: species, COLUMNS)
-                lines.take(4).forEachIndexed { index, line ->
-                    write(INSET, 98 + index * 11, line.take(COLUMNS))
+                // cartridge's, and it broke its lines where it meant to. Every
+                // one of them, not just the first four: see printHeight above.
+                dexLines.forEachIndexed { index, line ->
+                    write(INSET, 98 + index * DEX_LINE_HEIGHT, line.take(COLUMNS))
                 }
             }
 
@@ -321,16 +340,21 @@ object PokemonCardImage {
                 // The picture at a whole multiple — twice, at this size — and
                 // its name under it. Nothing else: this is the one somebody
                 // prints to put on a wall.
-                drawSprite((WIDTH - 112) / 2, 10, 112)
-                beadedRule(130)
-                write(INSET, HEIGHT - 6, name.take(10))
-                write(WIDTH - INSET - number.length * 8, HEIGHT - 6, number)
+                //
+                // Sized to leave the rule's own beads clear of the name row
+                // below them: a rule any closer to the bottom, or a sprite
+                // any bigger, and the two started overlapping instead of
+                // stacking.
+                drawSprite((WIDTH - 104) / 2, 6, 104)
+                beadedRule(120)
+                write(INSET, HEIGHT - 8, name.take(10))
+                write(WIDTH - INSET - number.length * 8, HEIGHT - 8, number)
             }
         }
 
         if (kind != PrintKind.SPRITE) {
             val game = GameVersion.fromId(provenance?.gameVersion)?.label
-            write(INSET, HEIGHT - 3, game?.let { "FROM $it" } ?: "POKéMON STORAGE SYSTEM", small)
+            write(INSET, printHeight - 3, game?.let { "FROM $it" } ?: "POKéMON STORAGE SYSTEM", small)
         }
 
         return bitmap

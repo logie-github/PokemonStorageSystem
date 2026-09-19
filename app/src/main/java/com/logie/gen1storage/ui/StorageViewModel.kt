@@ -18,6 +18,7 @@ import com.logie.gen1storage.rom.RomStore
 import com.logie.gen1storage.rom.RomVersion
 import com.logie.gen1storage.storage.ItemRepository
 import com.logie.gen1storage.storage.StorageArchive
+import com.logie.gen1storage.storage.ImportReport
 import com.logie.gen1storage.pokemon.Gen2Data
 import com.logie.gen1storage.pokemon.Gen2Mail
 import com.logie.gen1storage.pokemon.Gen1Data
@@ -2583,10 +2584,14 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             val result = runCatching {
                 app.contentResolver.openInputStream(uri)?.use { input -> BackupExport.read(app, input) }
                     ?: error("THE CHOSEN FILE WOULD NOT OPEN")
+                restoredPokemonCount()
             }
             withContext(Dispatchers.Main) {
                 if (result.isSuccess) {
-                    message("BACKUP RESTORED.", "RESTARTING...")
+                    // A count, not just a claim, so a restore that genuinely
+                    // had nothing to bring back reads as that rather than as
+                    // the same silence a broken one would leave.
+                    message("RESTORED ${result.getOrNull()} POKéMON.", "RESTARTING...")
                     delay(1200)
                     restartApp()
                 } else {
@@ -2618,11 +2623,81 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         settings.backupFolderUri = treeUri.toString()
         mutable.update { it.copy(backupFolderLinked = true) }
         viewModelScope.launch(Dispatchers.IO) {
+            // Whatever this folder already has in it is folded in first, so
+            // the first push here overwrites it with the union rather than
+            // with just this device's own boxes. A folder can already hold a
+            // backup for a real reason, the same Drive folder linked from an
+            // earlier phone, say, or from this one before a reinstall, and a
+            // fresh link is not this device's Pokémon telling the old ones to
+            // leave. See mergeExistingBackup.
+            val merged = runCatching { mergeExistingBackup(treeUri) }.getOrNull()
+            if (merged != null && merged.added > 0) {
+                mutable.update { it.copy(storage = storage.state()) }
+            }
             val result = pushToBackupFolder(treeUri.toString())
             withContext(Dispatchers.Main) {
-                if (result.isSuccess) message("LINKED. BACKUP SAVED THERE.")
-                else message("LINKED, BUT THE FIRST PUSH FAILED.", result.exceptionOrNull()?.message.orEmpty().uppercase())
+                when {
+                    !result.isSuccess -> message(
+                        "LINKED, BUT THE FIRST PUSH FAILED.",
+                        result.exceptionOrNull()?.message.orEmpty().uppercase(),
+                    )
+                    merged != null && merged.added > 0 ->
+                        message("LINKED.", "BROUGHT IN ${merged.added} POKéMON ALREADY THERE.")
+                    else -> message("LINKED. BACKUP SAVED THERE.")
+                }
             }
+        }
+    }
+
+    /**
+     * Whatever Pokémon a backup already sitting in [treeUri] holds, folded
+     * into this device's own PC before [linkBackupFolder]'s first push there
+     * can overwrite it. Null when the folder has nothing pushed to it yet,
+     * or when what is there could not be read as one of this app's own
+     * backups, either of which leaves this device's boxes untouched.
+     *
+     * Read into a directory of its own under the cache, which is deleted the
+     * moment this is done with it either way, rather than into `pc/`
+     * itself, since the point is not to replace this device's PC, it is to
+     * find out what the other one had. Matched into it by
+     * [StorageRepository.importArchive], the same uid-deduplicated merge a
+     * player's own manual import already uses, so relinking a folder this
+     * device has already merged from once does not double anything up.
+     */
+    private fun mergeExistingBackup(treeUri: Uri): ImportReport? {
+        val app = getApplication<Application>()
+        val resolver = app.contentResolver
+        val fileUri = BackupFolderWriter.find(resolver, treeUri) ?: return null
+        val tempRoot = File(app.cacheDir, "backup-merge-${System.nanoTime()}")
+        return try {
+            val tempPc = File(tempRoot, "pc")
+            val opened = resolver.openInputStream(fileUri)?.use { input ->
+                BackupExport.read(tempPc, File(tempRoot, "prefs"), input)
+                true
+            }
+            if (opened != true) return null
+            val state = StorageRepository(tempPc).state()
+            val entries = state.boxes.flatMap { box ->
+                box.slots.mapIndexedNotNull { slot, stored ->
+                    stored?.let { StorageArchive.Entry(box.index, slot + 1, it) }
+                }
+            }
+            if (entries.isEmpty()) return null
+            val boxNames = state.boxes.mapNotNull { box -> box.name?.let { name -> box.index to name } }
+                .toMap()
+            storage.importArchive(
+                StorageArchive.Archive(
+                    version = StorageArchive.VERSION,
+                    exportedAtEpochMillis = null,
+                    entries = entries,
+                    boxNames = boxNames,
+                    unreadable = 0,
+                )
+            )
+        } catch (e: Exception) {
+            null
+        } finally {
+            tempRoot.deleteRecursively()
         }
     }
 
@@ -2657,8 +2732,9 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             val result = pushToBackupFolder(uri)
             withContext(Dispatchers.Main) {
-                if (result.isSuccess) message("BACKUP SAVED.")
-                else {
+                if (result.isSuccess) {
+                    message("BACKUP SAVED.", "${storage.state().total} POKéMON IN IT.")
+                } else {
                     message(
                         "COULD NOT SAVE THE BACKUP.",
                         result.exceptionOrNull()?.message.orEmpty().uppercase(),
@@ -2708,10 +2784,11 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                     ?: error("NOTHING HAS BEEN PUSHED TO THAT FOLDER YET")
                 app.contentResolver.openInputStream(fileUri)?.use { input -> BackupExport.read(app, input) }
                     ?: error("could not open the backup file")
+                restoredPokemonCount()
             }
             withContext(Dispatchers.Main) {
                 if (result.isSuccess) {
-                    message("BACKUP RESTORED.", "RESTARTING...")
+                    message("RESTORED ${result.getOrNull()} POKéMON.", "RESTARTING...")
                     delay(1200)
                     restartApp()
                 } else {
@@ -2719,6 +2796,18 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+    }
+
+    /**
+     * How many Pokémon `pc/` holds right after a restore writes it, read
+     * with a repository of its own rather than this device's live one: the
+     * live one has already loaded its old state into memory by the time a
+     * restore runs, and asking it would report what was there before the
+     * restore, not what was just written.
+     */
+    private fun restoredPokemonCount(): Int {
+        val app = getApplication<Application>()
+        return StorageRepository(File(app.filesDir, "pc")).state().total
     }
 
     private fun restartApp() {

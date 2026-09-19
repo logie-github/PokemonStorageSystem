@@ -31,9 +31,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up the Android SDK
-        uses: android-actions/setup-android@v3
-
+      # android-actions/setup-android@v3 used to sit here. It hardcodes a
+      # call to `sdkmanager tools` with no way to skip it, and Google's own
+      # package repository has since dropped that legacy package entirely,
+      # so the action now fails outright on every run regardless of what
+      # this repository builds — it has been red on every push since
+      # 2026-09-15, including runs of code that never touched CI. The
+      # ubuntu-latest runner already ships a full Android SDK at
+      # ANDROID_HOME with the platforms and build-tools this project
+      # actually needs, which is all a Gradle build was ever using the
+      # action for.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 

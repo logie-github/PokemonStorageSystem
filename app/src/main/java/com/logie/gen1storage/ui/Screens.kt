@@ -1221,6 +1221,7 @@ enum class OptionsDrawer(val label: String) {
     DOWNLOADS("DOWNLOADS"),
     ROMS("ROMS"),
     SAVES("SAVE SYNC"),
+    MODS("MODS"),
     ABOUT("ABOUT"),
 }
 
@@ -1386,7 +1387,39 @@ private fun OptionsDrawerContent(
                             ) { model.setPalette(palette.id) }
                         )
                     }
-                add(OptionRow("IMPORT MOD") { pickMod.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) })
+            }
+
+            OptionsDrawer.MODS -> {
+                // Only ever colours and pictures this app already had a
+                // place to draw — see ModManifest — so nothing here is
+                // shown as anything more than what it changes the look of.
+                val installed = model.mods.list()
+                if (installed.isEmpty()) {
+                    add(OptionRow("NO MODS INSTALLED", enabled = false) {})
+                } else {
+                    installed.forEach { mod ->
+                        add(
+                            OptionRow(
+                                mod.manifest.name,
+                                trailing = if (mod.manifest.palette != null) "PALETTE" else null,
+                            ) {
+                                model.prompt(
+                                    Prompt.Confirm(
+                                        lines = listOf("REMOVE ${mod.manifest.name}?"),
+                                        confirmLabel = "YES",
+                                        cancelLabel = "NO",
+                                        onConfirm = { model.removeMod(mod.id) },
+                                    )
+                                )
+                            }
+                        )
+                    }
+                }
+                add(
+                    OptionRow("IMPORT MOD") {
+                        pickMod.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                    }
+                )
             }
 
             OptionsDrawer.AUDIO -> {

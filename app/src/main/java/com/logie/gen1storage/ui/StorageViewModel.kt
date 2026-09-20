@@ -2206,6 +2206,22 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Takes a mod back off the device — its own folder under [mods], and its
+     * palette's registration with [GbPalette]. Switches back to ORIGINAL
+     * first if the palette being removed was the one active, so a player is
+     * never left on a swatch that no longer exists anywhere to draw from.
+     */
+    fun removeMod(modId: String) {
+        val mod = mods.list().firstOrNull { it.id == modId }
+        if (mod?.manifest?.palette?.id == settings.paletteId) {
+            setPalette(GbPalette.ORIGINAL.id)
+        }
+        mods.delete(modId)
+        mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+        message("${(mod?.manifest?.name ?: "MOD").uppercase()} REMOVED.")
+    }
+
     /** What was wrong with a mod, one line per file, so a player can go fix the actual thing. */
     private fun reportModViolations(violations: List<ModViolation>) {
         val shown = violations.take(8)

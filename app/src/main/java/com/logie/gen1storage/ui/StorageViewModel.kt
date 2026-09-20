@@ -14,6 +14,10 @@ import androidx.lifecycle.viewModelScope
 import com.logie.gen1storage.gen1recomp.GameVersion
 import com.logie.gen1storage.gen1recomp.Gen1RecompSave
 import com.logie.gen1storage.gen1recomp.ItemStack
+import com.logie.gen1storage.mods.ModImportPipeline
+import com.logie.gen1storage.mods.ModReferenceDatabase
+import com.logie.gen1storage.mods.ModStore
+import com.logie.gen1storage.mods.ModViolation
 import com.logie.gen1storage.rom.RomStore
 import com.logie.gen1storage.rom.RomVersion
 import com.logie.gen1storage.storage.ItemRepository
@@ -494,6 +498,21 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     private val itemEngine = ItemTransferEngine(saves, itemStorage)
     private val mailEngine = MailEngine(saves)
     val roms = RomStore(File(application.filesDir, "roms")).also { sprites.romStore = it }
+    val mods = ModStore(ModStore.directoryIn(application)).also { it.reregisterPalettes() }
+
+    /**
+     * Every hash `tools/generate_mod_scanner_hashes.py` computed off pret's
+     * own decompilations, read once from the bundled asset rather than on
+     * every import — parsing a couple of thousand hex strings is fast, but
+     * there is no reason to do it twice in the same run.
+     */
+    private val modReferenceDb: ModReferenceDatabase by lazy {
+        runCatching {
+            application.assets.open("mod_reference_hashes.json").use { input ->
+                ModReferenceDatabase.parse(input.readBytes().toString(Charsets.UTF_8))
+            }
+        }.getOrDefault(ModReferenceDatabase.EMPTY)
+    }
 
     /** When the ball went up, so the result can wait for it to finish. */
     private var sceneStartedAt = 0L
@@ -2156,6 +2175,49 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
             // it in his own words instead: see [Gen1Tutorial.romsFound].
             mutable.update { it.copy(busy = false) }
         }
+    }
+
+    /**
+     * A mod zip a player picked: scanned whole, silently, before any of it
+     * is trusted, and only unpacked if nothing in it needed saying no to.
+     *
+     * A mod is a manifest naming a palette in the same five colours
+     * [GbPalette] already is — never code, never a sprite this app did not
+     * already draw a place for — so nothing it can say changes what this
+     * app does, only what it looks like. What it is not allowed to bring in
+     * is the cartridge's own art: every image is checked against
+     * [modReferenceDb], the same reference set
+     * https://github.com/1Jamie/mod-scanner checks a decompilation mod
+     * against, and a console ROM or a known proprietary container fails it
+     * outright by its header alone. See [ModImportPipeline].
+     */
+    fun importMod(uri: Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = ModImportPipeline.import(app, uri, mods, modReferenceDb)
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    mutable.update { it.copy(spriteRevision = it.spriteRevision + 1) }
+                    message("${result.installed!!.manifest.name.uppercase()} INSTALLED.")
+                } else {
+                    reportModViolations(result.violations)
+                }
+            }
+        }
+    }
+
+    /** What was wrong with a mod, one line per file, so a player can go fix the actual thing. */
+    private fun reportModViolations(violations: List<ModViolation>) {
+        val shown = violations.take(8)
+        val lines = mutableListOf("MOD REJECTED.")
+        shown.forEach { violation ->
+            lines += (
+                if (violation.filename.isBlank()) violation.reason
+                else "${violation.filename}: ${violation.reason}"
+                ).uppercase()
+        }
+        if (violations.size > shown.size) lines += "+${violations.size - shown.size} MORE ISSUE(S)."
+        message(*lines.toTypedArray())
     }
 
     // ------- export and import

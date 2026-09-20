@@ -254,6 +254,28 @@ data class GbPalette(
             GOLD, SILVER, CRYSTAL, HO_OH, LUGIA, SUICUNE,
         )
 
-        fun fromId(id: String?): GbPalette = ALL.firstOrNull { it.id == id } ?: ORIGINAL
+        // A mod names five colours the same way any palette here does — see
+        // ModPaletteDefinition — and this is the one place that naming
+        // reaches the rest of the app from: everywhere a palette is looked
+        // up by id already goes through fromId, and the one place they are
+        // listed for picking already goes through allIncludingMods, so a
+        // mod's palette needs nothing more than registering here to work
+        // everywhere ORIGINAL through SUICUNE already do. Held in memory
+        // rather than written to disk itself, since ModStore re-registers
+        // every installed mod's palette on launch from its own manifest.
+        private val modPalettes = LinkedHashMap<String, GbPalette>()
+
+        fun registerMod(palette: GbPalette) {
+            modPalettes[palette.id] = palette
+        }
+
+        fun clearMods() {
+            modPalettes.clear()
+        }
+
+        /** Every palette a player can pick: the ones built into this app, then whatever they have imported. */
+        val allIncludingMods: List<GbPalette> get() = ALL + modPalettes.values
+
+        fun fromId(id: String?): GbPalette = ALL.firstOrNull { it.id == id } ?: modPalettes[id] ?: ORIGINAL
     }
 }

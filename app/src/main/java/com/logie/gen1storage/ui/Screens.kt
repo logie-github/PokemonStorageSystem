@@ -1308,6 +1308,12 @@ private fun OptionsDrawerContent(
     val pickImportBackupFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) model.restoreFromBackupFolder(uri)
     }
+    // A single zip rather than a folder: a mod is one file to hand someone,
+    // not a folder to point at. Scanned whole before anything in it is
+    // trusted — see StorageViewModel.importMod.
+    val pickMod = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) model.importMod(uri)
+    }
 
     val rows = buildList {
         when (drawer) {
@@ -1365,7 +1371,11 @@ private fun OptionsDrawerContent(
                 // they were unavailable — HO-OH came out as "HO-…". They
                 // arrive announced instead: importing the ROM says which
                 // palettes it just opened up. See [StorageViewModel.unlockedBy].
-                GbPalette.ALL
+                // Whatever this device has imported a mod for, listed the
+                // same way a game's own palette is once its ROM is in: a
+                // mod palette carries no ROM requirement of its own, so it
+                // is simply here from the moment ModStore has registered it.
+                GbPalette.allIncludingMods
                     .filter { it.requiredRom == null || model.roms.has(it.requiredRom) }
                     .forEach { palette ->
                         add(
@@ -1376,6 +1386,7 @@ private fun OptionsDrawerContent(
                             ) { model.setPalette(palette.id) }
                         )
                     }
+                add(OptionRow("IMPORT MOD") { pickMod.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) })
             }
 
             OptionsDrawer.AUDIO -> {

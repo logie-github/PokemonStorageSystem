@@ -177,9 +177,10 @@ fun DrawScope.drawGen1BorderBitmap(tileset: ImageBitmap, pixel: Float) {
                 extent.width.roundToInt().coerceAtLeast(1),
                 extent.height.roundToInt().coerceAtLeast(1),
             ),
-            // Whole cells scaled to whole tiles; smoothing would blur the
-            // one thing a pixel tileset is trying to keep sharp.
-            filterQuality = FilterQuality.None,
+            // Whole cells scaled to whole tiles, and by default nothing
+            // softened — a pixel tileset is kept sharp unless the mod that
+            // brought it asked otherwise. See [Gen1ModTheme.smoothing].
+            filterQuality = Gen1Mod.theme.filter,
         )
     }
 

@@ -28,6 +28,43 @@ data class ModPaletteDefinition(
     val opacity: Float,
 )
 
+/**
+ * A picture drawn in place of the dithered screen behind the windows, and
+ * how it is fitted to that screen.
+ */
+data class ModBackgroundDefinition(val asset: String, val fit: String) {
+    companion object {
+        const val COVER = "cover"
+        const val TILE = "tile"
+        const val STRETCH = "stretch"
+        val FITS = setOf(COVER, TILE, STRETCH)
+    }
+}
+
+/** A picture drawn in place of the Poké Ball turning in the corner. */
+data class ModBallDefinition(val asset: String, val spins: Boolean)
+
+/**
+ * Colours a mod names outright rather than leaving to the palette.
+ *
+ * Every one is optional and every one is only a colour. The palette alone
+ * cannot describe a dark window with bright text — a window is always
+ * filled with the ramp's lightest shade and written in its darkest — so
+ * this is what a mod that is not simply a tint has to say instead.
+ */
+data class ModChromeDefinition(
+    val ink: Int?,
+    val panel: Int?,
+    val shadow: Int?,
+    val muted: Int?,
+    val surround: Int?,
+    val barFill: Int?,
+    val barText: Int?,
+    val hpGreen: Int?,
+    val hpYellow: Int?,
+    val hpRed: Int?,
+)
+
 /** What `mod.json`, at the top of a mod's own zip, is allowed to say. */
 data class ModManifest(
     val name: String,
@@ -37,6 +74,15 @@ data class ModManifest(
     val fontAsset: String?,
     /** A border tileset image bundled in the zip — see `drawGen1BorderBitmap`. */
     val borderAsset: String?,
+    val background: ModBackgroundDefinition?,
+    val ball: ModBallDefinition?,
+    val chrome: ModChromeDefinition?,
+    /**
+     * Whether this mod's own pictures are resampled smoothly rather than as
+     * pixels. False unless a mod says otherwise, which keeps a pixel-art
+     * mod looking the way this app's own art does.
+     */
+    val smoothing: Boolean,
 ) {
     companion object {
         /** The manifest's own filename, expected at the root of a mod zip. */
@@ -58,8 +104,39 @@ data class ModManifest(
             val palette = root.optJSONObject("palette")?.let { parsePalette(it, fallbackId, name) }
             val fontAsset = sanitizeAssetPath(root.optString("fontAsset"))
             val borderAsset = sanitizeAssetPath(root.optString("borderAsset"))
-            return ModManifest(name, author, palette, fontAsset, borderAsset)
+            val background = root.optJSONObject("background")?.let(::parseBackground)
+            val ball = root.optJSONObject("ball")?.let(::parseBall)
+            val chrome = root.optJSONObject("chrome")?.let(::parseChrome)
+            val smoothing = root.optBoolean("smoothing", false)
+            return ModManifest(
+                name, author, palette, fontAsset, borderAsset, background, ball, chrome, smoothing,
+            )
         }
+
+        private fun parseBackground(json: JSONObject): ModBackgroundDefinition? {
+            val asset = sanitizeAssetPath(json.optString("asset")) ?: return null
+            val named = json.optString("fit").lowercase()
+            val fit = if (named in ModBackgroundDefinition.FITS) named else ModBackgroundDefinition.COVER
+            return ModBackgroundDefinition(asset, fit)
+        }
+
+        private fun parseBall(json: JSONObject): ModBallDefinition? {
+            val asset = sanitizeAssetPath(json.optString("asset")) ?: return null
+            return ModBallDefinition(asset, json.optBoolean("spins", true))
+        }
+
+        private fun parseChrome(json: JSONObject) = ModChromeDefinition(
+            ink = parseColor(json.optString("ink")),
+            panel = parseColor(json.optString("panel")),
+            shadow = parseColor(json.optString("shadow")),
+            muted = parseColor(json.optString("muted")),
+            surround = parseColor(json.optString("surround")),
+            barFill = parseColor(json.optString("barFill")),
+            barText = parseColor(json.optString("barText")),
+            hpGreen = parseColor(json.optString("hpGreen")),
+            hpYellow = parseColor(json.optString("hpYellow")),
+            hpRed = parseColor(json.optString("hpRed")),
+        )
 
         private fun parsePalette(json: JSONObject, fallbackId: String, modName: String): ModPaletteDefinition? {
             val lightest = parseColor(json.optString("lightest")) ?: return null
@@ -83,11 +160,19 @@ data class ModManifest(
             )
         }
 
-        /** "#RRGGBB" or "RRGGBB" to an opaque ARGB int. Null for anything else. */
+        /**
+         * "#RRGGBB" to an opaque ARGB int, or "#AARRGGBB" to one carrying its
+         * own alpha — a chrome colour meant to let the background through
+         * has no other way to say so. Null for anything else.
+         */
         private fun parseColor(hex: String): Int? {
             val cleaned = hex.removePrefix("#")
-            if (cleaned.length != 6 || cleaned.any { it.digitToIntOrNull(16) == null }) return null
-            return (0xFF shl 24) or cleaned.toInt(16)
+            if (cleaned.any { it.digitToIntOrNull(16) == null }) return null
+            return when (cleaned.length) {
+                6 -> (0xFF shl 24) or cleaned.toInt(16)
+                8 -> cleaned.toLong(16).toInt()
+                else -> null
+            }
         }
 
         /**

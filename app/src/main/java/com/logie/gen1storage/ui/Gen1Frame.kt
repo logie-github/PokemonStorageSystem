@@ -65,7 +65,7 @@ fun Gen1Frame(
             // an unfolded phone stops reading as a window.
             .then(if (fillsScreen) Modifier else Modifier.gen1MaxWidth())
             .then(if (fillsScreen) Modifier else Modifier.gen1WindowBounds())
-            .background(fill.copy(alpha = fill.alpha * Gen1Palette.windowOpacity))
+            .background(fill.copy(alpha = fill.alpha * Gen1Mod.theme.opacity))
             .drawBehind { drawGen1BorderOrTileset(ink, pixel) }
             .padding(gen1Dp(GEN1_TILE - 2))
             .padding(contentPadding),
@@ -88,7 +88,7 @@ fun Gen1FrameBox(
         modifier
             .then(if (opening) Modifier.gen1Opening() else Modifier)
             .gen1WindowBounds()
-            .background(fill.copy(alpha = fill.alpha * Gen1Palette.windowOpacity))
+            .background(fill.copy(alpha = fill.alpha * Gen1Mod.theme.opacity))
             .drawBehind { drawGen1BorderOrTileset(ink, pixel) }
             .padding(gen1Dp(GEN1_TILE - 2))
             .padding(contentPadding),
@@ -97,7 +97,7 @@ fun Gen1FrameBox(
 
 /** [drawGen1Border], unless a mod has bundled a tileset to draw instead. */
 private fun DrawScope.drawGen1BorderOrTileset(ink: Color, pixel: Float) {
-    val tileset = Gen1Palette.borderTileset
+    val tileset = Gen1Mod.theme.border
     if (tileset != null) drawGen1BorderBitmap(tileset, pixel) else drawGen1Border(ink, pixel)
 }
 

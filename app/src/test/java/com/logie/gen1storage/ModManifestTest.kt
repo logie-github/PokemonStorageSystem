@@ -66,6 +66,56 @@ class ModManifestTest {
     }
 
     @Test
+    fun `a background, a ball and chrome colours all parse`() {
+        val json = """
+            {
+              "name": "Neon",
+              "background": {"asset": "bg.png", "fit": "tile"},
+              "ball": {"asset": "ball.png", "spins": false},
+              "chrome": {
+                "ink": "#FFD21E", "panel": "#CC0A0F18", "barFill": "#05070A",
+                "barText": "#2FA8FF", "hpGreen": "#39FF88"
+              }
+            }
+        """.trimIndent()
+        val manifest = ModManifest.parse(json, "id", "Neon")
+        assertEquals("bg.png", manifest.background!!.asset)
+        assertEquals("tile", manifest.background!!.fit)
+        assertEquals("ball.png", manifest.ball!!.asset)
+        assertEquals(false, manifest.ball!!.spins)
+        val chrome = manifest.chrome!!
+        assertEquals(0xFFFFD21E.toInt(), chrome.ink)
+        // Carrying its own alpha, which is the only way a window fill can be
+        // told to let the background through.
+        assertEquals(0xCC0A0F18.toInt(), chrome.panel)
+        assertEquals(0xFF05070A.toInt(), chrome.barFill)
+        assertEquals(0xFF2FA8FF.toInt(), chrome.barText)
+        assertEquals(0xFF39FF88.toInt(), chrome.hpGreen)
+        // Never named, so the app's own is what draws.
+        assertNull(chrome.hpRed)
+    }
+
+    @Test
+    fun `an unknown background fit falls back to cover`() {
+        val json = """{"background": {"asset": "bg.png", "fit": "parallax"}}"""
+        assertEquals("cover", ModManifest.parse(json, "id", "Name").background!!.fit)
+    }
+
+    @Test
+    fun `a background naming no asset at all is dropped`() {
+        val json = """{"background": {"fit": "tile"}, "ball": {"spins": true}}"""
+        val manifest = ModManifest.parse(json, "id", "Name")
+        assertNull(manifest.background)
+        assertNull(manifest.ball)
+    }
+
+    @Test
+    fun `a ball spins unless it says otherwise`() {
+        val json = """{"ball": {"asset": "emblem.png"}}"""
+        assertTrue(ModManifest.parse(json, "id", "Name").ball!!.spins)
+    }
+
+    @Test
     fun `opacity is clamped to a floor no window ever goes below`() {
         val json = """
             {"palette": {

@@ -12,6 +12,12 @@ data class InstalledMod(val id: String, val manifest: ModManifest, val directory
 
     /** The border tileset image [manifest] names, if the zip actually had one there. */
     fun borderFile(): File? = manifest.borderAsset?.let { File(directory, it) }?.takeIf { it.isFile }
+
+    /** The background picture [manifest] names, if the zip actually had one there. */
+    fun backgroundFile(): File? = manifest.background?.let { File(directory, it.asset) }?.takeIf { it.isFile }
+
+    /** The ball picture [manifest] names, if the zip actually had one there. */
+    fun ballFile(): File? = manifest.ball?.let { File(directory, it.asset) }?.takeIf { it.isFile }
 }
 
 /**

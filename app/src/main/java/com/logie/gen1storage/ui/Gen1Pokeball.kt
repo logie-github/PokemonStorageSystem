@@ -79,6 +79,17 @@ object Gen1Pokeball {
     var current by mutableStateOf<Frame?>(null)
         private set
 
+    /**
+     * How far round the turn is, in degrees.
+     *
+     * The same [STEPS] positions off the same clock [current] is built from,
+     * kept as a number for the one case that cannot be rasterised here: a
+     * mod's own ball is a picture somebody else drew, so it is turned rather
+     * than redrawn, and the draw lambda needs the angle to turn it by.
+     */
+    var angleDegrees by mutableStateOf(0f)
+        private set
+
     /** Whether somebody is already turning it. */
     private var busy = false
 
@@ -120,8 +131,12 @@ object Gen1Pokeball {
             try {
                 while (true) {
                     val step = if (turning) phase() else 0
+                    angleDegrees = step.toFloat() / STEPS * 360f
+                    // Nothing to rasterise while a mod's own ball is the one
+                    // being drawn: it is a picture already, and [angleDegrees]
+                    // above is the whole of what the draw lambda needs.
                     val from = "$widthPx/$heightPx/$unit/$colour/$step"
-                    if (from != builtFrom) {
+                    if (Gen1Mod.theme.ball == null && from != builtFrom) {
                         val frame = withContext(Dispatchers.Default) {
                             build(widthPx / unit, heightPx / unit, colour, step)
                         }

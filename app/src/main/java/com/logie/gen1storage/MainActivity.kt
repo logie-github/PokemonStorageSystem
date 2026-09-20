@@ -43,14 +43,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
-import android.graphics.BitmapFactory
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import com.logie.gen1storage.mods.toTheme
 import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
 import com.logie.gen1storage.ui.Gen1DefaultFontFamily
 import com.logie.gen1storage.ui.Gen1FontFamily
+import com.logie.gen1storage.ui.Gen1Mod
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1TextSmall
@@ -151,11 +151,7 @@ private fun StorageApp(model: StorageViewModel) {
     val activeModFont = remember(activeMod) {
         activeMod?.fontFile()?.let { file -> runCatching { FontFamily(Font(file)) }.getOrNull() }
     }
-    val activeModBorder = remember(activeMod) {
-        activeMod?.borderFile()
-            ?.let { file -> runCatching { BitmapFactory.decodeFile(file.path) }.getOrNull() }
-            ?.asImageBitmap()
-    }
+    val activeModTheme = remember(activeMod) { activeMod.toTheme() }
 
     // The palette is global to the drawing code, including the draw lambdas
     // that cannot observe view-model state themselves. Applied as a side effect
@@ -172,12 +168,11 @@ private fun StorageApp(model: StorageViewModel) {
         // Read by the box cells and the sprite placeholders, which draw a gap
         // either way and have no view model in reach to ask why.
         Gen1Loading.fetching = state.fetchingArt
-        // A mod's own opacity, face and border chrome — reset to this app's
-        // own defaults the moment a built-in palette, or a mod that never
-        // bundled one of these, is what is active.
-        Gen1Palette.windowOpacity = activeMod?.manifest?.palette?.opacity ?: 1f
+        // Everything a mod changed, in one assignment — and this app's own
+        // look back in one assignment too, the moment a built-in palette is
+        // what is active. See [Gen1ModTheme].
+        Gen1Mod.theme = activeModTheme
         Gen1FontFamily = activeModFont ?: Gen1DefaultFontFamily
-        Gen1Palette.borderTileset = activeModBorder
     }
 
     // The game can save at any moment, and every revision this app is holding
@@ -510,14 +505,14 @@ private fun TopBar() {
     Row(
         Modifier
             .fillMaxWidth()
-            .background(Gen1Palette.Darkest)
+            .background(Gen1Palette.Bar)
             .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GbText(
             "POKéMON STORAGE SYSTEM",
-            style = Gen1Text.copy(color = Gen1Palette.Lightest),
+            style = Gen1Text.copy(color = Gen1Palette.BarText),
             maxLines = 1,
         )
     }
@@ -529,13 +524,13 @@ private fun LoadingStrip(percent: Int) {
     Row(
         Modifier
             .fillMaxWidth()
-            .background(Gen1Palette.Darkest)
+            .background(Gen1Palette.Bar)
             .padding(horizontal = 8.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.Center,
     ) {
         GbText(
             "LOADING ART  $percent%",
-            style = Gen1TextSmall.copy(color = Gen1Palette.Lightest),
+            style = Gen1TextSmall.copy(color = Gen1Palette.BarText),
             maxLines = 1,
         )
     }

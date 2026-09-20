@@ -40,7 +40,9 @@ import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
@@ -93,18 +95,6 @@ object Gen1Palette {
      */
     var windowsFollowPalette by mutableStateOf(true)
 
-    /**
-     * How solid a window's own fill is, set by whatever mod owns the active
-     * palette. 1 outside a mod, or a mod that never said otherwise.
-     */
-    var windowOpacity by mutableStateOf(1f)
-
-    /**
-     * A mod's own border tileset, drawn in place of [drawGen1Border] while
-     * it is set. Null outside a mod, or a mod that never bundled one.
-     */
-    var borderTileset: ImageBitmap? by mutableStateOf(null)
-
     /** The four-shade ramp, lightest to darkest. Always the chosen palette. */
     val Lightest: Color get() = palette.lightest
     val Light: Color get() = palette.light
@@ -112,13 +102,21 @@ object Gen1Palette {
     val Darkest: Color get() = palette.darkest
 
     /** The screen behind every window, as the console letterboxes it. */
-    val Surround: Color get() = palette.surround
+    val Surround: Color get() = Gen1Mod.theme.surround ?: palette.surround
 
-    // Window chrome. Black on white unless the player says otherwise.
-    val Ink: Color get() = if (windowsFollowPalette) palette.darkest else MonoInk
-    val Panel: Color get() = if (windowsFollowPalette) palette.lightest else MonoPanel
-    val Shadow: Color get() = if (windowsFollowPalette) palette.dark else MonoShadow
-    val Muted: Color get() = if (windowsFollowPalette) palette.light else MonoMuted
+    // Window chrome. Black on white unless the player says otherwise — or
+    // unless a mod named one of these outright, which is the only way to get
+    // a dark window with bright text: the ramp alone cannot say that, since
+    // a window is always filled with its lightest shade and written in its
+    // darkest.
+    val Ink: Color get() = Gen1Mod.theme.ink ?: if (windowsFollowPalette) palette.darkest else MonoInk
+    val Panel: Color get() = Gen1Mod.theme.panel ?: if (windowsFollowPalette) palette.lightest else MonoPanel
+    val Shadow: Color get() = Gen1Mod.theme.shadow ?: if (windowsFollowPalette) palette.dark else MonoShadow
+    val Muted: Color get() = Gen1Mod.theme.muted ?: if (windowsFollowPalette) palette.light else MonoMuted
+
+    /** The bar along the top, which is the palette's own ink and paper reversed. */
+    val Bar: Color get() = Gen1Mod.theme.barFill ?: palette.darkest
+    val BarText: Color get() = Gen1Mod.theme.barText ?: palette.lightest
 
     private val MonoInk = Color(0xFF101010)
     private val MonoPanel = Color(0xFFF8F8F8)
@@ -329,16 +327,32 @@ fun Modifier.gen1Ground(): Modifier {
         ShaderBrush(ImageShader(image, TileMode.Repeated, TileMode.Clamp))
     }
 
+    // A mod's own picture, if it brought one, tiled or fitted across the same
+    // window-sized area the dither strip covers — so it lands under every
+    // piece of ground at the same place, for the same reason the strip does.
+    val modBackground = Gen1Mod.theme.background
+    val modFit = Gen1Mod.theme.backgroundFit
+    val backgroundBrush = remember(modBackground, modFit) {
+        if (modBackground != null && modFit == Gen1ModTheme.Fit.TILE) {
+            ShaderBrush(ImageShader(modBackground, TileMode.Repeated, TileMode.Repeated))
+        } else {
+            null
+        }
+    }
+
     // The ball lies on the ground in window coordinates, the same as the ramp
     // does, so a window sitting over part of it hides that part and the pieces
     // of ground either side of a window still agree about where it is.
     val ballInk = palette.lightest.toArgb()
     // Held still rather than taken away: the ball is a graphic as much as a
-    // movement, so REDUCE MOTION stops it turning and leaves it drawn.
-    val turns = Gen1Motion.moves(Motion.BALL)
+    // movement, so REDUCE MOTION stops it turning and leaves it drawn. A mod
+    // may also have said its own emblem does not turn at all.
+    val modBall = Gen1Mod.theme.ball
+    val turns = Gen1Motion.moves(Motion.BALL) && (modBall == null || Gen1Mod.theme.ballSpins)
     // Rasterised off the main thread; the draw lambda only ever blits what is
-    // ready. See [Gen1Pokeball.drive].
-    LaunchedEffect(windowWidth, windowHeight, unit, ballInk, turns) {
+    // ready. See [Gen1Pokeball.drive] — with a mod's own ball in force there
+    // is nothing to rasterise and the drive only keeps the angle moving.
+    LaunchedEffect(windowWidth, windowHeight, unit, ballInk, turns, modBall) {
         Gen1Pokeball.drive(windowWidth, windowHeight, unit, ballInk, turns)
     }
 
@@ -356,28 +370,91 @@ fun Modifier.gen1Ground(): Modifier {
             // carrying the ground and over the bar along the top.
             clipRect(0f, 0f, area.width, area.height) {
                 translate(left = -origin.x, top = -origin.y) {
-                    drawRect(brush, topLeft = origin, size = area)
-                    // Read here rather than in composition: a turn of the ball
-                    // is a redraw and nothing more.
-                    val ball = Gen1Pokeball.current
-                    if (ball != null) {
-                        drawImage(
-                            image = ball.image,
-                            // Anchored to the window's bottom right, which is
-                            // the ball's own centre.
-                            dstOffset = IntOffset(
-                                windowWidth - ball.cellsWide * unit,
-                                windowHeight - ball.cellsHigh * unit,
-                            ),
-                            dstSize = IntSize(ball.cellsWide * unit, ball.cellsHigh * unit),
-                            // Whole multiples of one cell; smoothing would undo
-                            // the thing that makes it pixels.
-                            filterQuality = FilterQuality.None,
-                        )
+                    when {
+                        backgroundBrush != null ->
+                            drawRect(backgroundBrush, topLeft = origin, size = area)
+                        modBackground != null ->
+                            drawModBackground(modBackground, modFit, windowWidth, windowHeight)
+                        else -> drawRect(brush, topLeft = origin, size = area)
+                    }
+                    if (modBall != null) {
+                        // A mod's ball is one picture of a whole ball, turned
+                        // about the corner it is centred on rather than
+                        // redrawn at each angle. Its own art decides whether
+                        // that reads as pixels or as anything else.
+                        rotate(
+                            degrees = Gen1Pokeball.angleDegrees,
+                            pivot = Offset(windowWidth.toFloat(), windowHeight.toFloat()),
+                        ) {
+                            val diameter = windowWidth.toFloat()
+                            drawImage(
+                                image = modBall,
+                                dstOffset = IntOffset(
+                                    (windowWidth - diameter / 2f).roundToInt(),
+                                    (windowHeight - diameter / 2f).roundToInt(),
+                                ),
+                                dstSize = IntSize(diameter.roundToInt(), diameter.roundToInt()),
+                                filterQuality = Gen1Mod.theme.filter,
+                            )
+                        }
+                    } else {
+                        // Read here rather than in composition: a turn of the ball
+                        // is a redraw and nothing more.
+                        val ball = Gen1Pokeball.current
+                        if (ball != null) {
+                            drawImage(
+                                image = ball.image,
+                                // Anchored to the window's bottom right, which is
+                                // the ball's own centre.
+                                dstOffset = IntOffset(
+                                    windowWidth - ball.cellsWide * unit,
+                                    windowHeight - ball.cellsHigh * unit,
+                                ),
+                                dstSize = IntSize(ball.cellsWide * unit, ball.cellsHigh * unit),
+                                // Whole multiples of one cell; smoothing would undo
+                                // the thing that makes it pixels.
+                                filterQuality = FilterQuality.None,
+                            )
+                        }
                     }
                 }
             }
         }
+}
+
+/**
+ * A mod's own background, drawn over the whole window.
+ *
+ * STRETCH puts the picture on the window whatever that does to its shape.
+ * COVER keeps the shape and fills the window with it, which means the
+ * picture is scaled to the larger of the two ratios and overhangs the other
+ * axis — the ground is already clipped to whatever is carrying it, so the
+ * overhang costs nothing but the part of the picture nobody sees.
+ */
+private fun DrawScope.drawModBackground(
+    image: ImageBitmap,
+    fit: Gen1ModTheme.Fit,
+    windowWidth: Int,
+    windowHeight: Int,
+) {
+    if (image.width <= 0 || image.height <= 0) return
+    val scale = when (fit) {
+        Gen1ModTheme.Fit.STRETCH -> null
+        else -> maxOf(
+            windowWidth.toFloat() / image.width,
+            windowHeight.toFloat() / image.height,
+        )
+    }
+    val drawWidth = scale?.let { (image.width * it).roundToInt() } ?: windowWidth
+    val drawHeight = scale?.let { (image.height * it).roundToInt() } ?: windowHeight
+    drawImage(
+        image = image,
+        // Centred on the window, so a picture wider than the screen loses
+        // the same amount from each side rather than all of it from one.
+        dstOffset = IntOffset((windowWidth - drawWidth) / 2, (windowHeight - drawHeight) / 2),
+        dstSize = IntSize(drawWidth, drawHeight),
+        filterQuality = Gen1Mod.theme.filter,
+    )
 }
 
 /**
@@ -602,14 +679,17 @@ fun Gen1Field(label: String, value: String, modifier: Modifier = Modifier) {
  *
  * `PAL_GREENBAR`, `PAL_YELLOWBAR` and `PAL_REDBAR` from pret/pokeyellow's
  * Super Game Boy table, converted from its five-bit channels the way the
- * hardware does it (`v shl 3 or v shr 2`). They are fixed rather than taken
- * from the chosen palette: the bar is the one place in the interface that has
- * to mean something at a glance, and a red bar that is not red does not.
+ * hardware does it (`v shl 3 or v shr 2`). They never follow the chosen
+ * palette: the bar is the one place in the interface that has to mean
+ * something at a glance, and a red bar that is not red does not. A mod may
+ * still name its own three, since a mod is somebody deciding what their own
+ * interface looks like rather than a tint applied over it — but it has to
+ * say so outright, one colour at a time.
  */
 object Gen1HpBarColors {
-    val Green = Color(0xFF00AD00)
-    val Yellow = Color(0xFFE7BD4A)
-    val Red = Color(0xFFD64A31)
+    val Green: Color get() = Gen1Mod.theme.hpGreen ?: Color(0xFF00AD00)
+    val Yellow: Color get() = Gen1Mod.theme.hpYellow ?: Color(0xFFE7BD4A)
+    val Red: Color get() = Gen1Mod.theme.hpRed ?: Color(0xFFD64A31)
 }
 
 /** The HP bar, drawn as the flat three-state bar the games use. */

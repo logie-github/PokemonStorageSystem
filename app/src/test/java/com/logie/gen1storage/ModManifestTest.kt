@@ -44,6 +44,61 @@ class ModManifestTest {
         assertEquals(0xFF100818.toInt(), palette.darkest)
         assertEquals(0xFF201030.toInt(), palette.surround)
         assertEquals(false, palette.tintsSprites)
+        assertEquals(1f, palette.opacity)
+        assertNull(manifest.fontAsset)
+        assertNull(manifest.borderAsset)
+    }
+
+    @Test
+    fun `a font and border asset are read when named`() {
+        val json = """{"name": "Chrome", "fontAsset": "fonts/custom.ttf", "borderAsset": "art/border.png"}"""
+        val manifest = ModManifest.parse(json, "id", "Chrome")
+        assertEquals("fonts/custom.ttf", manifest.fontAsset)
+        assertEquals("art/border.png", manifest.borderAsset)
+    }
+
+    @Test
+    fun `an asset path that reaches outside the mod is dropped`() {
+        val json = """{"name": "Escape", "fontAsset": "../../etc/passwd", "borderAsset": "/etc/shadow"}"""
+        val manifest = ModManifest.parse(json, "id", "Escape")
+        assertNull(manifest.fontAsset)
+        assertNull(manifest.borderAsset)
+    }
+
+    @Test
+    fun `opacity is clamped to a floor no window ever goes below`() {
+        val json = """
+            {"palette": {
+                "lightest": "#FFFFFF", "light": "#CCCCCC", "dark": "#333333",
+                "darkest": "#000000", "surround": "#111111", "opacity": 0
+            }}
+        """.trimIndent()
+        val palette = ModManifest.parse(json, "id", "Name").palette!!
+        assertEquals(0.35f, palette.opacity)
+    }
+
+    @Test
+    fun `opacity is clamped to never exceed fully solid`() {
+        val json = """
+            {"palette": {
+                "lightest": "#FFFFFF", "light": "#CCCCCC", "dark": "#333333",
+                "darkest": "#000000", "surround": "#111111", "opacity": 4
+            }}
+        """.trimIndent()
+        val palette = ModManifest.parse(json, "id", "Name").palette!!
+        assertEquals(1f, palette.opacity)
+    }
+
+    @Test
+    fun `opacity defaults to fully solid when never named`() {
+        val json = """
+            {"palette": {
+                "lightest": "#FFFFFF", "light": "#CCCCCC", "dark": "#333333",
+                "darkest": "#000000", "surround": "#111111"
+            }}
+        """.trimIndent()
+        val palette = ModManifest.parse(json, "id", "Name").palette!!
+        assertEquals(1f, palette.opacity)
     }
 
     @Test

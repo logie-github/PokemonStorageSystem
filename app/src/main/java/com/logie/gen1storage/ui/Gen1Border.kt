@@ -3,7 +3,12 @@ package com.logie.gen1storage.ui
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 
 /**
  * The Generation I window border, tile for tile.
@@ -143,4 +148,77 @@ fun DrawScope.drawGen1Border(ink: Color, pixel: Float) {
     corner(TOP_RIGHT_RUNS, width - tile, 0f)
     corner(BOTTOM_LEFT_RUNS, 0f, height - tile)
     corner(BOTTOM_RIGHT_RUNS, width - tile, height - tile)
+}
+
+/**
+ * The same border, drawn from a mod's own art instead of the cartridge's.
+ *
+ * [tileset] is a single square image cut into an even 3x3 grid of cells: the
+ * four corners, blitted once each; the four edge cells, tiled along their
+ * own span the way [drawGen1Border]'s rules run the length of the window;
+ * and the centre cell, never drawn at all — the panel fill underneath
+ * already covers it, so a mod's own tileset only has to draw a frame, not a
+ * whole window.
+ */
+fun DrawScope.drawGen1BorderBitmap(tileset: ImageBitmap, pixel: Float) {
+    val cell = tileset.width / 3
+    if (cell <= 0 || tileset.height < cell * 3) return
+    val tile = pixel * GEN1_TILE
+    val width = size.width
+    val height = size.height
+
+    fun blit(cellX: Int, cellY: Int, at: Offset, extent: Size) {
+        drawImage(
+            image = tileset,
+            srcOffset = IntOffset(cellX * cell, cellY * cell),
+            srcSize = IntSize(cell, cell),
+            dstOffset = IntOffset(at.x.roundToInt(), at.y.roundToInt()),
+            dstSize = IntSize(
+                extent.width.roundToInt().coerceAtLeast(1),
+                extent.height.roundToInt().coerceAtLeast(1),
+            ),
+            // Whole cells scaled to whole tiles; smoothing would blur the
+            // one thing a pixel tileset is trying to keep sharp.
+            filterQuality = FilterQuality.None,
+        )
+    }
+
+    // A trailing partial tile is squashed into what room is left rather than
+    // clipped — visible only when a window's span is not a whole number of
+    // tiles, which for windows sized off this app's own Game Boy grid it
+    // always is.
+    fun tileAcross(cellX: Int, cellY: Int, left: Float, top: Float, span: Float) {
+        var travelled = 0f
+        while (travelled < span) {
+            val length = minOf(tile, span - travelled)
+            blit(cellX, cellY, Offset(left + travelled, top), Size(length, tile))
+            travelled += tile
+        }
+    }
+
+    fun tileDown(cellX: Int, cellY: Int, left: Float, top: Float, span: Float) {
+        var travelled = 0f
+        while (travelled < span) {
+            val length = minOf(tile, span - travelled)
+            blit(cellX, cellY, Offset(left, top + travelled), Size(tile, length))
+            travelled += tile
+        }
+    }
+
+    val spanWidth = (width - tile * 2).coerceAtLeast(0f)
+    val spanHeight = (height - tile * 2).coerceAtLeast(0f)
+
+    if (spanWidth > 0f) {
+        tileAcross(1, 0, tile, 0f, spanWidth)
+        tileAcross(1, 2, tile, height - tile, spanWidth)
+    }
+    if (spanHeight > 0f) {
+        tileDown(0, 1, 0f, tile, spanHeight)
+        tileDown(2, 1, width - tile, tile, spanHeight)
+    }
+
+    blit(0, 0, Offset(0f, 0f), Size(tile, tile))
+    blit(2, 0, Offset(width - tile, 0f), Size(tile, tile))
+    blit(0, 2, Offset(0f, height - tile), Size(tile, tile))
+    blit(2, 2, Offset(width - tile, height - tile), Size(tile, tile))
 }

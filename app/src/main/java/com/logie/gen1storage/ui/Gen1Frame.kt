@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -64,8 +65,8 @@ fun Gen1Frame(
             // an unfolded phone stops reading as a window.
             .then(if (fillsScreen) Modifier else Modifier.gen1MaxWidth())
             .then(if (fillsScreen) Modifier else Modifier.gen1WindowBounds())
-            .background(fill)
-            .drawBehind { drawGen1Border(ink, pixel) }
+            .background(fill.copy(alpha = fill.alpha * Gen1Palette.windowOpacity))
+            .drawBehind { drawGen1BorderOrTileset(ink, pixel) }
             .padding(gen1Dp(GEN1_TILE - 2))
             .padding(contentPadding),
         content = content,
@@ -87,11 +88,17 @@ fun Gen1FrameBox(
         modifier
             .then(if (opening) Modifier.gen1Opening() else Modifier)
             .gen1WindowBounds()
-            .background(fill)
-            .drawBehind { drawGen1Border(ink, pixel) }
+            .background(fill.copy(alpha = fill.alpha * Gen1Palette.windowOpacity))
+            .drawBehind { drawGen1BorderOrTileset(ink, pixel) }
             .padding(gen1Dp(GEN1_TILE - 2))
             .padding(contentPadding),
     ) { content() }
+}
+
+/** [drawGen1Border], unless a mod has bundled a tileset to draw instead. */
+private fun DrawScope.drawGen1BorderOrTileset(ink: Color, pixel: Float) {
+    val tileset = Gen1Palette.borderTileset
+    if (tileset != null) drawGen1BorderBitmap(tileset, pixel) else drawGen1Border(ink, pixel)
 }
 
 /**

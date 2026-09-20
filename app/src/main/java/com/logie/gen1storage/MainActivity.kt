@@ -43,8 +43,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import com.logie.gen1storage.ui.GbPalette
 import com.logie.gen1storage.ui.GbText
+import com.logie.gen1storage.ui.Gen1DefaultFontFamily
+import com.logie.gen1storage.ui.Gen1FontFamily
 import com.logie.gen1storage.ui.Gen1Palette
 import com.logie.gen1storage.ui.Gen1Text
 import com.logie.gen1storage.ui.Gen1TextSmall
@@ -135,6 +141,22 @@ private fun StorageApp(model: StorageViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // The mod owning the active palette, if the active palette is a mod's
+    // own rather than one of this app's built-in ones. Its font and border
+    // art are only ever decoded again when which mod is active actually
+    // changes, not on every tick of the sync poll below.
+    val activeMod = remember(state.paletteId) {
+        model.mods.list().firstOrNull { it.manifest.palette?.id == state.paletteId }
+    }
+    val activeModFont = remember(activeMod) {
+        activeMod?.fontFile()?.let { file -> runCatching { FontFamily(Font(file)) }.getOrNull() }
+    }
+    val activeModBorder = remember(activeMod) {
+        activeMod?.borderFile()
+            ?.let { file -> runCatching { BitmapFactory.decodeFile(file.path) }.getOrNull() }
+            ?.asImageBitmap()
+    }
+
     // The palette is global to the drawing code, including the draw lambdas
     // that cannot observe view-model state themselves. Applied as a side effect
     // rather than during composition, so nothing writes snapshot state while
@@ -150,6 +172,12 @@ private fun StorageApp(model: StorageViewModel) {
         // Read by the box cells and the sprite placeholders, which draw a gap
         // either way and have no view model in reach to ask why.
         Gen1Loading.fetching = state.fetchingArt
+        // A mod's own opacity, face and border chrome — reset to this app's
+        // own defaults the moment a built-in palette, or a mod that never
+        // bundled one of these, is what is active.
+        Gen1Palette.windowOpacity = activeMod?.manifest?.palette?.opacity ?: 1f
+        Gen1FontFamily = activeModFont ?: Gen1DefaultFontFamily
+        Gen1Palette.borderTileset = activeModBorder
     }
 
     // The game can save at any moment, and every revision this app is holding

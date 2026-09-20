@@ -6,7 +6,13 @@ import com.logie.gen1storage.ui.GbPalette
 import java.io.File
 
 /** One mod already sitting on this device, read back off its own folder. */
-data class InstalledMod(val id: String, val manifest: ModManifest, val directory: File)
+data class InstalledMod(val id: String, val manifest: ModManifest, val directory: File) {
+    /** The `.ttf`/`.otf` [manifest] names, if the zip actually had one there. */
+    fun fontFile(): File? = manifest.fontAsset?.let { File(directory, it) }?.takeIf { it.isFile }
+
+    /** The border tileset image [manifest] names, if the zip actually had one there. */
+    fun borderFile(): File? = manifest.borderAsset?.let { File(directory, it) }?.takeIf { it.isFile }
+}
 
 /**
  * Every mod this device has imported, kept as a plain folder per mod under

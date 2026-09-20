@@ -93,6 +93,18 @@ object Gen1Palette {
      */
     var windowsFollowPalette by mutableStateOf(true)
 
+    /**
+     * How solid a window's own fill is, set by whatever mod owns the active
+     * palette. 1 outside a mod, or a mod that never said otherwise.
+     */
+    var windowOpacity by mutableStateOf(1f)
+
+    /**
+     * A mod's own border tileset, drawn in place of [drawGen1Border] while
+     * it is set. Null outside a mod, or a mod that never bundled one.
+     */
+    var borderTileset: ImageBitmap? by mutableStateOf(null)
+
     /** The four-shade ramp, lightest to darkest. Always the chosen palette. */
     val Lightest: Color get() = palette.lightest
     val Light: Color get() = palette.light
@@ -130,7 +142,17 @@ object Gen1Palette {
  * boundary, and any other size hands the anti-aliaser a fractional edge to
  * soften. [pixelSize] is what enforces it.
  */
-val Gen1FontFamily = FontFamily(Font(R.font.pokemon_font))
+val Gen1DefaultFontFamily = FontFamily(Font(R.font.pokemon_font))
+
+/**
+ * The face actually drawn with. Snapshot state, like [Gen1Palette.palette] —
+ * a mod that bundles its own `.ttf` swaps this out, and every [Gen1BaseText]
+ * read after that draws with it instead. The grid in [snapFontPixels] is
+ * measured off the built-in face's own metrics, not whatever is loaded here,
+ * so layout never moves when the face does; a mod's own face may simply sit
+ * less exactly on it than the one this was tuned for.
+ */
+var Gen1FontFamily by mutableStateOf(Gen1DefaultFontFamily)
 
 /** Device pixels per design pixel step. The em is eight of these. */
 private const val FONT_GRID_PX = 8
@@ -252,12 +274,13 @@ val Gen1TextLarge: TextStyle
  * the advances are already whole design pixels, and adding a fraction of one
  * would push every glyph after the first off the grid.
  */
-private val Gen1BaseText = TextStyle(
-    fontFamily = Gen1FontFamily,
-    fontWeight = FontWeight.Normal,
-    letterSpacing = 0.sp,
-    platformStyle = PlatformTextStyle(includeFontPadding = false),
-)
+private val Gen1BaseText: TextStyle
+    get() = TextStyle(
+        fontFamily = Gen1FontFamily,
+        fontWeight = FontWeight.Normal,
+        letterSpacing = 0.sp,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+    )
 
 /**
  * The screen behind the windows: the palette's ramp, top to bottom, dithered.

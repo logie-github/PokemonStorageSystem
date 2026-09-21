@@ -53,7 +53,7 @@ Get feedback and bug tests. the biggest thing I want to avoid is someone's saves
 
 Gen 2 is in now — Gold, Silver and Crystal saves read and write, the Time Capsule carries a Pokémon forward from Gen 1, trade evolutions and items work for either generation, and Unown draws the right letter and a Pokémon its own gender. Still on the list: Pokérus and happiness showing up on the status screen, and Day Care/breeding. 
 
-Compatability with LUA mods. I'd love to have this app be able to have people mod it like they've been doing with the game carts. Don't like the layout? Mod it. Don't like the colors or them? Mod it. Again, this is coming but I'm more concerned with functionality first. 
+Modding is in. Don't like the colors, the background, the ball in the corner, or the window borders? Mod it — import a zip under Options → Mods and it's yours. No scripting, just a manifest and your own pictures, and every mod gets scanned for ripped game art before it's let in. See [MODDING.md](MODDING.md) for the format.
 
 Enjoy and please be kind in the comments! 
 

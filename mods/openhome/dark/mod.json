@@ -1,0 +1,37 @@
+{
+  "name": "OpenHome Dark",
+  "author": "After OpenHome by Andrew Benington",
+  "smoothing": true,
+  "palette": {
+    "id": "openhome_dark",
+    "label": "OPENHOME DARK",
+    "darkest": "#081721",
+    "dark": "#015354",
+    "light": "#53B4A5",
+    "lightest": "#DDFFDD",
+    "surround": "#36454E",
+    "tintsSprites": false,
+    "opacity": 1.0
+  },
+  "chrome": {
+    "ink": "#EEEEEE",
+    "panel": "#081721",
+    "shadow": "#A0DAC2",
+    "muted": "#6C8D8D",
+    "surround": "#36454E",
+    "barFill": "#446666",
+    "barText": "#EEEEEE",
+    "hpGreen": "#30A46C",
+    "hpYellow": "#FFC53D",
+    "hpRed": "#E5484D"
+  },
+  "background": {
+    "asset": "background.png",
+    "fit": "cover"
+  },
+  "ball": {
+    "asset": "ball.png",
+    "spins": false
+  },
+  "borderAsset": "border.png"
+}

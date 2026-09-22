@@ -1,7 +1,8 @@
 ## Pokemon Storage System for Gen 1 Recomp
-<img width="552" height="552" alt="324204" src="https://github.com/user-attachments/assets/05cf63f0-124d-46f2-b978-322e6e708d05" />
+<img width="1512" height="1512" alt="330632" src="https://github.com/user-attachments/assets/357d1084-1302-4f65-9b8f-d71015b2cd32" />
 
-Hello! Version 1.0 is of Logie's Pokemon Storage System companion app for the Gen 1 Recomp app is here! It's a shared Pokémon storage box that lives on your phone.
+
+Hello! Version 2.0 is of Logie's Pokemon Storage System companion app for the Gen 1 Recomp app is here! It's a shared Pokémon storage box that lives on your phone. Version 2.0 adds Gen 2 support and a boat load of new features. 
 
 Features:
 Move and Store Pokémon
@@ -11,7 +12,7 @@ Trainer Cards
 Each playthrough gets a trainer card with the trainer name, badges, money, play time, and trainer sprite.
 
 Trade Evolutions
-Evolve Kadabra, Machoke, Graveler, and Haunter right in the app.
+Evolve Kadabra, Machoke, and other trade evolution right in the app.
 
 Status Screens and Pokédex
 Check stats, moves, types, and Pokédex entries across all your saves.
@@ -28,9 +29,12 @@ Built for one-handed use, with foldable support, swipe controls, vibration setti
 Customizable
 Don't like a feature like trade evolution or swipe controls? Toggle it off in settings. 
 
-First, go to the Gen 1 Recomp app and click the Save Sync button then choose Create Sync Account. Go to the PSS app and go to Options → Saves then enter the codes from the Gen 1 Recomp app into the appropriate boxes and hit Sync. It's as easy as that! 
+GB Printer
+This is a fun one! When viewing stats in the View Box menu, you can share your Pokemon in a fun saved photo. 
 
-The app will sync with the recomp every few seconds and the recomp picks up the saves every while as well. For immediate transfers you can go in and manually sync. Each time you make a transfer in our out it will ask if you want to sync directly. 
+First, go to the Gen 1 Recomp app and click the Save Sync button then choose Create Sync Account. Go to the PSS app and go to Options → Saves then enter the codes from the Gen 1 Recomp app into the appropriate boxes and hit Sync. Be sure to do all the steps that Bill asks you to do. He knows what he's doing 
+
+The app will sync with the recomp every few seconds and the recomp picks up the saves every while as well. For immediate transfers you can go in and manually sync. Each time you make a transfer in our out it will ask if you want to sync directly. It will also allow you to manually import or export your app data. 
 
 
 <img width="2448" height="1848" alt="329685" src="https://github.com/user-attachments/assets/b9adf5ce-f351-4b34-97a0-2631f441466c" />
@@ -51,8 +55,6 @@ From here you have customization options. You can go to Options → Downloads to
 
 Get feedback and bug tests. the biggest thing I want to avoid is someone's saves getting wiped because I misunderstood how the save sync works. 
 
-Gen 2 is in now — Gold, Silver and Crystal saves read and write, the Time Capsule carries a Pokémon forward from Gen 1, trade evolutions and items work for either generation, and Unown draws the right letter and a Pokémon its own gender. Still on the list: Pokérus and happiness showing up on the status screen, and Day Care/breeding. 
-
 Modding is in. Don't like the colors, the background, the ball in the corner, or the window borders? Mod it — import a zip under Options → Mods and it's yours. No scripting, just a manifest and your own pictures, and every mod gets scanned for ripped game art before it's let in. See [MODDING.md](MODDING.md) for the format.
 
 Enjoy and please be kind in the comments! 
@@ -61,7 +63,7 @@ Enjoy and please be kind in the comments!
 
 ## Credits
 
-**Saves** — [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp)
+**Gen 1 Recomp** — [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp)
 
 **Sprites** — [The RBY Sprites Project](https://github.com/ShiraTheMogul/rby-sprites-project) by ShiraTheMogul
 

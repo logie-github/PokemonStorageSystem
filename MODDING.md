@@ -15,6 +15,10 @@ my-mod.zip
 Import it with **OPTIONS → MODS → IMPORT MOD**, then pick it under
 **OPTIONS → PALETTES**.
 
+For a finished example, [`mods/openhome/`](mods/openhome/) has
+[OpenHome](https://github.com/andrewbenington/OpenHome)'s light and dark
+themes as ready-to-import zips.
+
 ## mod.json
 
 Only `name` is required. Leave anything out and the app uses its own.

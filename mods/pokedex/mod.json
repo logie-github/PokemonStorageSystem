@@ -1,0 +1,37 @@
+{
+  "name": "Pokedex",
+  "author": "Logie",
+  "smoothing": true,
+  "palette": {
+    "id": "pokedex",
+    "label": "POKEDEX",
+    "darkest": "#3B0A0A",
+    "dark": "#7A1212",
+    "light": "#FF6B6B",
+    "lightest": "#FFEAEA",
+    "surround": "#7A1212",
+    "tintsSprites": false,
+    "opacity": 1.0
+  },
+  "chrome": {
+    "ink": "#2A0808",
+    "panel": "#F7EFE3",
+    "shadow": "#7A1212",
+    "muted": "#9C6B6B",
+    "surround": "#7A1212",
+    "barFill": "#2D6CB5",
+    "barText": "#F5F5F5",
+    "hpGreen": "#30A46C",
+    "hpYellow": "#FFC53D",
+    "hpRed": "#E5484D"
+  },
+  "background": {
+    "asset": "background.png",
+    "fit": "cover"
+  },
+  "ball": {
+    "asset": "ball.png",
+    "spins": true
+  },
+  "borderAsset": "border.png"
+}
